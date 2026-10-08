@@ -103,6 +103,9 @@
 | `Editor/MobileBuildMenu.cs` | 菜单：`Tools/DSH Mobile/{Report Mobile Status, Toggle Touch Preview, Configure Android Player Settings, Build APK}` |
 | `Editor/MobileAndroidPackaging.cs` | 改生成的 Gradle 工程：安卓桌面图标名 + 开发版的 `usesCleartextTraffic` + `VIBRATE` 权限（见坑 27、30） |
 | `Editor/MobilePreviewSizes.cs` | 反射改 Game 视图尺寸（真机竖屏/横屏/平板），用于照着真机比例看布局（见坑 31） |
+| `Editor/IconPainter.cs` | 画图标用的软件光栅器（渐变/圆/圆角矩形/三角/拱门/径向辉光，4 倍超采样，归一化坐标） |
+| `Editor/MobileIconBuilder.cs` | 画应用图标（小屋 + 门口的猫 + 月亮）并按 Android 三类图标写进玩家设置 |
+| `Art/icon_*.png` | 生成出来的四个图标层（**要提交**：PlayerSettings 按 GUID 引用它们，缺了图标就没了） |
 | `Scripts/MobileHaptics.cs` | 振动反馈：`HapticGate`（限流 + 开关，可测）+ 安卓 `Vibrator`/`VibrationEffect` |
 | `Tests/Editor/MobileInputTests.cs` | 23 条测试（手势 / 摇杆 / 缩放 / 手机布局 / 坐标变换） |
 
@@ -338,6 +341,17 @@
     差了 20%，"在编辑器里验过的布局"根本不是真机跑的那套（坑 36 就是这么漏掉的）。
     现在预览菜单会连密度一起模拟，**并且记进 `EditorPrefs`**：静态字段进 Play 会被域重载清掉，
     不持久化的话按了 Play 就悄悄退回 96dpi（`[InitializeOnLoadMethod]` 负责重放）。
+38. **安卓图标不是一个槽，是三类六档，而且自适应图标的前景会被裁。**
+    老 API（`SetIconsForTargetGroup` + `IconKind`）在这一版里根本没有 `Adaptive` 这个值，
+    要用新的 `PlayerSettings.GetPlatformIcons/SetPlatformIcons` + `PlatformIconKind`：
+    **Adaptive（API 26，两层）/ Round（API 25，一层）/ Legacy（一层）**，各 6 档密度。
+    两层的那个必须先 `layerCount = 2` 再 `SetTexture(背景, 0)`、`SetTexture(前景, 1)`，
+    顺序反了就是背景盖住前景。另外**前景里的东西必须留在中间 66% 内**——
+    启动器会把外面三分之一裁掉并套圆形遮罩，屋顶被切掉一角看起来就像 bug 而不是设计。
+39. **图标要在 36~48px 下看，不是在设计尺寸下看。** 出包前先跑
+    `Tools/DSH Mobile/Icons/Render Size Preview Sheet` 把 192/96/72/48/36px 并排出图再看：
+    第一版把猫画成了"圆头 + 圆身"的雪人，1:1 看没问题，缩到 48px 就只剩一坨黑；
+    改成"三角形身体 + 圆头 + 耳朵 + 尾巴"的坐姿剪影之后才认得出是猫。
 
 ---
 

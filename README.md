@@ -12,6 +12,13 @@
 **手机端（横屏 / 竖屏都支持）**：两套界面都有专门的触屏布局，操作按钮、摇杆、聊天条都按拇指位置重排过；
 竖屏下相机会自动往后退，保证整个房间 / 整条赛道仍在画面里。
 
+| 应用图标（自适应 / 圆形 / 传统） | 在启动器上的大小 |
+|---|---|
+| ![图标](docs/evidence/app_icon_installed.png) | ![各尺寸](docs/evidence/app_icon_sizes.png) |
+
+图标也是**代码画出来的**（黄昏的小房子 + 门口灯光里的猫 + 月亮），
+用 `Tools/DSH Mobile/Icons/Rebuild App Icon` 重新生成，改调色板只要改几个常量。
+
 | 宠物房间 · 手机横屏 | 跑酷 · 手机横屏 |
 |---|---|
 | ![手机宠物](docs/evidence/mobile_pet_hud.png) | ![手机跑酷](docs/evidence/mobile_runner_hud.png) |
@@ -195,6 +202,8 @@ github.com 凭据，脚本里不存任何 token）。
   另有 `Report Current Viewport` 打印当前视口 / 方向 / dpi / 缩放 / 设计尺寸，
   `Use Platform DPI` 还原成平台值。
 - `Tools/DSH Mobile/Configure Android Player Settings` —— 一键写回横竖屏/包名/IL2CPP+ARM64/INTERNET 等设置。
+- `Tools/DSH Mobile/Icons/…` —— `Rebuild App Icon`（按代码重画四种图标并写进玩家设置）、
+  `Render Size Preview Sheet`（把 192/96/72/48/36px 并排出图，先看小尺寸认不认得出）。
 - `Tools/DSH Mobile/Build APK` —— 出包到 `UnityMCPProject/Builds/Android/RoomPet.apk`。
 
 ---
