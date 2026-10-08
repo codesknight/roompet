@@ -1237,9 +1237,14 @@ namespace DshPet.Tests
                     foreach (var row in rows)
                     {
                         float needed = PetHud.EstimatedRowWidth(row, buttonFont);
-                        Assert.LessOrEqual(needed, available,
-                            $"footer row [{string.Join(", ", row)}] needs {needed:F0}px " +
-                            $"but has {available:F0}px at {where}");
+
+                        // Not just "fits": the packing holds back RowPackingSlack on purpose,
+                        // because the width estimate does not measure the font. A row that only
+                        // just fits the panel is a row whose last button may be laid out where
+                        // the area stops delivering clicks.
+                        Assert.LessOrEqual(needed, available - PetHud.RowPackingSlack + 0.01f,
+                            $"footer row [{string.Join(", ", row)}] needs {needed:F0}px, which leaves " +
+                            $"no slack in {available:F0}px at {where}");
                         seen.AddRange(row);
                     }
 
@@ -1248,6 +1253,7 @@ namespace DshPet.Tests
                     Assert.IsTrue(seen.Exists(l => l.Contains("本子") || l.Contains("记事本")),
                         $"notebook button missing at {where}");
                     Assert.IsTrue(seen.Exists(l => l.Contains("设置")), $"settings button missing at {where}");
+                    Assert.IsTrue(seen.Exists(l => l.Contains("地图")), $"map button missing at {where}");
                     Assert.IsTrue(seen.Contains("提示词"), $"prompt button missing at {where}");
                     Assert.IsTrue(seen.Contains("重置"), $"reset button missing at {where}");
                 }
@@ -1459,6 +1465,484 @@ namespace DshPet.Tests
             ctx.Joy = 0.25f;
             Assert.Greater(play.Score(ctx), bathe.Score(ctx),
                 "with nothing urgent wrong, temperament is what shows");
+        }
+
+        // ------------------------------------------------------------------ world map
+
+        /// <summary>
+        /// Puts the map and the wallet back the way they were, so a test that spends coins or
+        /// unlocks a terrace cannot leak into the next one. PlayerPrefs is global state and this
+        /// project has already been bitten once by a test leaving a save behind.
+        /// </summary>
+        private static void WithWorld(System.Action body)
+        {
+            string unlocked = PlayerPrefs.GetString(PetWorldMap.UnlockedKey, "");
+            int current = PlayerPrefs.GetInt(PetWorldMap.CurrentKey, 0);
+            int coins = DshMobile.PetWallet.Coins;
+            try
+            {
+                body();
+            }
+            finally
+            {
+                PlayerPrefs.SetString(PetWorldMap.UnlockedKey, unlocked);
+                PlayerPrefs.SetInt(PetWorldMap.CurrentKey, current);
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(coins);
+            }
+        }
+
+        [Test]
+        public void World_ANewHouseholdOwnsTheCabinAndNothingElse()
+        {
+            WithWorld(() =>
+            {
+                PetWorldMap.SetForTests(RoomTheme.Cabin);
+
+                Assert.IsTrue(PetWorldMap.IsUnlocked(RoomTheme.Cabin), "a save with nowhere to live is not a save");
+                Assert.IsFalse(PetWorldMap.IsUnlocked(RoomTheme.Garden));
+                Assert.IsFalse(PetWorldMap.IsUnlocked(RoomTheme.Terrace));
+                Assert.AreEqual(RoomTheme.Cabin, PetWorldMap.Current);
+                Assert.AreEqual(0, RoomThemeInfo.Get(RoomTheme.Cabin).Price, "the first room is free");
+            });
+        }
+
+        [Test]
+        public void World_APlaceCostsCoinsAndAFailedPurchaseChangesNothing()
+        {
+            WithWorld(() =>
+            {
+                PetWorldMap.SetForTests(RoomTheme.Cabin);
+                int price = RoomThemeInfo.Get(RoomTheme.Garden).Price;
+
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(price - 1);
+
+                string message;
+                Assert.IsFalse(PetWorldMap.TryUnlock(RoomTheme.Garden, out message));
+                Assert.IsTrue(message.Contains("还差"), "and it says how much is missing: " + message);
+                Assert.AreEqual(price - 1, DshMobile.PetWallet.Coins, "a refused purchase must cost nothing");
+                Assert.IsFalse(PetWorldMap.IsUnlocked(RoomTheme.Garden));
+
+                DshMobile.PetWallet.Add(1);
+                Assert.IsTrue(PetWorldMap.TryUnlock(RoomTheme.Garden, out message));
+                Assert.AreEqual(0, DshMobile.PetWallet.Coins, "and the coins are gone");
+                Assert.IsTrue(PetWorldMap.IsUnlocked(RoomTheme.Garden));
+                Assert.IsFalse(PetWorldMap.TryUnlock(RoomTheme.Garden, out message),
+                    "buying the same place twice is not a purchase");
+            });
+        }
+
+        [Test]
+        public void World_YouCannotMoveInToSomewhereYouHaveNotUnlocked()
+        {
+            WithWorld(() =>
+            {
+                PetWorldMap.SetForTests(RoomTheme.Cabin);
+
+                string message;
+                Assert.IsFalse(PetWorldMap.TravelTo(RoomTheme.Terrace, out message));
+                Assert.IsTrue(message.Contains("还没解锁"), message);
+                Assert.AreEqual(RoomTheme.Cabin, PetWorldMap.Current, "a refused move leaves the pet where it was");
+
+                PetWorldMap.SetForTests(RoomTheme.Cabin, RoomTheme.Terrace);
+                Assert.IsTrue(PetWorldMap.TravelTo(RoomTheme.Terrace, out message));
+                Assert.AreEqual(RoomTheme.Terrace, PetWorldMap.Current, "and the choice is written down");
+                Assert.AreEqual(RoomTheme.Terrace, (RoomTheme)PlayerPrefs.GetInt(PetWorldMap.CurrentKey, 0));
+
+                Assert.IsFalse(PetWorldMap.TravelTo(RoomTheme.Terrace, out message), "already there is not a move");
+                Assert.IsTrue(message.Contains("已经在这里"), message);
+            });
+        }
+
+        [Test]
+        public void World_ASaveNamingALockedPlaceWakesUpInTheCabin()
+        {
+            // The failure this prevents: a save edited by hand, or a theme dropped in a later
+            // version, leaves the pet Current=somewhere that does not exist — and then the room
+            // is built from a place the player never unlocked.
+            WithWorld(() =>
+            {
+                PetWorldMap.SetForTests(RoomTheme.Cabin);
+                PlayerPrefs.SetInt(PetWorldMap.CurrentKey, (int)RoomTheme.Terrace);
+                Assert.AreEqual(RoomTheme.Cabin, PetWorldMap.Current);
+            });
+        }
+
+        [Test]
+        public void World_EachPlaceChangesThePetInItsOwnWay()
+        {
+            var cabin = RoomThemeInfo.Get(RoomTheme.Cabin);
+            var garden = RoomThemeInfo.Get(RoomTheme.Garden);
+            var terrace = RoomThemeInfo.Get(RoomTheme.Terrace);
+
+            Assert.AreEqual(1f, cabin.JoyDrainScale, 0.001f, "home is the baseline");
+            Assert.AreEqual(1f, cabin.EnergyDrainScale, 0.001f);
+            Assert.AreEqual(1f, cabin.CleanDrainScale, 0.001f);
+            Assert.IsFalse(cabin.Outdoors);
+
+            Assert.Greater(garden.CleanDrainScale, 1f, "a garden is where a pet gets muddy");
+            Assert.Less(garden.JoyDrainScale, 1f, "and where it is happier");
+            Assert.IsTrue(garden.Outdoors, "and it counts as outside");
+
+            Assert.Greater(terrace.EnergyDrainScale, 1f, "a night terrace tires a pet out");
+            Assert.IsTrue(terrace.Outdoors);
+
+            Assert.AreNotEqual(cabin.Effects(), garden.Effects());
+            Assert.AreNotEqual(garden.Effects(), terrace.Effects());
+            Assert.IsTrue(garden.Effects().Contains("脏"), garden.Effects());
+            Assert.IsTrue(terrace.Effects().Contains("累"), terrace.Effects());
+            Assert.AreEqual("和平时一样", cabin.Effects(), "the cabin is described as neutral, not as a buff");
+        }
+
+        [Test]
+        public void World_ThePlacesEscalateInPriceAndLookDifferent()
+        {
+            Assert.AreEqual(3, RoomThemeInfo.All.Length, "the map is three places, not a list of one");
+
+            int previous = -1;
+            var floors = new List<Color>();
+            foreach (var info in RoomThemeInfo.All)
+            {
+                Assert.Greater(info.Price, previous,
+                    info.DisplayName + " has to cost more than the place before it, or it is pointless");
+                previous = info.Price;
+
+                Assert.IsFalse(string.IsNullOrEmpty(info.Blurb), info.DisplayName + " needs a blurb");
+                Assert.IsFalse(string.IsNullOrEmpty(info.Emoji), info.DisplayName + " needs an icon");
+                Assert.IsFalse(floors.Contains(info.Floor),
+                    info.DisplayName + " needs its own floor colour, not the last one's");
+                floors.Add(info.Floor);
+            }
+        }
+
+        [Test]
+        public void World_ThePlaceActuallyChangesHowThePetDecays()
+        {
+            // The scales are only real if the needs curve reads them: a garden pet gets dirtier
+            // and stays happier than a cabin pet over the same ten minutes, and that is the whole
+            // of "a different scene puts the pet in a different state".
+            var gardenInfo = RoomThemeInfo.Get(RoomTheme.Garden);
+
+            var cabin = new PetNeeds();
+            var garden = new PetNeeds
+            {
+                JoyDrainScale = gardenInfo.JoyDrainScale,
+                CleanDrainScale = gardenInfo.CleanDrainScale
+            };
+
+            cabin.Tick(30f);
+            garden.Tick(30f);
+
+            // Both are still away from the clamp, so the difference is the place and not a
+            // floor at zero.
+            Assert.Greater(cabin.Cleanliness, 0.2f, "the cabin should not be filthy after 30s");
+            Assert.Less(garden.Cleanliness, cabin.Cleanliness, "the garden makes a pet dirtier");
+            Assert.Greater(garden.Joy, cabin.Joy, "and keeps it happier");
+        }
+
+        // -------------------------------------------------------------------- chatter
+
+        [Test]
+        public void Chatter_EveryExchangeHasLinesForBothPetsAndAJournalTitle()
+        {
+            foreach (PetChatter.Exchange exchange in System.Enum.GetValues(typeof(PetChatter.Exchange)))
+            {
+                var lines = PetChatter.Lines(exchange, "阿狸", "豆豆");
+                Assert.IsNotNull(lines, exchange + " has no lines");
+                Assert.IsNotEmpty(lines, exchange + " has an empty line table");
+
+                bool any = false;
+                foreach (string line in lines)
+                {
+                    if (string.IsNullOrEmpty(line)) continue;
+                    any = true;
+                    Assert.IsTrue(line.Contains("阿狸") || line.Contains("豆豆"),
+                        exchange + " line names neither pet: " + line);
+                }
+                Assert.IsTrue(any, exchange + " has nothing to say at all");
+
+                string title = PetChatter.JournalTitle(exchange, "阿狸", "豆豆");
+                Assert.IsFalse(string.IsNullOrEmpty(title));
+                Assert.IsTrue(title.Contains("阿狸") && title.Contains("豆豆"),
+                    "a diary entry about two pets should name both: " + title);
+            }
+        }
+
+        [Test]
+        public void Chatter_LivelyPairsPlayAndShyPairsKeepTheirDistance()
+        {
+            var playful = new PetPersonality { Liveliness = 1f, Clinginess = 0.8f, Curiosity = 0.9f, Neatness = 0.2f };
+            var shy = new PetPersonality { Liveliness = 0f, Clinginess = 0.05f, Curiosity = 0.05f, Neatness = 0.9f };
+
+            int playfulPlays = 0, shyIgnores = 0, playfulIgnores = 0;
+            for (int i = 0; i < 400; i++)
+            {
+                float roll = i / 400f;
+                if (PetChatter.Choose(playful, playful, roll) == PetChatter.Exchange.Play) playfulPlays++;
+                if (PetChatter.Choose(playful, playful, roll) == PetChatter.Exchange.Ignore) playfulIgnores++;
+                if (PetChatter.Choose(shy, shy, roll) == PetChatter.Exchange.Ignore) shyIgnores++;
+            }
+
+            Assert.Greater(playfulPlays, 0, "two lively pets should sometimes end up tumbling");
+            Assert.Greater(shyIgnores, playfulIgnores, "two shy pets mostly ignore each other");
+            Assert.Greater(shyIgnores, 100, "and 'mostly' means most of the rolls, not two of them");
+        }
+
+        [Test]
+        public void Chatter_JoyFollowsTheExchange()
+        {
+            Assert.Greater(PetChatter.JoyDelta(PetChatter.Exchange.Play), 0f);
+            Assert.Greater(PetChatter.JoyDelta(PetChatter.Exchange.Cuddle), 0f);
+            Assert.Less(PetChatter.JoyDelta(PetChatter.Exchange.Squabble), 0f,
+                "a hissing match should not make the pet happier");
+            Assert.AreEqual(0f, PetChatter.JoyDelta(PetChatter.Exchange.Ignore), 0.0001f);
+        }
+
+        [Test]
+        public void Chatter_ChooseSurvivesMissingTemperaments()
+        {
+            // Companions are built from records and a half-built one is possible; a null
+            // temperament must pick something rather than throw inside Update.
+            Assert.DoesNotThrow(() => PetChatter.Choose(null, null, 0.5f));
+            Assert.DoesNotThrow(() => PetChatter.Lines(PetChatter.Exchange.Greet, null, null));
+        }
+
+        [Test]
+        public void Chatter_TheCooldownKeepsTheRoomFromChatteringConstantly()
+        {
+            var rng = new System.Random(7);
+            float livelyTotal = 0f, sleepyTotal = 0f;
+
+            for (int i = 0; i < 200; i++)
+            {
+                float lively = PetChatter.NextDelay(rng, 1f);
+                float sleepy = PetChatter.NextDelay(rng, 0f);
+
+                Assert.GreaterOrEqual(lively, PetChatter.CooldownMin * 0.7f,
+                    "an exchange every few seconds would be noise, not charm");
+                Assert.LessOrEqual(sleepy, PetChatter.CooldownMax * 1.3f);
+
+                livelyTotal += lively;
+                sleepyTotal += sleepy;
+            }
+
+            Assert.Less(livelyTotal, sleepyTotal, "a lively household interacts sooner than a sleepy one");
+        }
+
+        // ---------------------------------------------------------------------- voice
+
+        [Test]
+        public void Voice_EverySpeciesSoundsLikeItself()
+        {
+            float fox = PetVoice.ForSpecies(PetSpecies.Get("fox")).BaseHz;
+            float cat = PetVoice.ForSpecies(PetSpecies.Get("cat")).BaseHz;
+            float rabbit = PetVoice.ForSpecies(PetSpecies.Get("rabbit")).BaseHz;
+            float bear = PetVoice.ForSpecies(PetSpecies.Get("bear")).BaseHz;
+
+            Assert.Greater(rabbit, fox, "a rabbit is higher than a fox");
+            Assert.Greater(fox, cat, "a fox is higher than a cat");
+            Assert.Greater(cat, bear, "and a bear is the bottom of the register");
+
+            Assert.AreEqual(1, PetVoice.ForSpecies(PetSpecies.Get("cat")).Syllables,
+                "a cat says one bored syllable, not a sentence");
+            Assert.Greater(PetVoice.ForSpecies(PetSpecies.Get("fox")).Syllables, 1);
+        }
+
+        [Test]
+        public void Voice_PersonalityBendsTheVoiceWithoutErasingTheSpecies()
+        {
+            var fox = PetSpecies.Get("fox");
+            var lively = new PetPersonality { Liveliness = 1f, Clinginess = 1f, Curiosity = 1f, Neatness = 0f };
+            var lazy = new PetPersonality { Liveliness = 0f, Clinginess = 0f, Curiosity = 0f, Neatness = 1f };
+
+            var a = PetVoice.For(fox, lively);
+            var b = PetVoice.For(fox, lazy);
+
+            Assert.AreNotEqual(a, b, "two foxes should not be one voice");
+            Assert.Greater(a.BaseHz, b.BaseHz, "the lively one is brighter");
+            Assert.Less(a.SyllableSeconds, b.SyllableSeconds, "and quicker");
+            Assert.GreaterOrEqual(a.Syllables, b.Syllables, "and chattier");
+
+            // ...but both are still recognisably a fox, not a bear.
+            float bear = PetVoice.ForSpecies(PetSpecies.Get("bear")).BaseHz;
+            Assert.Greater(b.BaseHz, bear * 1.5f, "the individual must not replace the animal");
+        }
+
+        [Test]
+        public void Voice_MoodShiftsTheSameVoice()
+        {
+            var fox = PetSpecies.Get("fox");
+            var personality = new PetPersonality();
+
+            var happy = PetVoice.For(fox, personality, PetMood.Happy);
+            var sleepy = PetVoice.For(fox, personality, PetMood.Sleepy);
+
+            Assert.Less(sleepy.BaseHz, happy.BaseHz, "a sleepy pet is lower");
+            Assert.Greater(sleepy.SyllableSeconds, happy.SyllableSeconds, "and slower");
+            Assert.Less(sleepy.Gain, happy.Gain, "and quieter");
+        }
+
+        [Test]
+        public void Voice_DescribeIsReadableAndTheSwitchIsHonest()
+        {
+            string described = PetVoice.Describe(PetSpecies.Get("bear"), new PetPersonality());
+            Assert.IsTrue(described.Contains("低沉"), described);
+            Assert.IsTrue(PetVoice.Describe(PetSpecies.Get("rabbit"), new PetPersonality()).Contains("清亮"));
+
+            bool previous = PetVoice.Enabled;
+            try
+            {
+                PetVoice.Enabled = false;
+                PetVoice.ResetCache();
+                Assert.IsFalse(PetVoice.Enabled, "the switch has to survive a reload");
+                PetVoice.Enabled = true;
+                PetVoice.ResetCache();
+                Assert.IsTrue(PetVoice.Enabled);
+            }
+            finally
+            {
+                PetVoice.Enabled = previous;
+                PetVoice.ResetCache();
+            }
+        }
+
+        // ------------------------------------------------------------- speech output
+
+        [Test]
+        public void Tts_ReadsTheWordsAndNotTheStageDirections()
+        {
+            // The reason this is a function at all: the transcript is full of "（开心地晃了晃）",
+            // and a synthetic voice reading parentheses out loud is what makes a talking pet
+            // embarrassing instead of charming.
+            Assert.AreEqual("你好呀", DshMobile.MobileTts.Speech("（开心地晃了晃）你好呀"));
+            Assert.AreEqual("我饿了，想吃东西。", DshMobile.MobileTts.Speech("我饿了，想吃东西。（盯着空碗）"));
+
+            Assert.AreEqual("", DshMobile.MobileTts.Speech("（用小鼻子碰了碰你的脚）"),
+                "a poke is a stage direction, not a sentence — it gets a chirp, not narration");
+            Assert.AreEqual("", DshMobile.MobileTts.Speech("🐾"));
+            Assert.AreEqual("", DshMobile.MobileTts.Speech(""));
+            Assert.AreEqual("", DshMobile.MobileTts.Speech(null));
+
+            Assert.IsFalse(DshMobile.MobileTts.Speech("今天天气不错 🐾").Contains("🐾"),
+                "an emoji would be read as its Unicode name");
+            Assert.AreEqual("今天天气不错", DshMobile.MobileTts.Speech("今天天气不错 🐾"));
+
+            // A stray bracket must not swallow the rest of the sentence.
+            Assert.AreEqual("今天天气不错", DshMobile.MobileTts.Speech("今天天气不错)"));
+        }
+
+        [Test]
+        public void Tts_TheSameSentenceComesOutAsADifferentAnimal()
+        {
+            var personality = new PetPersonality();
+            float bearPitch, bearRate, rabbitPitch, rabbitRate;
+            PetVoice.SpeechParams(PetSpecies.Get("bear"), personality, out bearPitch, out bearRate);
+            PetVoice.SpeechParams(PetSpecies.Get("rabbit"), personality, out rabbitPitch, out rabbitRate);
+
+            Assert.Less(bearPitch, rabbitPitch, "the bear reads lower");
+            Assert.Less(bearRate, rabbitRate, "and slower");
+
+            // Pushed further, every pet sounds like a cartoon: the clamps are the feature.
+            Assert.GreaterOrEqual(bearPitch, 0.7f);
+            Assert.LessOrEqual(rabbitPitch, 1.35f);
+            Assert.GreaterOrEqual(bearRate, 0.8f);
+            Assert.LessOrEqual(rabbitRate, 1.3f);
+        }
+
+        [Test]
+        public void Tts_IsSilentInTheEditorAndTheSwitchRoundTrips()
+        {
+            // The editor has no Android speech engine, and every call has to be a harmless no-op
+            // there — otherwise the whole feature has to be conditioned on platform at each call.
+            Assert.IsFalse(DshMobile.MobileTts.Available, "the editor is not a phone");
+            Assert.DoesNotThrow(() => DshMobile.MobileTts.Speak("你好"));
+            Assert.DoesNotThrow(DshMobile.MobileTts.Stop);
+
+            bool previous = DshMobile.MobileTts.Enabled;
+            try
+            {
+                DshMobile.MobileTts.Enabled = true;
+                DshMobile.MobileTts.ResetCache();
+                Assert.IsTrue(DshMobile.MobileTts.Enabled, "the switch has to survive a reload");
+                DshMobile.MobileTts.Enabled = false;
+                DshMobile.MobileTts.ResetCache();
+                Assert.IsFalse(DshMobile.MobileTts.Enabled);
+            }
+            finally
+            {
+                DshMobile.MobileTts.Enabled = previous;
+                DshMobile.MobileTts.ResetCache();
+            }
+        }
+
+        // ------------------------------------------------------------ footer geometry
+
+        [Test]
+        public void Hud_TheFooterIsTallEnoughForTheRowsItPacks()
+        {
+            // The horizontal half of this contract is tested above. This is the vertical half,
+            // and it was a real bug: seven buttons on a 204px panel pack into three rows, and a
+            // fixed 62px footer put the last row (重置) outside the area that delivers clicks.
+            // It drew normally and did nothing.
+            const int buttonFont = 14;
+            const float innerInset = 28f;
+
+            foreach (var size in Viewports)
+            {
+                foreach (bool mobile in new[] { false, true })
+                {
+                    var layout = PetHud.ComputeLayout(size.x, size.y, PetSpecies.Count);
+                    float available = layout.Status.width - innerInset;
+                    var rows = PetHud.StatusFooterRows(mobile, detailOn: mobile, available, buttonFont);
+                    float footer = PetHud.FooterHeight(rows.Length);
+                    float innerHeight = layout.Status.height - 24f;
+
+                    string where = $"{size.x}x{size.y} ({(mobile ? "mobile" : "desktop")}, {rows.Length} rows)";
+
+                    // The pinned rows plus the header have to fit inside the panel, or the
+                    // bottom row is drawn where the panel's own area no longer delivers input.
+                    Assert.LessOrEqual(footer + 56f, innerHeight + 0.01f,
+                        $"two rows of buttons plus the compact header need {footer + 56f:F0}px " +
+                        $"of a {innerHeight:F0}px panel at {where}");
+
+                    // ...and there is still a strip of detail left over for the need bars. When
+                    // the panel is this tight the header drops its subtitle (86px -> 56px), which
+                    // is the trade the panel makes rather than overflowing.
+                    Assert.GreaterOrEqual(innerHeight - 56f - footer, 24f,
+                        $"no room left for the need bars at {where}");
+                }
+            }
+        }
+
+        [Test]
+        public void Hud_EveryModalFitsTheSmallestViewportItCanBeDrawnIn()
+        {
+            // The map panel is the tallest thing in the game. OverlayRect is what keeps it on
+            // screen; a panel whose bottom edge is below the viewport is a panel whose buttons
+            // cannot be reached.
+            var panels = new[]
+            {
+                new Vector2(680f, 620f),   // map
+                new Vector2(760f, 560f),   // collection
+                new Vector2(720f, 560f),   // notebook
+                new Vector2(520f, 430f),   // settings
+                new Vector2(700f, 540f)    // prompt preview
+            };
+
+            foreach (var size in Viewports)
+            {
+                foreach (var panel in panels)
+                {
+                    var rect = PetHud.OverlayRect(panel.x, panel.y, size.x, size.y);
+                    Assert.GreaterOrEqual(rect.x, -0.01f, $"{panel} starts off the left at {size}");
+                    Assert.GreaterOrEqual(rect.y, -0.01f, $"{panel} starts off the top at {size}");
+                    Assert.LessOrEqual(rect.xMax, size.x + 0.01f, $"{panel} runs off the right at {size}");
+                    Assert.LessOrEqual(rect.yMax, size.y + 0.01f, $"{panel} runs off the bottom at {size}");
+                    Assert.GreaterOrEqual(rect.width, 200f, $"{panel} is unusably narrow at {size}");
+                    Assert.GreaterOrEqual(rect.height, 160f, $"{panel} is unusably short at {size}");
+                }
+            }
         }
     }
 }

@@ -210,5 +210,22 @@ namespace DshPet
             string pace = profile.SyllableSeconds > 0.25f ? "慢" : profile.SyllableSeconds > 0.12f ? "适中" : "快";
             return $"{register}·{pace}·{profile.Syllables}音节";
         }
+
+        /// <summary>
+        /// The same voice, expressed as the two knobs a phone's text-to-speech engine has.
+        ///
+        /// Pitch and rate are all a system voice offers, so the species register maps to pitch and
+        /// the syllable length maps to rate — a bear reads slowly and low, a rabbit quickly and
+        /// high. The clamps are deliberately narrow: pushed further, every pet sounds like a
+        /// cartoon, and a talking bear that sounds like a chipmunk is worse than no speech.
+        /// </summary>
+        public static void SpeechParams(PetSpecies species, PetPersonality personality,
+            out float pitch, out float rate)
+        {
+            var profile = For(species, personality);
+
+            pitch = Mathf.Clamp(profile.BaseHz / 560f, 0.70f, 1.35f);
+            rate = Mathf.Clamp(0.13f / Mathf.Max(0.04f, profile.SyllableSeconds), 0.80f, 1.30f);
+        }
     }
 }

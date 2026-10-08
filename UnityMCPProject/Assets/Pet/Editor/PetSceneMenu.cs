@@ -256,6 +256,13 @@ namespace DshPetEditor
                 PlayerPrefs.DeleteKey("dshpet.petname." + species.Id);
             }
             PlayerPrefs.DeleteKey("dshpet.species");
+
+            // The collection, the wallet and the map are household state rather than pet state,
+            // but "clear the save" has to mean all of it: leaving 3000 coins and an unlocked
+            // night terrace behind makes the next first run not a first run.
+            PlayerPrefs.DeleteKey(PetCollection.Key);
+            PlayerPrefs.DeleteKey(DshMobile.PetWallet.Key);
+            PetWorldMap.ResetAll();
             PlayerPrefs.Save();
 
             // The notebook lives in its own JSON file per species, not in PlayerPrefs, so

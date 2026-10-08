@@ -49,6 +49,16 @@ namespace DshPet
         /// <summary>Set by the owner each frame: the pet's temperament scales the decay.</summary>
         public PetPersonality Personality;
 
+        /// <summary>
+        /// Place modifiers, pushed by the owner each frame.
+        ///
+        /// A garden makes a pet happier and dirtier, a night terrace tires it out faster — this
+        /// is what "a different place puts the pet in a different state" means in numbers.
+        /// </summary>
+        public float JoyDrainScale = 1f;
+        public float EnergyDrainScale = 1f;
+        public float CleanDrainScale = 1f;
+
         public void Tick(float deltaSeconds)
         {
             if (deltaSeconds <= 0f) return;
@@ -56,18 +66,18 @@ namespace DshPet
 
             Hunger = Mathf.Clamp01(Hunger - HungerRate * dt);
 
-            float cleanRate = CleanRate * (Personality != null ? Personality.CleanDrainScale : 1f);
+            float cleanRate = CleanRate * CleanDrainScale * (Personality != null ? Personality.CleanDrainScale : 1f);
             Cleanliness = Mathf.Clamp01(Cleanliness - cleanRate * dt);
 
             Bladder = Mathf.Clamp01(Bladder - BladderRate * dt);
 
             // Energy drains faster while awake and restless, and recovers while asleep.
-            float energyScale = Personality != null ? Personality.EnergyDrainScale : 1f;
+            float energyScale = EnergyDrainScale * (Personality != null ? Personality.EnergyDrainScale : 1f);
             float energyDrain = EnergyRate * dt * energyScale * (Joy < 0.3f ? 1.35f : 1f);
             Energy = Mathf.Clamp01(Energy - energyDrain);
 
             // Joy sags faster when the pet is hungry or filthy: neglect compounds.
-            float joyScale = Personality != null ? Personality.JoyDrainScale : 1f;
+            float joyScale = JoyDrainScale * (Personality != null ? Personality.JoyDrainScale : 1f);
             float joyDrain = JoyRate * dt * joyScale * (Hunger < 0.3f ? 1.4f : 1f) * (Cleanliness < 0.3f ? 1.3f : 1f);
             Joy = Mathf.Clamp01(Joy - joyDrain);
         }

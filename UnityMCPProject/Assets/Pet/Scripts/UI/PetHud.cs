@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using DshMobile;
 using UnityEngine;
@@ -213,7 +213,7 @@ namespace DshPet
             // Controls sit above the room but below any modal panel.
             if (Mobile) DrawMobileControls(gm, layout);
 
-            if (gm.DoorPromptOpen) DrawDoorPrompt(gm);
+            if (gm.DoorPromptOpen) DrawMapPanel(gm);
             if (_showSettings) DrawSettings(gm);
             if (_showPromptPreview) DrawPromptPreview(gm);
             if (_showJournal) DrawJournal(gm);
@@ -620,30 +620,62 @@ namespace DshPet
         /// </summary>
         private void DrawStatusPanel(PetGameManager gm, HudLayout layout)
         {
-            const float footerHeight = 62f;
-
             // The header is the editable name row plus a 13pt subtitle. At 46px the subtitle
             // spilled out of its area and printed straight over the first need bar ("饱食" got a
             // "开心 亲密度" caption through it). GUILayout areas do not clip their children.
-            const float headerHeight = 86f;
+            const float fullHeaderHeight = 86f;
+
+            // On a panel too short for both, the subtitle is the thing that goes: the name row
+            // and the buttons are controls, the subtitle is a decoration.
+            const float compactHeaderHeight = 56f;
 
             var rect = layout.Status;
             GUI.Box(rect, GUIContent.none, _panel);
 
             var inner = new Rect(rect.x + 14f, rect.y + 12f, rect.width - 28f, rect.height - 24f);
 
-            // ---- header (fixed) ----
+            // The footer is sized to the rows it actually has, rather than to a fixed 62px.
+            //
+            // Seven buttons on a narrow panel pack into three rows (90px), so with a fixed
+            // footer the last row — 重置, of all things — was laid out past the footer area,
+            // where a GUILayout area stops delivering input. It drew normally and did nothing.
+            // The horizontal half of this contract was already tested; this is the same bug in
+            // the other axis.
+            var footerRows = StatusFooterRows(Mobile, _statusDetail, inner.width, _buttonSmall.fontSize);
+            float footerHeight = FooterHeight(footerRows.Length);
+
+            float detailRoom = inner.height - footerHeight;
+            bool compactHeader = detailRoom - fullHeaderHeight < 60f;
+            float headerHeight = compactHeader ? compactHeaderHeight : fullHeaderHeight;
+
+            // ---- header ----
             GUILayout.BeginArea(new Rect(inner.x, inner.y, inner.width, headerHeight));
             DrawNameRow(gm);
-            GUILayout.Label($"{PetUtil.MoodLabel(gm.Needs.Mood)}　·　亲密度 {gm.Needs.Affection:P0}" +
-                            $"　·　{gm.Species.DisplayName}", _small);
+            if (!compactHeader)
+            {
+                GUILayout.Label($"{PetUtil.MoodLabel(gm.Needs.Mood)}　·　亲密度 {gm.Needs.Affection:P0}" +
+                                $"　·　{gm.Species.DisplayName}", _small);
+            }
             GUILayout.EndArea();
 
             // ---- scrollable detail ----
-            float scrollHeight = inner.height - headerHeight - footerHeight;
+            float scrollHeight = Mathf.Max(24f, detailRoom - headerHeight);
             var scrollRect = new Rect(inner.x, inner.y + headerHeight, inner.width, scrollHeight);
             GUILayout.BeginArea(scrollRect);
             _statusScroll = GUILayout.BeginScrollView(_statusScroll, GUILayout.ExpandHeight(true));
+
+            // The "no brain configured" button lives in the scroll area rather than in the
+            // pinned footer. It is a one-off setup step, and a pinned footer that has to hold it
+            // plus the button rows is a footer that no longer fits a short panel.
+            if (!gm.BrainConfig.CanUseNetwork)
+            {
+                GUI.color = new Color(1f, 0.86f, 0.55f);
+                if (GUILayout.Button("⚙ 配置大脑连接（当前离线）", _buttonSmall, GUILayout.Height(FooterRowHeight)))
+                {
+                    OpenSettings(gm);
+                }
+                GUI.color = Color.white;
+            }
 
             Bar("饱食", gm.Needs.Hunger, new Color(0.95f, 0.62f, 0.30f));
             Bar("精力", gm.Needs.Energy, new Color(0.45f, 0.80f, 0.95f));
@@ -697,38 +729,48 @@ namespace DshPet
             var footer = new Rect(inner.x, inner.yMax - footerHeight, inner.width, footerHeight);
             GUILayout.BeginArea(footer);
 
-            if (!gm.BrainConfig.CanUseNetwork)
-            {
-                // Loud when it matters: the whole point of the status line is that the
-                // player can act on it, so give them the button right here.
-                GUI.color = new Color(1f, 0.86f, 0.55f);
-                if (GUILayout.Button("⚙ 配置大脑连接（当前离线）", _buttonSmall, GUILayout.Height(24f)))
-                {
-                    OpenSettings(gm);
-                }
-                GUI.color = Color.white;
-            }
-
             // The button row wraps to a second line on a phone.
             //
             // Five buttons with these labels need roughly 300px at this font size, and the
             // status panel is 232-300 wide — so on the narrow end the last button was laid out
             // past the panel's own footer rect, where a GUILayout area stops delivering input.
             // It looked fine and did nothing, which is the worst way for a button to fail.
-            // Two rows of three fit at every panel width the layout can produce.
-            var footerRows = StatusFooterRows(Mobile, _statusDetail, inner.width, _buttonSmall.fontSize);
-
+            //
+            // The rows are packed to the width AVAILABLE (see StatusFooterRows) and the footer
+            // is sized to the number of rows that came out (see FooterHeight), which is what
+            // keeps the last one both inside the panel and inside its own area.
             foreach (var row in footerRows)
             {
                 GUILayout.BeginHorizontal();
                 foreach (string label in row)
                 {
-                    if (GUILayout.Button(label, _buttonSmall)) HandleFooterButton(label, gm);
+                    if (GUILayout.Button(label, _buttonSmall, GUILayout.Height(FooterRowHeight)))
+                    {
+                        HandleFooterButton(label, gm);
+                    }
                 }
                 GUILayout.EndHorizontal();
             }
 
             GUILayout.EndArea();
+        }
+
+        /// <summary>Height of one packed footer row. Fixed, so the footer can be sized for it.</summary>
+        private const float FooterRowHeight = 26f;
+
+        private const float FooterRowSpacing = 6f;
+
+        /// <summary>
+        /// How tall the status panel's pinned footer has to be for the rows it will hold.
+        ///
+        /// Split out and public so the vertical half of the "buttons must fit" contract can be
+        /// tested next to the horizontal one.
+        /// </summary>
+        public static float FooterHeight(int rowCount,
+            float rowHeight = FooterRowHeight, float spacing = FooterRowSpacing)
+        {
+            if (rowCount <= 0) return 0f;
+            return rowCount * rowHeight + (rowCount - 1) * spacing;
         }
 
         /// <summary>Routes a footer button by its label, so the row layout stays declarative.</summary>
@@ -739,8 +781,24 @@ namespace DshPet
             else if (label == "提示词") OpenPromptPreview(gm);
             else if (label == "详情" || label == "简略") _statusDetail = !_statusDetail;
             else if (label.Contains("宠物")) _showCollection = !_showCollection;
+            else if (label.Contains("地图"))
+            {
+                if (gm.DoorPromptOpen) gm.CloseDoorPrompt();
+                else gm.OpenDoorPrompt();
+            }
             else if (label == "重置") gm.ResetPet();
         }
+
+        /// <summary>
+        /// Pixels held back when packing the status footer, so an estimate error cannot push a
+        /// button out of its area.
+        ///
+        /// <see cref="EstimatedLabelWidth"/> counts CJK as one em and emoji as one em and does
+        /// not measure the font at all, so a row packed to within a few pixels of the panel is a
+        /// row where the real text can be the thing that overflows — and an overflowing footer
+        /// button is silently unclickable, which is the failure this whole mechanism exists for.
+        /// </summary>
+        public const float RowPackingSlack = 24f;
 
         /// <summary>
         /// The status panel's footer buttons, packed into rows that fit the width available.
@@ -752,6 +810,12 @@ namespace DshPet
         ///
         /// Packing rather than a fixed split by platform, because the available width depends on
         /// the viewport, not on whether the device has a touchscreen.
+        ///
+        /// No emoji on these labels, unlike the rest of the UI. Each one is a surrogate pair, so
+        /// the width estimate charges it two ems — a row of icons costs a whole extra row at every
+        /// panel width this layout can produce, and that extra row is exactly what put 重置 outside
+        /// the area that delivers clicks. A button that cannot be tapped is worse than a missing
+        /// decoration.
         /// </summary>
         public static string[][] StatusFooterRows(bool mobile, bool detailOn, float availableWidth,
             int fontSize)
@@ -759,10 +823,11 @@ namespace DshPet
             string detailLabel = detailOn ? "简略" : "详情";
 
             var labels = mobile
-                ? new[] { "📖 本子", "🐾 宠物", "⚙ 设置", "提示词", detailLabel, "重置" }
-                : new[] { "📖 记事本", "🐾 宠物", "⚙ 设置", "提示词", "重置" };
+                ? new[] { "本子", "宠物", "地图", "设置", "提示词", detailLabel, "重置" }
+                : new[] { "记事本", "宠物", "地图", "设置", "提示词", "重置" };
 
-            return PackRows(labels, availableWidth, fontSize);
+            float budget = Mathf.Max(96f, availableWidth - RowPackingSlack);
+            return PackRows(labels, budget, fontSize);
         }
 
         /// <summary>Greedily packs labels into rows that each fit <paramref name="available"/>.</summary>
@@ -1493,19 +1558,74 @@ namespace DshPet
 
         // ------------------------------------------------------------------- overlays
 
-        private void DrawDoorPrompt(PetGameManager gm)
+        private string _mapMessage = "";
+        private bool _mapError;
+        private Vector2 _mapScroll;
+
+        private void SetMapMessage(string message, bool error = false)
         {
-            var games = gm.AvailableMiniGames();
-            float h = 150f + games.Count * 84f;
-            var rect = OverlayRect(520f, h);
+            _mapMessage = message;
+            _mapError = error;
+        }
+
+        /// <summary>
+        /// The map: where the pet lives, what is still locked, and the way out to a mini game.
+        ///
+        /// This is the door panel grown up. It used to be a list of mini games and nothing else,
+        /// because a door could only mean "leave". Now the door is also the way to move house,
+        /// and the places are the thing the runner's coins are actually for — which is what
+        /// gives the mini game a reason to exist beyond its own scoreboard.
+        ///
+        /// Everything is inside one scroll view. Three places plus a game is more than a phone
+        /// in landscape can show at once, and a panel whose last row is laid out past its own
+        /// area is a row that renders and cannot be tapped.
+        /// </summary>
+        private void DrawMapPanel(PetGameManager gm)
+        {
+            float w = Mathf.Min(680f, DesignWidth - 32f);
+            float h = Mathf.Min(620f, DesignHeight - 32f);
+            var rect = OverlayRect(w, h);
             ModalBackdrop(rect);
 
-            GUILayout.BeginArea(new Rect(rect.x + 18f, rect.y + 16f, rect.width - 36f, rect.height - 32f));
+            var inner = new Rect(rect.x + 18f, rect.y + 14f, rect.width - 36f, rect.height - 28f);
 
-            GUILayout.Label("要出去走走吗？", _title);
-            GUILayout.Label("宠物会自己留在家里，回来时它还记得你。", _small);
-            GUILayout.Space(10f);
+            GUI.Label(new Rect(inner.x, inner.y, inner.width * 0.5f, 32f), "地图", _title);
 
+            var balance = new GUIStyle(_title) { alignment = TextAnchor.MiddleRight };
+            GUI.Label(new Rect(inner.x + inner.width * 0.4f, inner.y, inner.width * 0.6f - 84f, 32f),
+                $"🐾 {DshMobile.PetWallet.Coins:N0}", balance);
+
+            if (GUI.Button(new Rect(inner.xMax - 76f, inner.y + 2f, 76f, 30f), "关闭", _button))
+            {
+                gm.CloseDoorPrompt();
+                return;
+            }
+
+            var here = RoomThemeInfo.Get(PetWorldMap.Current);
+            DrawThemeSwatch(new Rect(inner.x, inner.y + 34f, 46f, 26f), here);
+            GUI.Label(new Rect(inner.x + 50f, inner.y + 36f, inner.width - 50f, 22f),
+                $"现在住在 {here.DisplayName}　·　{here.Effects()}", _small);
+
+            var status = new GUIStyle(_small) { alignment = TextAnchor.MiddleLeft };
+            GUI.color = _mapError ? new Color(1f, 0.65f, 0.55f) : new Color(0.7f, 0.95f, 0.75f);
+            GUI.Label(new Rect(inner.x, inner.y + 58f, inner.width, 22f), _mapMessage ?? "", status);
+            GUI.color = Color.white;
+
+            var body = new Rect(inner.x, inner.y + 84f, inner.width,
+                Mathf.Max(60f, inner.yMax - inner.y - 84f));
+            GUILayout.BeginArea(body);
+            _mapScroll = GUILayout.BeginScrollView(_mapScroll);
+
+            foreach (var info in RoomThemeInfo.All)
+            {
+                DrawPlaceRow(gm, info);
+                GUILayout.Space(8f);
+            }
+
+            GUILayout.Space(4f);
+            GUILayout.Label("出去走走（赚宠物币）", _label);
+
+            var games = gm.AvailableMiniGames();
             if (games.Count == 0)
             {
                 GUILayout.Label("暂时没有可以去的活动。", _small);
@@ -1515,20 +1635,116 @@ namespace DshPet
                 for (int i = 0; i < games.Count; i++)
                 {
                     var game = games[i];
-                    if (GUILayout.Button($"{game.Icon}  {game.DisplayName}", _button, GUILayout.Height(36f)))
+                    if (GUILayout.Button($"{game.Icon}  {game.DisplayName}", _button, GUILayout.Height(38f)))
                     {
                         gm.LaunchMiniGame(game.Id);
-                        return;
+                        GUIUtility.ExitGUI();
                     }
-                    GUILayout.Label("     " + game.Blurb, _small);
+                    GUILayout.Label("　　" + game.Blurb, _small);
                     GUILayout.Space(6f);
                 }
             }
 
-            GUILayout.Space(6f);
-            if (GUILayout.Button("还是留在家里", _button, GUILayout.Height(32f))) gm.CloseDoorPrompt();
-
+            GUILayout.EndScrollView();
             GUILayout.EndArea();
+
+            DrawModalEscape();
+        }
+
+        /// <summary>One place on the map: what it does to the pet, and how to get there.</summary>
+        private void DrawPlaceRow(PetGameManager gm, RoomThemeInfo info)
+        {
+            bool unlocked = PetWorldMap.IsUnlocked(info.Theme);
+            bool current = PetWorldMap.Current == info.Theme;
+
+            GUILayout.BeginHorizontal();
+
+            // A swatch of the place's own palette rather than an emoji: the emoji font renders
+            // as nothing in IMGUI, and "which of these looks like somewhere I want to live" is
+            // most of what a map is for. Three bands — floor, wall, rug.
+            var swatch = GUILayoutUtility.GetRect(46f, 40f, GUILayout.Width(46f), GUILayout.Height(40f));
+            DrawThemeSwatch(swatch, info);
+
+            GUILayout.BeginVertical();
+            GUILayout.Label(current ? $"{info.DisplayName}　·　现在在这里" : info.DisplayName, _label);
+            GUILayout.Label(info.Blurb, _small);
+            GUILayout.Label("效果：" + info.Effects(), _small);
+
+            // The price gets its own line. Sharing one with the effects made the line long enough
+            // to wrap on a phone, and the wrapped half landed underneath the button.
+            if (!unlocked) GUILayout.Label($"{info.Price} 宠物币解锁", _small);
+            GUILayout.EndVertical();
+
+            GUILayout.FlexibleSpace();
+
+            float buttonWidth = Mobile ? MobileUi.Touchable(150f) : 150f;
+
+            if (current)
+            {
+                GUI.enabled = false;
+                GUILayout.Button("住在这里", _button, GUILayout.Width(buttonWidth), GUILayout.Height(40f));
+                GUI.enabled = true;
+            }
+            else if (unlocked)
+            {
+                if (GUILayout.Button("前往", _button, GUILayout.Width(buttonWidth), GUILayout.Height(40f)))
+                {
+                    string message;
+                    gm.TravelTo(info.Theme, out message);
+                    SetMapMessage(message);
+                    DshMobile.MobileHaptics.Light();
+                    GUIUtility.ExitGUI();
+                }
+            }
+            else
+            {
+                bool afford = DshMobile.PetWallet.CanAfford(info.Price);
+                GUI.enabled = afford;
+                string label = afford ? "解锁并搬入"
+                    : $"还差 {info.Price - DshMobile.PetWallet.Coins}";
+                if (GUILayout.Button(label, _button, GUILayout.Width(buttonWidth), GUILayout.Height(40f)))
+                {
+                    string message;
+                    if (PetWorldMap.TryUnlock(info.Theme, out message))
+                    {
+                        // Unlocking and then having to tap again to actually go there is a
+                        // button that looks broken. Buy the place, move in.
+                        string moved;
+                        gm.TravelTo(info.Theme, out moved);
+                        SetMapMessage(message + "，" + moved);
+                    }
+                    else
+                    {
+                        SetMapMessage(message, true);
+                    }
+
+                    DshMobile.MobileHaptics.Light();
+                    GUIUtility.ExitGUI();
+                }
+                GUI.enabled = true;
+            }
+
+            GUILayout.EndHorizontal();
+        }
+
+        /// <summary>Three bands of the place's palette: floor, walls, rug.</summary>
+        private static void DrawThemeSwatch(Rect rect, RoomThemeInfo info)
+        {
+            var bands = new[] { info.Floor, info.Wall, info.Rug };
+            var inner = new Rect(rect.x + 2f, rect.center.y - 11f, 40f, 22f);
+
+            GUI.color = new Color(1f, 1f, 1f, 0.16f);
+            GUI.DrawTexture(inner, Texture2D.whiteTexture);
+
+            float width = (inner.width - 6f) / bands.Length;
+            for (int i = 0; i < bands.Length; i++)
+            {
+                var cell = new Rect(inner.x + 3f + i * width, inner.y + 3f, width - 1f, inner.height - 6f);
+                GUI.color = bands[i];
+                GUI.DrawTexture(cell, Texture2D.whiteTexture);
+            }
+
+            GUI.color = Color.white;
         }
 
         private void DrawOverlays(PetGameManager gm, HudLayout layout)
@@ -1588,11 +1804,15 @@ namespace DshPet
 
         private void DrawSettings(PetGameManager gm)
         {
-            // Tall enough for the labels, three fields, both toggles and the status lines. The
+            // Tall enough for the labels, the fields, the toggles and the status lines. The
             // earlier 330px panel was shorter than its own content, so GUILayout — which does
             // not clip, but does stop a group from receiving input past its rect — pushed the
             // action buttons out of the panel and out of reach.
-            var rect = OverlayRect(520f, 430f);
+            //
+            // Sized to the viewport rather than to a fixed number now: on a phone there is room
+            // for the voice switches without scrolling, and on a short Game view OverlayRect
+            // clamps it and the body scrolls, which is the behaviour that already existed.
+            var rect = OverlayRect(520f, Mathf.Min(660f, DesignHeight - 40f));
             ModalBackdrop(rect);
 
             const float footerHeight = 52f;
@@ -1659,6 +1879,33 @@ namespace DshPet
                 if (voiceOn) PetAudioDirector.Instance?.Speak(gm.Species, gm.Personality, gm.Needs.Mood);
             }
             GUILayout.Label("现在的音色：" + PetVoice.Describe(gm.Species, gm.Personality), _small);
+
+            // Reading the pet's lines out loud. Kept separate from 宠物叫声 on purpose: the chirps
+            // are part of the character, the speech is an accessibility-and-convenience switch,
+            // and a player who wants a quiet room wants both off while one who wants to hear the
+            // sentences may well want the chirps too.
+            GUILayout.Space(6f);
+            if (DshMobile.MobileTts.Available)
+            {
+                bool speechOn = GUILayout.Toggle(DshMobile.MobileTts.Enabled, " 朗读宠物的话（语音输出）", _small);
+                if (speechOn != DshMobile.MobileTts.Enabled)
+                {
+                    DshMobile.MobileTts.Enabled = speechOn;
+                    // Warm the engine up on the switch, so the next reply is not swallowed by the
+                    // several hundred milliseconds the platform takes to come up.
+                    if (speechOn) DshMobile.MobileTts.WarmUp();
+                    else DshMobile.MobileTts.Stop();
+                }
+                GUILayout.Label(DshMobile.MobileTts.Ready
+                    ? "语音引擎已就绪，会用这只宠物的音色朗读。"
+                    : "语音引擎准备中；只朗读说的话，括号里的动作不会念。", _small);
+            }
+            else
+            {
+                GUILayout.Label("这台设备没有系统语音（语音输出只在安卓上可用）。", _small);
+            }
+
+            GUILayout.Label("语音输入还没有做：它需要麦克风权限和一套识别界面，半成品比没有更烦人。", _small);
 
             // reroll it — but it is buried here rather than offered at every launch, because
             // "who is this animal" is not a decision to make every time you open the game.

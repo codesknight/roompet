@@ -88,7 +88,9 @@ namespace DshPet
             BindPersonality();
             LoadNeeds();
 
+            if (Room != null) Room.Theme = PetWorldMap.Current;
             BuildRoomAndPet();
+            ApplyThemeToNeeds();
             RebuildBrain();
             Memory.Load(Species.Id);
             Journal.Bind(Species.Id);
@@ -148,7 +150,12 @@ namespace DshPet
 
         private void BuildRoomAndPet()
         {
-            bool roomAlreadyBuilt = Room != null && Room.transform.Find("Room") != null;
+            // "Already built" has to mean "already built FOR THIS PLACE". The room in the saved
+            // scene is a snapshot of whichever place it was authored in, so a pet that has moved
+            // since would otherwise load into the old room — the map would look like it did
+            // nothing at all after a scene reload.
+            bool roomAlreadyBuilt = Room != null && Room.transform.Find("Room") != null &&
+                                    Room.BuiltFor(Room.Theme);
 
             if (Room == null) Room = GetComponentInChildren<PetRoom>();
             if (Room == null) Room = gameObject.AddComponent<PetRoom>();
@@ -198,6 +205,79 @@ namespace DshPet
             }
 
             BuildPlayer();
+        }
+
+        // ---------------------------------------------------------------- world map
+
+        /// <summary>
+        /// Moves the household to another place.
+        ///
+        /// A rebuild rather than a scene load: the room is generated, so "another scene" is a
+        /// palette plus a few props, and the pet's needs, memory and the collection all live
+        /// outside the scene and survive untouched. It also means there is no scene-transition
+        /// state to lose — the bug this project already has a habit of producing.
+        /// </summary>
+        public bool TravelTo(RoomTheme theme, out string message)
+        {
+            if (!PetWorldMap.TravelTo(theme, out message)) return false;
+
+            var info = RoomThemeInfo.Get(theme);
+            if (Room != null)
+            {
+                Room.Theme = theme;
+                Room.Build(false);
+            }
+
+            RebindRoom();
+            RecentrePet();
+            SpawnCompanions();
+
+            Journal.Add(MemoryKind.Milestone, "搬到了新地方",
+                info.DisplayName + "　" + info.Effects(), 0.5f);
+            ChatChanged?.Invoke();
+            return true;
+        }
+
+        /// <summary>
+        /// Re-subscribes to everything in the room after it has been rebuilt.
+        ///
+        /// Rebuilding throws away every GameObject in the room, so every click handler the
+        /// manager had registered is now pointing at a destroyed object. Forgetting this is
+        /// exactly how "the bowls stopped working after I moved" happens.
+        /// </summary>
+        private void RebindRoom()
+        {
+            if (Room == null) return;
+
+            for (int i = 0; i < Room.Interactables.Count; i++)
+            {
+                var item = Room.Interactables[i];
+                if (item == null) continue;
+                item.Clicked -= OnInteractableClicked;
+                item.Clicked += OnInteractableClicked;
+            }
+
+            if (Controller != null)
+            {
+                Controller.Room = Room;
+                Controller.Ball = Room.Ball;
+            }
+
+            var ball = Room.Ball;
+            if (ball != null)
+            {
+                ball.Thrown -= OnBallThrown;
+                ball.Thrown += OnBallThrown;
+                if (Controller != null) Controller.Ball = ball;
+            }
+        }
+
+        /// <summary>Puts the pet and the player back in the middle, after a rebuild.</summary>
+        public void RecentrePet()
+        {
+            if (Controller != null) Controller.SnapTo(Vector3.zero);
+            if (Player != null) Player.SnapTo(new Vector3(2.4f, 0f, 2.4f));
+            if (CameraRig != null) CameraRig.Snap();
         }
 
         // ---------------------------------------------------------------- companions
@@ -342,6 +422,10 @@ namespace DshPet
 
             if (Room == null) Room = GetComponentInChildren<PetRoom>();
             if (Room == null) Room = gameObject.AddComponent<PetRoom>();
+
+            // Author the scene in the place the save says the pet lives, so the snapshot and the
+            // save agree and nothing has to be rebuilt on the first frame.
+            Room.Theme = PetWorldMap.Current;
             Room.Build(true);
 
             if (Avatar == null) Avatar = GetComponentInChildren<PetAvatar>();
@@ -369,6 +453,11 @@ namespace DshPet
             PetCollection.Changed -= SpawnCompanions;
             DespawnCompanions();
 
+            // The room is going away (usually because the player left for a mini game), and a
+            // synthetic voice still reading the last reply over the loading screen is the kind of
+            // bug that makes a feature feel broken.
+            DshMobile.MobileTts.Stop();
+
             if (Controller != null)
             {
                 Controller.Interacted -= OnInteracted;
@@ -385,13 +474,133 @@ namespace DshPet
             }
         }
 
+        /// <summary>
+        /// Hands the current place's modifiers to the needs.
+        ///
+        /// Pushed every frame rather than applied once at load, because the pet can move between
+        /// places without the scene reloading — a place that only affected the pet after a
+        /// restart would look like a decoration.
+        /// </summary>
+        private void ApplyThemeToNeeds()
+        {
+            var info = RoomThemeInfo.Get(Room != null ? Room.Theme : PetWorldMap.Current);
+            Needs.JoyDrainScale = info.JoyDrainScale;
+            Needs.EnergyDrainScale = info.EnergyDrainScale;
+            Needs.CleanDrainScale = info.CleanDrainScale;
+            Needs.Personality = Personality;
+        }
+
+        // ------------------------------------------------------------- pet chatter
+
+        private float _chatterTimer = 18f;
+        private readonly System.Random _chatterRng = new System.Random();
+
+        /// <summary>
+        /// Two pets in the room noticing each other.
+        ///
+        /// Deliberately local and free. The player pays for conversations with their own pet;
+        /// two animals sniffing each other every half minute should not be a line item, and the
+        /// stage-direction style keeps them reading as animals rather than as chatbots.
+        /// </summary>
+        private void TickChatter(float dt)
+        {
+            if (_companions.Count == 0) return;
+
+            _chatterTimer -= dt;
+            if (_chatterTimer > 0f) return;
+
+            var records = PetCollection.Companions();
+            if (records.Count < 2)
+            {
+                _chatterTimer = 30f;
+                return;
+            }
+
+            // Find a pair that is actually near each other.
+            for (int i = 0; i < _companions.Count; i++)
+            {
+                if (_companions[i] == null) continue;
+
+                var first = _companions[i].transform;
+                string aName = _companions[i].name.Replace("Companion_", "");
+                var second = FindNearbyCompanion(first, out var otherName);
+                if (second == null && Avatar != null)
+                {
+                    // The primary pet can be the other half of the pair.
+                    float toPet = Vector3.Distance(Avatar.transform.position, first.position);
+                    if (toPet <= PetChatter.NoticeRange) second = Avatar.transform;
+                }
+
+                if (second == null) continue;
+
+                // Names come from the scene and temperaments from the records, matched by name:
+                // the companion list and the record list are not guaranteed to be in the same
+                // order, and an exchange that mixes up who said what is worse than no exchange.
+                string bName = otherName ?? PetName;
+                var a = PersonalityOf(records, aName, Personality);
+                var b = PersonalityOf(records, bName, Personality);
+                var exchange = PetChatter.Choose(a, b, (float)_chatterRng.NextDouble());
+
+                var lines = PetChatter.Lines(exchange, aName, bName);
+
+                for (int line = 0; line < lines.Length; line++)
+                {
+                    if (!string.IsNullOrEmpty(lines[line])) Memory.AddPet(lines[line]);
+                }
+
+                float joy = PetChatter.JoyDelta(exchange);
+                Needs.Pet(joy);
+                Journal.Add(MemoryKind.Mood, PetChatter.JournalTitle(exchange, aName, bName), "", 0.3f);
+                ChatChanged?.Invoke();
+
+                LastExchange = exchange;
+                PetAudioDirector.Instance?.Speak(Species, Personality,
+                    joy >= 0f ? PetMood.Happy : PetMood.Lonely);
+                break;
+            }
+
+            float liveliness = Personality != null ? Personality.Liveliness : 0.5f;
+            _chatterTimer = PetChatter.NextDelay(_chatterRng, liveliness);
+        }
+
+        /// <summary>The last exchange between two pets, for the HUD and the wiring report.</summary>
+        public PetChatter.Exchange? LastExchange { get; private set; }
+
+        /// <summary>Temperament of one pet by name, falling back to the primary pet's.</summary>
+        private static PetPersonality PersonalityOf(List<PetRecord> records, string name,
+            PetPersonality fallback)
+        {
+            for (int i = 0; i < records.Count; i++)
+            {
+                if (records[i] != null && records[i].Name == name) return records[i].Personality;
+            }
+            return fallback ?? new PetPersonality();
+        }
+
+        private Transform FindNearbyCompanion(Transform from, out string name)
+        {
+            name = null;
+            for (int i = 0; i < _companions.Count; i++)
+            {
+                var candidate = _companions[i];
+                if (candidate == null || candidate.transform == from) continue;
+                if (Vector3.Distance(candidate.transform.position, from.position) > PetChatter.NoticeRange) continue;
+
+                name = candidate.name.Replace("Companion_", "");
+                return candidate.transform;
+            }
+            return null;
+        }
+
         private void Update()
         {
+            ApplyThemeToNeeds();
             Needs.Tick(Time.deltaTime);
             TickThinkWatchdog();
             TickBehaviors(Time.deltaTime);
             TickNudges(Time.deltaTime);
             TickAutoFetch();
+            TickChatter(Time.deltaTime);
             TickAppearance();
 
             // Persist every few seconds rather than on every frame.
@@ -709,6 +918,13 @@ namespace DshPet
             // The pet answers out loud, coloured by how it feels right now.
             var audio = PetAudioDirector.Instance;
             if (audio != null) audio.Speak(Needs.Mood);
+
+            // ...and, if the player turned it on, says the line in words. Same voice profile as
+            // the chirp, so a bear reading its own sentence still sounds like the bear. Off by
+            // default: a phone that starts talking unprompted is a phone that gets muted.
+            float speechPitch, speechRate;
+            PetVoice.SpeechParams(Species, Personality, out speechPitch, out speechRate);
+            DshMobile.MobileTts.Speak(reply.Speech, speechPitch, speechRate);
 
             SaveNeeds();
             Memory.Save(Species.Id);
@@ -1133,6 +1349,9 @@ namespace DshPet
             Needs.Energy = 0.85f;
             Needs.Joy = 0.7f;
             Needs.Cleanliness = 0.9f;
+            // The bladder was added after this button was written, and a reset that leaves the
+            // pet desperate for the tray is a reset that did not happen.
+            Needs.Bladder = 0.9f;
             Needs.Affection = 0.1f;
             SaveNeeds();
             Memory.AddPet(Greeting());

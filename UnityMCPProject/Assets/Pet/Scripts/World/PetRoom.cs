@@ -54,6 +54,7 @@ namespace DshPet
             root.transform.SetParent(transform, false);
             _root = root.transform;
 
+            ApplyTheme();
             BuildShell();
             BuildRug();
             BuildFurniture();
@@ -207,6 +208,47 @@ namespace DshPet
             }
         }
 
+        /// <summary>
+        /// Which place this room is. Set before <see cref="Build"/>; the palette and the extra
+        /// decor come from it, so "another scene" is a rebuild rather than another .unity file.
+        ///
+        /// Not serialized on purpose: the saved place lives in <see cref="PetWorldMap"/>, and a
+        /// stale copy saved into the scene would silently override it after a move.
+        /// </summary>
+        [System.NonSerialized] public RoomTheme Theme = RoomTheme.Cabin;
+
+        /// <summary>Applies the theme's palette to the fields the builders read.</summary>
+        private void ApplyTheme()
+        {
+            var info = RoomThemeInfo.Get(Theme);
+            FloorColor = info.Floor;
+            WallColor = info.Wall;
+            AccentWallColor = info.AccentWall;
+            RugColor = info.Rug;
+
+            // The place the geometry in this scene was actually built for. Serialized, unlike
+            // Theme: at load time Theme is reset to the cabin, so this is the only way to tell
+            // "the file already matches the save" from "the pet has moved since this was built"
+            // — and without that, moving house and coming back left the pet in the old room.
+            _builtTheme = Theme;
+
+            // Paint alone reads as the same room with a different colour. The ambient tint is
+            // what makes an evening terrace feel like evening and a garden feel like daylight.
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+            RenderSettings.ambientLight = Color.Lerp(DefaultAmbient, info.Light * 0.55f, 0.9f);
+        }
+
+        /// <summary>The neutral ambient the scene builder writes; every place is a shift from it.</summary>
+        private static readonly Color DefaultAmbient = new Color(0.42f, 0.40f, 0.46f);
+
+        /// <summary>
+        /// The place the geometry in this scene was built for, so a stale snapshot can be spotted.
+        /// </summary>
+        [SerializeField] private RoomTheme _builtTheme = RoomTheme.Cabin;
+
+        /// <summary>True when the room in this scene is already the given place.</summary>
+        public bool BuiltFor(RoomTheme theme) => _builtTheme == theme;
+
         private void BuildShell()
         {
             float half = Size * 0.5f;
@@ -251,8 +293,75 @@ namespace DshPet
                 new Color(0.66f, 0.47f, 0.32f), 0.45f);
         }
 
+        /// <summary>Decor that only makes sense in one place.</summary>
+        private void BuildThemeDecor()
+        {
+            var info = RoomThemeInfo.Get(Theme);
+
+            if (info.Theme == RoomTheme.Garden)
+            {
+                // A garden is mostly "more plants, fewer straight lines".
+                SpawnProp("Runner/Nature/tree_pineRoundA", new Vector3(-5.4f, 0f, 5.4f), 2.1f);
+                SpawnProp("Runner/Nature/tree_pineRoundB", new Vector3(5.6f, 0f, 5.0f), 1.9f);
+                SpawnProp("Runner/Nature/flower_yellowA", new Vector3(-2.2f, 0f, 5.6f), 0.5f);
+                SpawnProp("Runner/Nature/flower_redA", new Vector3(1.6f, 0f, 5.8f), 0.5f);
+                SpawnProp("Runner/Nature/flower_purpleA", new Vector3(4.2f, 0f, 5.6f), 0.5f);
+                SpawnProp("Runner/Nature/plant_bush", new Vector3(-5.9f, 0f, -1.2f), 1.1f);
+                SpawnProp("Runner/Nature/mushroom_red", new Vector3(6.0f, 0f, -4.2f), 0.55f);
+                SpawnRock(new Vector3(-4.6f, 0f, 2.2f), 0.7f);
+                SpawnRock(new Vector3(4.8f, 0f, -3.4f), 0.55f);
+            }
+            else if (info.Theme == RoomTheme.Terrace)
+            {
+                // Lanterns: a warm point of light per corner, which is most of what makes a
+                // night terrace read as one rather than as a dark room.
+                SpawnLantern(new Vector3(-5.2f, 0f, 5.2f));
+                SpawnLantern(new Vector3(5.2f, 0f, 5.2f));
+                SpawnLantern(new Vector3(-5.2f, 0f, -5.2f));
+                SpawnProp("Runner/Nature/plant_bush", new Vector3(5.8f, 0f, 1.4f), 0.9f);
+            }
+        }
+
+        /// <summary>A grey stone, for the garden. Primitive rather than another downloaded prop.</summary>
+        private void SpawnRock(Vector3 position, float size)
+        {
+            var rock = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            rock.name = "Rock";
+            rock.transform.SetParent(_root, false);
+            rock.transform.position = new Vector3(position.x, size * 0.28f, position.z);
+            rock.transform.localScale = new Vector3(size * 1.3f, size * 0.62f, size);
+            rock.transform.rotation = Quaternion.Euler(0f, position.x * 37f, 12f);
+            SetColor(rock, new Color(0.55f, 0.56f, 0.58f), 0.2f);
+            Destroy(rock.GetComponent<Collider>());
+        }
+
+        /// <summary>A lantern post with a glowing head.</summary>
+        private void SpawnLantern(Vector3 position)
+        {
+            var root = new GameObject("Lantern");
+            root.transform.SetParent(_root, false);
+            root.transform.position = position;
+
+            BoxUnder(root.transform, "Post", new Vector3(0f, 0.85f, 0f), new Vector3(0.14f, 1.7f, 0.14f),
+                new Color(0.34f, 0.28f, 0.24f), 0.3f);
+            BoxUnder(root.transform, "Head", new Vector3(0f, 1.82f, 0f), new Vector3(0.36f, 0.42f, 0.36f),
+                new Color(1f, 0.86f, 0.52f), 0.1f);
+
+            var light = new GameObject("Light");
+            light.transform.SetParent(root.transform, false);
+            light.transform.localPosition = new Vector3(0f, 1.85f, 0f);
+            var point = light.AddComponent<Light>();
+            point.type = LightType.Point;
+            point.color = new Color(1f, 0.82f, 0.55f);
+            point.range = 7f;
+            point.intensity = 1.5f;
+            point.shadows = LightShadows.None;
+        }
+
         private void BuildDecor()
         {
+            BuildThemeDecor();
+
             // Reuse the Kenney nature props that already ship for the runner scene.
             SpawnProp("Runner/Nature/tree_pineRoundA", new Vector3(-6.0f, 0f, 6.0f), 1.7f);
             SpawnProp("Runner/Nature/plant_bush", new Vector3(6.1f, 0f, 6.1f), 0.9f);
