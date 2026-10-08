@@ -298,6 +298,116 @@ namespace DshPet
             Changed?.Invoke();
         }
 
+        // ------------------------------------------------------------------ deleting
+
+        /// <summary>
+        /// Removes one entry and drops it from the day index.
+        ///
+        /// Pinned entries are deletable too, deliberately: "pinned" means "never pruned
+        /// automatically", not "impossible to get rid of". A player who wants a memory gone
+        /// wants it gone, and the alternative — a row that quietly refuses to be deleted — is
+        /// worse than either.
+        /// </summary>
+        public bool Delete(JournalEntry entry)
+        {
+            if (entry == null) return false;
+
+            int at = _entries.IndexOf(entry);
+            if (at < 0)
+            {
+                // Fall back to the id: the UI may hold a copy from a previous list.
+                at = _entries.FindIndex(e => e != null && e.Id == entry.Id);
+                if (at < 0) return false;
+                entry = _entries[at];
+            }
+
+            _entries.RemoveAt(at);
+
+            if (_byDay.TryGetValue(entry.DayKey, out var list))
+            {
+                list.Remove(entry);
+                if (list.Count == 0) _byDay.Remove(entry.DayKey);
+            }
+
+            Changed?.Invoke();
+            return true;
+        }
+
+        /// <summary>Removes every entry filed under one day. Returns how many went.</summary>
+        public int DeleteDay(DateTime day)
+        {
+            string key = day.ToString("yyyy-MM-dd");
+            if (!_byDay.TryGetValue(key, out var list) || list.Count == 0) return 0;
+
+            int removed = list.Count;
+            var doomed = new List<JournalEntry>(list);
+            for (int i = 0; i < doomed.Count; i++) _entries.Remove(doomed[i]);
+            _byDay.Remove(key);
+
+            Changed?.Invoke();
+            return removed;
+        }
+
+        /// <summary>Removes everything filed under one month. Returns how many went.</summary>
+        public int DeleteMonth(int year, int month)
+        {
+            var doomed = ForMonth(year, month);
+            if (doomed.Count == 0) return 0;
+
+            for (int i = 0; i < doomed.Count; i++) _entries.Remove(doomed[i]);
+
+            // Rebuilding the index is cheaper than patching every affected day.
+            _byDay.Clear();
+            for (int i = 0; i < _entries.Count; i++) Index(_entries[i]);
+
+            Changed?.Invoke();
+            return doomed.Count;
+        }
+
+        /// <summary>How many entries are pinned — the ones the model asked to keep.</summary>
+        public int PinnedCount
+        {
+            get
+            {
+                int pinned = 0;
+                for (int i = 0; i < _entries.Count; i++)
+                {
+                    if (_entries[i] != null && _entries[i].Pinned) pinned++;
+                }
+                return pinned;
+            }
+        }
+
+        /// <summary>
+        /// Bytes the journal file occupies on disk, or 0 when it has never been written.
+        ///
+        /// Read from the file rather than estimated from the entry count: the point of showing
+        /// it is to answer "what is this costing me", and an estimate that disagrees with the
+        /// file manager is worse than no number.
+        /// </summary>
+        public long StorageBytes
+        {
+            get
+            {
+                try
+                {
+                    string path = Path(_petId);
+                    return System.IO.File.Exists(path) ? new System.IO.FileInfo(path).Length : 0L;
+                }
+                catch
+                {
+                    return 0L;
+                }
+            }
+        }
+
+        public static string FormatBytes(long bytes)
+        {
+            if (bytes < 1024) return bytes + " B";
+            if (bytes < 1024 * 1024) return (bytes / 1024f).ToString("F1") + " KB";
+            return (bytes / (1024f * 1024f)).ToString("F1") + " MB";
+        }
+
         // ------------------------------------------------------------------ internals
 
         private void Index(JournalEntry entry)

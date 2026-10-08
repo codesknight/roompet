@@ -42,6 +42,75 @@ namespace DshPet.Tests
             Assert.AreEqual(0, journal.ForMonth(2025, 3).Count, "the year has to match too");
         }
 
+        // ------------------------------------------------------------------ deleting
+
+        [Test]
+        public void Journal_DeletingOneEntryUpdatesEveryIndex()
+        {
+            // The day index is what the calendar reads, so a delete that only touched the flat
+            // list would leave the notebook claiming a day has entries it no longer has.
+            var journal = NewJournal();
+            var day = new DateTime(2026, 3, 14, 9, 30, 0);
+            journal.Add(MemoryKind.Care, "吃了东西", "", 0.3f, false, day);
+            var second = journal.Add(MemoryKind.Play, "玩了球", "", 0.3f, false, day);
+            journal.Add(MemoryKind.Rest, "去睡觉了", "", 0.3f, false, day);
+
+            Assert.AreEqual(3, journal.Count);
+
+            Assert.IsTrue(journal.Delete(second));
+            Assert.AreEqual(2, journal.Count);
+            Assert.AreEqual(2, journal.CountOn(day), "the day index has to agree");
+            Assert.AreEqual(0, journal.ForDay(day).FindAll(e => e.Title == "玩了球").Count);
+            Assert.AreEqual(2, journal.ForMonth(2026, 3).Count);
+
+            // Deleting something that is not there is a no-op, not a crash.
+            Assert.IsFalse(journal.Delete(second));
+            Assert.AreEqual(2, journal.Count);
+        }
+
+        [Test]
+        public void Journal_PinnedEntriesAreDeletable()
+        {
+            // "Pinned" means "never pruned automatically" — it must not mean "cannot be removed".
+            // A row that quietly refuses to be deleted is worse than either alternative.
+            var journal = NewJournal();
+            var day = new DateTime(2026, 3, 14);
+            var pinned = journal.Add(MemoryKind.Preference, "主人喜欢草莓", "", 0.9f, true, day);
+            Assert.AreEqual(1, journal.PinnedCount);
+
+            Assert.IsTrue(journal.Delete(pinned));
+            Assert.AreEqual(0, journal.Count);
+            Assert.AreEqual(0, journal.PinnedCount);
+        }
+
+        [Test]
+        public void Journal_DeletingADayAndAMonthTakesExactlyTheirEntries()
+        {
+            var journal = NewJournal();
+            journal.Add(MemoryKind.Care, "3 月 14 日", "", 0.3f, false, new DateTime(2026, 3, 14, 8, 0, 0));
+            journal.Add(MemoryKind.Care, "3 月 14 日晚", "", 0.3f, false, new DateTime(2026, 3, 14, 20, 0, 0));
+            journal.Add(MemoryKind.Care, "3 月 15 日", "", 0.3f, false, new DateTime(2026, 3, 15, 8, 0, 0));
+            journal.Add(MemoryKind.Care, "4 月 1 日", "", 0.3f, false, new DateTime(2026, 4, 1, 8, 0, 0));
+
+            Assert.AreEqual(2, journal.DeleteDay(new DateTime(2026, 3, 14)));
+            Assert.AreEqual(2, journal.Count, "only that day went");
+            Assert.AreEqual(0, journal.CountOn(new DateTime(2026, 3, 14)));
+            Assert.AreEqual(0, journal.DeleteDay(new DateTime(2026, 3, 14)), "deleting an empty day is a no-op");
+
+            Assert.AreEqual(1, journal.DeleteMonth(2026, 3));
+            Assert.AreEqual(1, journal.Count);
+            Assert.AreEqual(1, journal.ForMonth(2026, 4).Count, "April survived the March sweep");
+        }
+
+        [Test]
+        public void Journal_StorageSizeIsReportedInReadableUnits()
+        {
+            Assert.AreEqual("0 B", PetJournal.FormatBytes(0));
+            Assert.AreEqual("512 B", PetJournal.FormatBytes(512));
+            Assert.AreEqual("1.0 KB", PetJournal.FormatBytes(1024));
+            Assert.AreEqual("1.0 MB", PetJournal.FormatBytes(1024 * 1024));
+        }
+
         [Test]
         public void Journal_DaysAreOrderedChronologically()
         {

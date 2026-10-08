@@ -201,6 +201,20 @@ namespace DshPet
 
         public void LoadView()
         {
+            if (!PlayerPrefs.HasKey(ViewPrefKey) && DshMobile.MobileUi.IsPortrait)
+            {
+                // First run on a phone held upright: start close to the pet rather than with the
+                // whole room.
+                //
+                // "Whole room in one frame" cannot also mean "pet big enough to read" on a
+                // 0.45-aspect screen — measured, the steeper portrait panorama still leaves the
+                // pet around 40 screen pixels tall. Follow mode is the mode a phone actually
+                // wants, and the player who prefers the doll house can still switch to 全景 at
+                // any time; this only decides where they start.
+                View = CameraViewMode.FollowPlayer;
+                SaveView();
+            }
+
             int saved = PlayerPrefs.GetInt(ViewPrefKey, (int)View);
             View = (CameraViewMode)Mathf.Clamp(saved, 0, 2);
 
@@ -363,15 +377,34 @@ namespace DshPet
                     // ...and pull back further on a narrow viewport. The room is 14 m wide, and
                     // a camera defined by a VERTICAL field of view loses horizontal coverage
                     // exactly as the viewport narrows, so in portrait the side walls get cut
-                    // off no matter how the pitch is tuned. Height and back scale together so
-                    // the viewing angle — and the doll-house look — is unchanged; only the
-                    // distance grows. _widthFit is seeded from the geometry and then refined by
-                    // measurement, because the near corners subtend more than the room centre.
+                    // off no matter how the pitch is tuned.
                     scale *= Mathf.Max(1f, _widthFit);
-                    return new Vector3(0f, PanoramaHeight * scale, -PanoramaBack * scale);
+
+                    // On a narrow screen, sweep the same doll-house view towards top-down.
+                    //
+                    // A square room seen from a shallow angle projects into a wide, SHORT strip
+                    // — measured at 87% of a portrait phone's width but only 28% of its height,
+                    // so three quarters of the screen was empty sky and floor. Looking down more
+                    // projects the floor plan into the screen's height instead, which is the
+                    // shape a tall viewport actually has. The width fit still applies on top, so
+                    // the room keeps fitting the width either way.
+                    float steepness = Mathf.InverseLerp(1.5f, 0.65f, Cam.aspect);
+                    float height = PanoramaHeight * Mathf.Lerp(1f, PortraitHeightScale, steepness);
+                    float back = PanoramaBack * Mathf.Lerp(1f, PortraitBackScale, steepness);
+
+                    return new Vector3(0f, height * scale, -back * scale);
                 }
             }
         }
+
+        [Header("Portrait framing")]
+        [Tooltip("How much taller the panorama camera sits on a narrow screen. Together with " +
+                 "PortraitBackScale this tilts the view towards top-down so a tall viewport is " +
+                 "filled by the floor plan instead of by empty sky.")]
+        public float PortraitHeightScale = 1.55f;
+
+        [Tooltip("How much closer in the panorama camera sits on a narrow screen.")]
+        public float PortraitBackScale = 0.45f;
 
         /// <summary>
         /// Pull-back last computed by <see cref="CameraOffset"/>, used to relax the boundary.

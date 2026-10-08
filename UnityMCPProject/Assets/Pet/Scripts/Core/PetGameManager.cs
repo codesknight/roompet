@@ -179,6 +179,7 @@ namespace DshPet
 
             Controller.Interacted += OnInteracted;
             Controller.Fetched += OnFetched;
+            Controller.BladderAccident += OnBladderAccident;
             for (int i = 0; i < Room.Interactables.Count; i++)
             {
                 Room.Interactables[i].Clicked += OnInteractableClicked;
@@ -276,6 +277,7 @@ namespace DshPet
             {
                 Controller.Interacted -= OnInteracted;
                 Controller.Fetched -= OnFetched;
+                Controller.BladderAccident -= OnBladderAccident;
             }
             if (Room != null)
             {
@@ -810,6 +812,20 @@ namespace DshPet
             SaveNeeds();
             Memory.Save(Species.Id);
             Journal.Save();
+        }
+
+        /// <summary>
+        /// The pet's accident, recorded so the notebook has the whole story.
+        ///
+        /// Worth a journal entry rather than just a silent stat change: the mess is the
+        /// consequence, and a player who comes back to a puddle should be able to see that it
+        /// happened at 3pm while they were away, not wonder whether the room is bugged.
+        /// </summary>
+        private void OnBladderAccident()
+        {
+            Memory.AddPet("（……没忍住。它低着头，假装在闻地板。）");
+            Journal.Add(MemoryKind.Care, "没能忍住", "憋不住在地上了，主人擦干净了。", 0.3f);
+            ChatChanged?.Invoke();
         }
 
         private void OnInteracted(Interactable target)

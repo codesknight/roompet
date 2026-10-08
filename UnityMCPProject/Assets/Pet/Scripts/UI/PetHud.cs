@@ -706,20 +706,124 @@ namespace DshPet
                 GUI.color = Color.white;
             }
 
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("📖 记事本", _buttonSmall)) _showJournal = !_showJournal;
-            if (GUILayout.Button("⚙ 设置", _buttonSmall)) OpenSettings(gm);
-            if (GUILayout.Button("提示词", _buttonSmall)) OpenPromptPreview(gm);
+            // The button row wraps to a second line on a phone.
+            //
+            // Five buttons with these labels need roughly 300px at this font size, and the
+            // status panel is 232-300 wide — so on the narrow end the last button was laid out
+            // past the panel's own footer rect, where a GUILayout area stops delivering input.
+            // It looked fine and did nothing, which is the worst way for a button to fail.
+            // Two rows of three fit at every panel width the layout can produce.
+            var footerRows = StatusFooterRows(Mobile, _statusDetail, inner.width, _buttonSmall.fontSize);
 
-            if (Mobile && GUILayout.Button(_statusDetail ? "简略" : "详情", _buttonSmall))
+            foreach (var row in footerRows)
             {
-                _statusDetail = !_statusDetail;
+                GUILayout.BeginHorizontal();
+                foreach (string label in row)
+                {
+                    if (GUILayout.Button(label, _buttonSmall)) HandleFooterButton(label, gm);
+                }
+                GUILayout.EndHorizontal();
             }
 
-            if (GUILayout.Button("重置", _buttonSmall)) gm.ResetPet();
-            GUILayout.EndHorizontal();
-
             GUILayout.EndArea();
+        }
+
+        /// <summary>Routes a footer button by its label, so the row layout stays declarative.</summary>
+        private void HandleFooterButton(string label, PetGameManager gm)
+        {
+            if (label.EndsWith("本子") || label.EndsWith("记事本")) _showJournal = !_showJournal;
+            else if (label.EndsWith("设置")) OpenSettings(gm);
+            else if (label == "提示词") OpenPromptPreview(gm);
+            else if (label == "详情" || label == "简略") _statusDetail = !_statusDetail;
+            else if (label == "重置") gm.ResetPet();
+        }
+
+        /// <summary>
+        /// The status panel's footer buttons, packed into rows that fit the width available.
+        ///
+        /// Split out so the fit can be tested. A GUILayout area silently stops delivering input
+        /// past its own rect, so a row one button too wide produces a button that looks fine and
+        /// does nothing — and the test that checks this found exactly that on a 640x400 window,
+        /// where four desktop buttons wanted 282px of a 272px panel.
+        ///
+        /// Packing rather than a fixed split by platform, because the available width depends on
+        /// the viewport, not on whether the device has a touchscreen.
+        /// </summary>
+        public static string[][] StatusFooterRows(bool mobile, bool detailOn, float availableWidth,
+            int fontSize)
+        {
+            string detailLabel = detailOn ? "简略" : "详情";
+
+            var labels = mobile
+                ? new[] { "📖 本子", "⚙ 设置", "提示词", detailLabel, "重置" }
+                : new[] { "📖 记事本", "⚙ 设置", "提示词", "重置" };
+
+            return PackRows(labels, availableWidth, fontSize);
+        }
+
+        /// <summary>Greedily packs labels into rows that each fit <paramref name="available"/>.</summary>
+        public static string[][] PackRows(string[] labels, float available, int fontSize,
+            float buttonPadding = 18f, float spacing = 6f)
+        {
+            var rows = new System.Collections.Generic.List<string[]>();
+            var current = new System.Collections.Generic.List<string>();
+            float width = 0f;
+
+            foreach (string label in labels)
+            {
+                float item = EstimatedLabelWidth(label, fontSize) + buttonPadding;
+                float withSpacing = item + (current.Count > 0 ? spacing : 0f);
+
+                if (current.Count > 0 && width + withSpacing > available)
+                {
+                    rows.Add(current.ToArray());
+                    current.Clear();
+                    width = 0f;
+                    withSpacing = item;
+                }
+
+                current.Add(label);
+                width += withSpacing;
+            }
+
+            if (current.Count > 0) rows.Add(current.ToArray());
+            return rows.ToArray();
+        }
+
+        /// <summary>
+        /// Rough width of a label at a given font size.
+        ///
+        /// CJK glyphs are square (one em each) and Latin ones about half that, which is close
+        /// enough to catch "this row cannot fit" without a font metrics dependency. Emoji count
+        /// as wide, since they render at roughly a full em.
+        /// </summary>
+        public static float EstimatedLabelWidth(string label, int fontSize)
+        {
+            if (string.IsNullOrEmpty(label)) return 0f;
+
+            float em = fontSize;
+            float width = 0f;
+            foreach (char c in label)
+            {
+                if (c < 0x2E80) width += em * 0.56f;          // Latin, digits, punctuation
+                else width += em;                             // CJK, kana, emoji blocks
+            }
+            return width;
+        }
+
+        /// <summary>Width one row of footer buttons needs, including the skin's padding.</summary>
+        public static float EstimatedRowWidth(string[] labels, int fontSize, float buttonPadding = 18f,
+            float spacing = 6f)
+        {
+            if (labels == null || labels.Length == 0) return 0f;
+
+            float width = 0f;
+            for (int i = 0; i < labels.Length; i++)
+            {
+                width += EstimatedLabelWidth(labels[i], fontSize) + buttonPadding;
+                if (i > 0) width += spacing;
+            }
+            return width;
         }
 
         // ------------------------------------------------------------ throw / fetch
@@ -1344,8 +1448,16 @@ namespace DshPet
                 audio.SetMasterVolume(GUILayout.HorizontalSlider(audio.MasterVolume, 0f, 1f, GUILayout.Width(70f)));
             }
 
-            GUILayout.FlexibleSpace();
-            GUILayout.Label(Mobile ? "摇杆走动　按钮互动" : "WASD 走动　E 互动", _small);
+            // The control hint is dropped when the panel is too narrow to hold it. It is the
+            // least important thing in the row, and letting it push the audio slider out of the
+            // footer would leave a control that is drawn but unreachable.
+            float chips = EstimatedRowWidth(new[] { "摸摸它", "去吃饭", "去玩球" }, _buttonSmall.fontSize);
+            if (rect.width > chips + 150f)
+            {
+                GUILayout.FlexibleSpace();
+                GUILayout.Label(Mobile ? "摇杆走动　按钮互动" : "WASD 走动　E 互动", _small);
+            }
+
             GUILayout.EndHorizontal();
             GUILayout.EndArea();
         }
@@ -1823,16 +1935,22 @@ namespace DshPet
                 return;
             }
 
+            // --- storage row ---
+            // What the notebook costs, and the two ways to shrink it. Deleting has to be
+            // reachable from the panel that shows the memories: "free up space" is a thought
+            // you have while looking at the thing taking up the space.
+            DrawJournalStorageRow(gm, new Rect(rect.x + 18f, rect.y + 42f, rect.width - 36f, 26f));
+
             // --- month grid ---
             // The cell height is derived from the room actually available, so a six-row month
             // still leaves space for the day's entries on a short Game view. Fixed 46px cells
             // used to push the detail list off the bottom of the panel.
             float gridX = rect.x + 18f;
-            float gridY = rect.y + 52f;
+            float gridY = rect.y + 78f;
             float cellW = (w - 36f) / 7f;
 
             const float detailReserve = 116f;   // the "N 条" line plus a usable list
-            float cellH = Mathf.Clamp((rect.height - 52f - 20f - detailReserve) / 6f, 24f, 46f);
+            float cellH = Mathf.Clamp((rect.height - 78f - 20f - detailReserve) / 6f, 24f, 46f);
 
             string[] weekdays = { "一", "二", "三", "四", "五", "六", "日" };
             for (int i = 0; i < 7; i++)
@@ -1882,6 +2000,31 @@ namespace DshPet
             GUI.Label(new Rect(gridX, detailY, 400f, 22f),
                 $"{_selectedDay:yyyy-MM-dd}　{entries.Count} 条", _label);
 
+            // "Delete this day" sits with the day it deletes, and the confirmation is a second
+            // press on the same button rather than a modal on top of a modal.
+            if (entries.Count > 0)
+            {
+                float buttonWidth = Mobile ? MobileUi.Touchable(120f) : 108f;
+                var deleteDay = new Rect(gridX + w - 36f - buttonWidth, detailY - 2f, buttonWidth, 26f);
+                bool armed = _journalConfirmDay == _selectedDay.Date;
+                if (GUI.Button(deleteDay, armed ? $"真的删掉 {entries.Count} 条？" : "删除这一天",
+                        _buttonSmall))
+                {
+                    if (armed)
+                    {
+                        int removed = journal.DeleteDay(_selectedDay);
+                        journal.Save();
+                        _journalConfirmDay = DateTime.MinValue;
+                        _journalStatus = $"已删除 {removed} 条（{PetJournal.FormatBytes(journal.StorageBytes)}）";
+                    }
+                    else
+                    {
+                        _journalConfirmDay = _selectedDay.Date;
+                        _journalStatus = "再点一次确认删除这一天的记录";
+                    }
+                }
+            }
+
             var listRect = new Rect(gridX, detailY + 26f, w - 36f, rect.yMax - detailY - 46f);
             if (listRect.height < 32f)
             {
@@ -1910,6 +2053,19 @@ namespace DshPet
                     GUI.color = Color.white;
                     GUILayout.Label(entry.When.ToString("HH:mm"), _small, GUILayout.Width(46f));
                     GUILayout.Label(entry.Title + (entry.Pinned ? "　📌" : ""), _label);
+
+                    // The delete button is pinned to the right of the row and sized for a
+                    // thumb on a phone: the whole point of this panel is being able to get rid
+                    // of one memory without clearing the day.
+                    GUILayout.FlexibleSpace();
+                    if (GUILayout.Button("✕", _buttonSmall, GUILayout.Width(34f), GUILayout.Height(24f)))
+                    {
+                        journal.Delete(entry);
+                        journal.Save();
+                        _journalStatus = $"已删除 1 条（{PetJournal.FormatBytes(journal.StorageBytes)}）";
+                        GUIUtility.ExitGUI();   // the list we are iterating just changed
+                    }
+
                     GUILayout.EndHorizontal();
 
                     if (!string.IsNullOrEmpty(entry.Detail))
@@ -1922,5 +2078,79 @@ namespace DshPet
             GUILayout.EndScrollView();
             GUILayout.EndArea();
         }
+
+        /// <summary>
+        /// The notebook's storage line and its two bulk deletions.
+        ///
+        /// Freeing space is a thought you have while looking at the thing that is taking up the
+        /// space, so the controls live in the notebook rather than in a settings pane nobody
+        /// visits. Both bulk actions confirm on a second press — there is no undo, and a
+        /// mis-tap that erases months of the pet's history would be unrecoverable.
+        /// </summary>
+        private void DrawJournalStorageRow(PetGameManager gm, Rect rect)
+        {
+            var journal = gm.Journal;
+
+            var label = new GUIStyle(_small) { alignment = TextAnchor.MiddleLeft };
+            GUI.Label(new Rect(rect.x, rect.y, rect.width * 0.5f, rect.height),
+                $"{journal.Count} 条记忆（{journal.PinnedCount} 条钉住）　占用 {PetJournal.FormatBytes(journal.StorageBytes)}",
+                label);
+
+            float right = rect.xMax;
+            float buttonWidth = Mobile ? MobileUi.Touchable(104f) : 96f;
+            float gap = 8f;
+
+            bool armedAll = _journalConfirmAll;
+            var clearAll = new Rect(right - buttonWidth, rect.y, buttonWidth, rect.height);
+            if (GUI.Button(clearAll, armedAll ? "真的全部清空？" : "清空全部", _buttonSmall))
+            {
+                if (armedAll)
+                {
+                    journal.Clear();
+                    journal.Save();
+                    _journalConfirmAll = false;
+                    _journalStatus = "记事本已清空";
+                }
+                else
+                {
+                    _journalConfirmAll = true;
+                    _journalConfirmMonth = false;
+                    _journalStatus = "再点一次确认清空全部记忆";
+                }
+            }
+
+            right -= buttonWidth + gap;
+            bool armedMonth = _journalConfirmMonth;
+            var clearMonth = new Rect(right - buttonWidth, rect.y, buttonWidth, rect.height);
+            if (GUI.Button(clearMonth, armedMonth ? "确认清理本月？" : "清理本月", _buttonSmall))
+            {
+                if (armedMonth)
+                {
+                    int removed = journal.DeleteMonth(_journalMonth.Year, _journalMonth.Month);
+                    journal.Save();
+                    _journalConfirmMonth = false;
+                    _journalStatus = $"已清理 {removed} 条（{PetJournal.FormatBytes(journal.StorageBytes)}）";
+                }
+                else
+                {
+                    _journalConfirmMonth = true;
+                    _journalConfirmAll = false;
+                    _journalStatus = $"再点一次确认清理 {_journalMonth:yyyy 年 M 月} 的记录";
+                }
+            }
+
+            if (!string.IsNullOrEmpty(_journalStatus))
+            {
+                var style = new GUIStyle(_small) { alignment = TextAnchor.MiddleRight };
+                GUI.color = new Color(1f, 0.9f, 0.6f);
+                GUI.Label(new Rect(rect.x, rect.yMax + 4f, rect.width, 20f), _journalStatus, style);
+                GUI.color = Color.white;
+            }
+        }
+
+        private DateTime _journalConfirmDay = DateTime.MinValue;
+        private bool _journalConfirmMonth;
+        private bool _journalConfirmAll;
+        private string _journalStatus = "";
     }
 }

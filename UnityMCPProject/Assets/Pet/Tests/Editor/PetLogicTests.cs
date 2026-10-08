@@ -872,6 +872,82 @@ namespace DshPet.Tests
             Assert.IsFalse(forced.CanUseNetwork, "the offline switch must win");
         }
 
+        // ---------------------------------------------------------- button fit
+
+        [Test]
+        public void Hud_FooterButtonsAlwaysFitInsideTheirPanel()
+        {
+            // The bug this guards: the status panel's footer buttons needed more width than the
+            // panel had at 640x400, so the last one was laid out past its footer rect — where a
+            // GUILayout area stops delivering input. The button rendered and did nothing, which
+            // is the worst possible failure mode for a control. The rows are packed to the width
+            // available now, so this checks both halves of the contract: every row fits, and no
+            // button was dropped to make it fit.
+            const int buttonFont = 14;
+            const float innerInset = 28f;   // the panel's own 14px padding, both sides
+
+            foreach (var size in Viewports)
+            {
+                foreach (bool mobile in new[] { false, true })
+                {
+                    var layout = PetHud.ComputeLayout(size.x, size.y, PetSpecies.Count);
+                    float available = layout.Status.width - innerInset;
+                    var rows = PetHud.StatusFooterRows(mobile, detailOn: false, available, buttonFont);
+                    string where = $"{size.x}x{size.y} ({(mobile ? "mobile" : "desktop")})";
+
+                    var seen = new System.Collections.Generic.List<string>();
+                    foreach (var row in rows)
+                    {
+                        float needed = PetHud.EstimatedRowWidth(row, buttonFont);
+                        Assert.LessOrEqual(needed, available,
+                            $"footer row [{string.Join(", ", row)}] needs {needed:F0}px " +
+                            $"but has {available:F0}px at {where}");
+                        seen.AddRange(row);
+                    }
+
+                    // Nothing may be dropped on the way: 记事本/设置/提示词/重置 all have to be
+                    // reachable, and a phone also gets 详情.
+                    Assert.IsTrue(seen.Exists(l => l.Contains("本子") || l.Contains("记事本")),
+                        $"notebook button missing at {where}");
+                    Assert.IsTrue(seen.Exists(l => l.Contains("设置")), $"settings button missing at {where}");
+                    Assert.IsTrue(seen.Contains("提示词"), $"prompt button missing at {where}");
+                    Assert.IsTrue(seen.Contains("重置"), $"reset button missing at {where}");
+                }
+            }
+        }
+
+        [Test]
+        public void Hud_TheChatFooterKeepsItsControlsReachable()
+        {
+            // Same rule for the chat's action row: the chips and the audio control have to fit
+            // before anything optional (the control hint) is allowed to take space.
+            const int buttonFont = 14;
+            var chips = new[] { "摸摸它", "去吃饭", "去玩球" };
+            float chipsWidth = PetHud.EstimatedRowWidth(chips, buttonFont);
+            float audioWidth = 40f + 70f;   // the mute button and the volume slider
+
+            foreach (var size in Viewports)
+            {
+                var layout = PetHud.ComputeLayout(size.x, size.y, PetSpecies.Count);
+                float available = layout.Chat.width - 32f;
+
+                Assert.LessOrEqual(chipsWidth + audioWidth, available,
+                    $"the chat footer cannot hold its chips and the audio control at {size.x}x{size.y} " +
+                    $"({chipsWidth + audioWidth:F0}px needed, {available:F0}px available)");
+            }
+        }
+
+        [Test]
+        public void Hud_LabelWidthEstimateSeparatesWideAndNarrowGlyphs()
+        {
+            // Sanity on the measuring stick itself: a CJK label must come out wider than the
+            // same number of Latin characters, or the fit tests above mean nothing.
+            float cjk = PetHud.EstimatedLabelWidth("记事本", 14);
+            float latin = PetHud.EstimatedLabelWidth("abc", 14);
+            Assert.Greater(cjk, latin);
+            Assert.AreEqual(0f, PetHud.EstimatedLabelWidth("", 14), 0.001f);
+        }
+
         // ------------------------------------------------------------- personality
 
         [Test]

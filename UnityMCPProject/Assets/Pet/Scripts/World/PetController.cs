@@ -126,14 +126,20 @@ namespace DshPet
 
             // Sleeping pets get a longer grace rather than a hard veto: waking up to a mess
             // every single night would make putting it to bed feel like a trap.
-            float allowed = CurrentMode == Mode.Sleep ? SleepGraceSeconds : GraceSeconds;
+            float allowed = CurrentMode == Mode.Sleep ? SleepGraceSeconds : GraceToReachTheTray();
             if (_bladderGrace < allowed) return;
+
+            // And no pet has two accidents in a row. The point of the system is one memorable
+            // moment, not a pet that has to be cleaned up after every couple of minutes.
+            if (Time.time - _lastAccidentAt < AccidentCooldown) { _bladderGrace = 0f; return; }
+            _lastAccidentAt = Time.time;
 
             _bladderGrace = 0f;
             Needs.Accident();
             HasAccident = true;
             Avatar.PlayAction(PetAction.Sad, 2.6f);
             PetAudioDirector.Instance?.Play(SfxId.Whine);
+            BladderAccident?.Invoke();
 
             if (Room != null)
             {
@@ -142,11 +148,61 @@ namespace DshPet
             }
         }
 
-        /// <summary>Seconds a pet can hold it before it has an accident.</summary>
+        /// <summary>Raised when the pet has an accident, so the notebook can record it.</summary>
+        public event Action BladderAccident;
+
+        /// <summary>
+        /// How long the pet gets to reach the tray, from where it currently is.
+        ///
+        /// The walk is the fair part of the deadline. With a flat grace a pet on the far side
+        /// of the room was judged by the same clock as one standing next to the tray, which
+        /// turns "did it make it" into a coin flip rather than something the player can see
+        /// coming and act on.
+        /// </summary>
+        private float GraceToReachTheTray()
+        {
+            var tray = Room != null ? NearestOfKind(InteractableKind.Toilet) : null;
+            if (tray == null) return GraceSeconds;
+
+            float distance = Vector3.Distance(transform.position, tray.ApproachPoint);
+            float walk = distance / Mathf.Max(0.5f, WalkSpeed);
+            return Mathf.Clamp(GraceSeconds + walk, GraceSeconds, MaxGraceSeconds);
+        }
+
+        private Interactable NearestOfKind(InteractableKind kind)
+        {
+            Interactable best = null;
+            float bestDistance = float.MaxValue;
+            for (int i = 0; i < Room.Interactables.Count; i++)
+            {
+                var candidate = Room.Interactables[i];
+                if (candidate == null || candidate.Kind != kind) continue;
+                float distance = Vector3.Distance(transform.position, candidate.ApproachPoint);
+                if (distance < bestDistance) { bestDistance = distance; best = candidate; }
+            }
+            return best;
+        }
+
+        /// <summary>Seconds a pet can hold it before it has an accident, before the walk is added.</summary>
         public float GraceSeconds = 6.5f;
+
+        /// <summary>Ceiling on the walk allowance, so a pet in a far corner still has a deadline.</summary>
+        public float MaxGraceSeconds = 14f;
 
         /// <summary>Longer while asleep, so bedtime is not a trap.</summary>
         public float SleepGraceSeconds = 22f;
+
+        /// <summary>
+        /// Minimum seconds between two accidents.
+        ///
+        /// Tuned by playing it: at the earlier numbers a pet left alone for a few minutes
+        /// produced a puddle about every other minute, which reads as a bug rather than as a
+        /// pet with a problem. One every few minutes is enough for the player to notice the
+        /// system exists and to feel that ignoring the tray costs something.
+        /// </summary>
+        public float AccidentCooldown = 200f;
+
+        private float _lastAccidentAt = -9999f;
 
         private float _bladderGrace;
         private Vector3 AvatarFacing() => Avatar != null ? Avatar.transform.forward : transform.forward;
