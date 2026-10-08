@@ -22,13 +22,29 @@
 
 ## 编码规矩（会咬人的那条）
 
-含中文的 `.cs` 文件**必须带 UTF-8 BOM**，否则中文区域设置的 Windows 上编译器按 GBK 解释，
-该文件里所有中文字面量都变乱码。
+含中文的脚本文件**必须带 UTF-8 BOM**。Windows 上"按系统代码页读文件"的程序有两个：
 
-- 用编辑工具改过这类文件后，跑一次 **`Tools/DSH Pet/Fix Script Encodings`** 补 BOM。
-- **不要用 PowerShell 的 `Get-Content` / `Set-Content` 往返编辑 `.cs`**：会把多字节字符
-  换成 `U+FFFD`，BOM 也救不回来，只能重新打字。用文件工具，或
+| 文件 | 读它的程序 | 不带 BOM 的后果 |
+|---|---|---|
+| `.cs` | Unity 的编译器 | 该文件里所有中文字面量变乱码（实测「全景」→ `锟斤拷`） |
+| `.ps1` | Windows PowerShell **5.1** | 脚本直接语法报错（中文变乱码后把引号吃掉） |
+
+规矩：
+
+- 用编辑工具改过这类文件后，`.cs` 跑一次 **`Tools/DSH Pet/Fix Script Encodings`** 补 BOM；
+  `.ps1` 用下面的片段补（`scripts/setup-github.ps1` 本身就是这么存的）：
+
+  ```powershell
+  $p = 'scripts\your-script.ps1'
+  $text = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
+  [System.IO.File]::WriteAllText($p, $text, (New-Object System.Text.UTF8Encoding($true)))
+  ```
+
+- **不要用 PowerShell 的 `Get-Content` / `Set-Content` 往返编辑任何含中文的文件**：
+  会把多字节字符换成 `U+FFFD`，BOM 也救不回来，只能重新打字。用文件工具，或
   `[System.IO.File]::ReadAllText/WriteAllText` 显式指定 UTF-8。
+- 向 GitHub API 发中文 JSON 时，`Invoke-RestMethod` 的 Body 必须传 **UTF-8 字节**，
+  否则 5.1 会按 Latin-1 发出去、服务端存成乱码（`setup-github.ps1` 里有正确写法）。
 
 ## 代码风格
 

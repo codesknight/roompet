@@ -109,6 +109,29 @@ roompet/
 
 ---
 
+## 项目管理
+
+计划与待办都在 GitHub 上，用**里程碑 + 标签 + issue** 组织，源头是 [docs/ROADMAP.md](docs/ROADMAP.md)：
+
+| 里程碑 | 内容 |
+|---|---|
+| **v0.2 — 让它更像活的** | 语音（TTS）、扔球落点指示、宠物对玩家的更多反应、自由视角约束 |
+| **v0.3 — 内容扩展** | 更多小游戏/物种/房间互动，为《虚拟小镇》铺路 |
+| **v1.0 — 可发布** | 云存档、CI、打包、选定许可 |
+
+标签按**领域**分（宠物／记忆／大脑·提示词／界面／相机／声音／跑酷／玩法／工具链／文档），
+外加 `技术债`、`待验证` 和优先级 `P0`–`P2`。
+
+这套配置是**可复现**的：跑一次
+
+```powershell
+powershell -File scripts/setup-github.ps1
+```
+
+就会写好仓库简介与 topics、建好标签与里程碑、把 `docs/ROADMAP.md` 里的待办开成 issue，
+并为 `v0.1.0` 建一个 release。脚本是幂等的，重复跑只补缺的（认证用的是 git 已有的
+github.com 凭据，脚本里不存任何 token）。
+
 ## 测试与验证
 
 单元测试在 Unity 里跑：**Window → General → Test Runner → EditMode → Run All**，应 **84/84 通过**。
