@@ -1,5 +1,7 @@
 // Compare the sky region before/after the skybox swap, and describe its palette.
-const sharp = require('C:/Users/yanhong.liu/.dsh/profiles/node_modules/sharp');
+// `sharp` lives in the harness profile's node_modules here; point ROOM_PET_SHARP at it
+// (or install sharp normally) instead of hard-coding a machine path.
+const sharp = require(process.env.ROOM_PET_SHARP || 'sharp');
 
 async function load(f) {
   const { data, info } = await sharp(f).raw().toBuffer({ resolveWithObject: true });

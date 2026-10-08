@@ -1,6 +1,8 @@
 // Focused check of the fur render: work only on the object in the centre of the
 // frame, and report the colour spread plus how ragged the silhouette is.
-const sharp = require('C:/Users/yanhong.liu/.dsh/profiles/node_modules/sharp');
+// `sharp` lives in the harness profile's node_modules here; point ROOM_PET_SHARP at it
+// (or install sharp normally) instead of hard-coding a machine path.
+const sharp = require(process.env.ROOM_PET_SHARP || 'sharp');
 
 const file = process.argv[2];
 if (!file) { console.error('usage: node probe_fur.js <png>'); process.exit(2); }

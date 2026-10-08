@@ -40,7 +40,7 @@ Python 服务端（第二层）和 DSH 挂载（第一层）是**机器级一次
 | Unity 工程（示例） | `UnityMCPProject\`，Unity **2022.3.62f3c1** |
 | 包版本 | `com.coplaydev.unity-mcp` **10.3.1-beta.6** |
 | 传输方式 | **stdio**，编辑器监听 **6400** |
-| DSH 挂载 | `C:\Users\yanhong.liu\.dsh\profiles\web\cordis.patch.yml` |
+| DSH 挂载 | `%USERPROFILE%\.dsh\profiles\<profile>\cordis.patch.yml` |
 | 状态文件 | `%USERPROFILE%\.unity-mcp\unity-mcp-status-<hash>.json` |
 | 已装工具数 | 50 个 MCP 工具 / 24 个资源（模型侧命名为 `mcp__unity__<工具名>`） |
 

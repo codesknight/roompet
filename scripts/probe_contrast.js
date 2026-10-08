@@ -1,6 +1,8 @@
 // Luminance / hue of the cube versus the sky behind it, to confirm the cube still
 // stands out against the new skybox. Also reports the sky region's hue spread.
-const sharp = require('C:/Users/yanhong.liu/.dsh/profiles/node_modules/sharp');
+// `sharp` lives in the harness profile's node_modules here; point ROOM_PET_SHARP at it
+// (or install sharp normally) instead of hard-coding a machine path.
+const sharp = require(process.env.ROOM_PET_SHARP || 'sharp');
 
 function hsv(r, g, b) {
   r /= 255; g /= 255; b /= 255;

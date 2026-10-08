@@ -18,7 +18,7 @@
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物），两个都已在 Build Settings |
 | 测试 | **84/84 通过**（虚拟宠物 69 + 跑酷 15），EditMode |
 | 编译 | 无 error、无 warning |
-| 大模型 | 在线。本机从环境变量读到内网网关 `http://14.103.250.191:9001/v1` + `Qwen3.8-27B-e060-r8`（免鉴权） |
+| 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
 | 回归证据图 | `docs/evidence/*.png`（随文档一起提交，便于复盘） |
 

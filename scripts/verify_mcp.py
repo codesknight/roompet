@@ -16,7 +16,7 @@ import sys
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-ROOT = r"D:\projects\dsh-unity"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVER_EXE = os.path.join(ROOT, ".venv", "Scripts", "mcp-for-unity.exe")
 STATUS_DIR = os.environ.get("UNITY_MCP_STATUS_DIR", os.path.join(ROOT, ".unity-mcp-status"))
 

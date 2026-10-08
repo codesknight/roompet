@@ -40,7 +40,7 @@
    没有则回退到 `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL`
 3. **默认值** —— `https://api.deepseek.com` + `deepseek-chat`
 
-任何 OpenAI 兼容端点都能用（实测过内网网关 `http://14.103.250.191:9001/v1`）。
+任何 OpenAI 兼容端点都能用（实测过内网网关 `http://<内网网关>/v1`）。
 `http://` 开头的地址会自动打开「允许无鉴权」，适配本地部署的模型服务。
 
 **Unity 的一个坑**：默认设置下 Unity 会拒绝明文 HTTP 请求，报
