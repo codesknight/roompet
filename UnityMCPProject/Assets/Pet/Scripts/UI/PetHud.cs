@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using DshMobile;
 using UnityEngine;
 
@@ -44,6 +45,7 @@ namespace DshPet
         private bool _focusFirstField;
         private bool _showPromptPreview;
         private bool _showJournal;
+        private bool _showCollection;
         private DateTime _journalMonth = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
         private DateTime _selectedDay = DateTime.Now.Date;
         private Vector2 _dayScroll;
@@ -215,6 +217,7 @@ namespace DshPet
             if (_showSettings) DrawSettings(gm);
             if (_showPromptPreview) DrawPromptPreview(gm);
             if (_showJournal) DrawJournal(gm);
+            if (_showCollection) DrawCollection(gm);
 
             GUI.matrix = previousMatrix;
         }
@@ -538,7 +541,7 @@ namespace DshPet
             {
                 var hud = _instance;
                 if (hud == null) return false;
-                if (hud._showSettings || hud._showJournal || hud._showPromptPreview) return true;
+                if (hud._showSettings || hud._showJournal || hud._showPromptPreview || hud._showCollection) return true;
                 var gm = PetGameManager.Instance;
                 return gm != null && gm.DoorPromptOpen;
             }
@@ -735,6 +738,7 @@ namespace DshPet
             else if (label.EndsWith("设置")) OpenSettings(gm);
             else if (label == "提示词") OpenPromptPreview(gm);
             else if (label == "详情" || label == "简略") _statusDetail = !_statusDetail;
+            else if (label.Contains("宠物")) _showCollection = !_showCollection;
             else if (label == "重置") gm.ResetPet();
         }
 
@@ -755,8 +759,8 @@ namespace DshPet
             string detailLabel = detailOn ? "简略" : "详情";
 
             var labels = mobile
-                ? new[] { "📖 本子", "⚙ 设置", "提示词", detailLabel, "重置" }
-                : new[] { "📖 记事本", "⚙ 设置", "提示词", "重置" };
+                ? new[] { "📖 本子", "🐾 宠物", "⚙ 设置", "提示词", detailLabel, "重置" }
+                : new[] { "📖 记事本", "🐾 宠物", "⚙ 设置", "提示词", "重置" };
 
             return PackRows(labels, availableWidth, fontSize);
         }
@@ -1644,7 +1648,18 @@ namespace DshPet
                 }
             }
 
-            // A pet's temperament is the most personal thing about it, so the player gets to
+            // The pet's own voice. One switch for the whole layer — the chirp it makes when
+            // spoken to, when poked, and when it reacts on its own — because a setting that
+            // leaves half the sounds on is worse than either extreme.
+            GUILayout.Space(6f);
+            bool voiceOn = GUILayout.Toggle(PetVoice.Enabled, " 宠物叫声", _small);
+            if (voiceOn != PetVoice.Enabled)
+            {
+                PetVoice.Enabled = voiceOn;
+                if (voiceOn) PetAudioDirector.Instance?.Speak(gm.Species, gm.Personality, gm.Needs.Mood);
+            }
+            GUILayout.Label("现在的音色：" + PetVoice.Describe(gm.Species, gm.Personality), _small);
+
             // reroll it — but it is buried here rather than offered at every launch, because
             // "who is this animal" is not a decision to make every time you open the game.
             GUILayout.Space(8f);
@@ -1866,6 +1881,7 @@ namespace DshPet
             _showPromptPreview = false;
             _showSettings = false;
             _showJournal = false;
+            _showCollection = false;
             var gm = PetGameManager.Instance;
             if (gm != null && gm.DoorPromptOpen) gm.CloseDoorPrompt();
             e.Use();
@@ -2152,5 +2168,220 @@ namespace DshPet
         private bool _journalConfirmMonth;
         private bool _journalConfirmAll;
         private string _journalStatus = "";
+
+        // ---------------------------------------------------------------- collection
+
+        /// <summary>
+        /// Shop, warehouse and backpack in one panel.
+        ///
+        /// One screen rather than three because the actions run into each other: you buy a pet,
+        /// it lands in the warehouse, you put it in the backpack, and it appears in the room.
+        /// The coin balance sits in the header because every decision here is about coins.
+        /// </summary>
+        private void DrawCollection(PetGameManager gm)
+        {
+            float w = Mathf.Min(760f, DesignWidth - 48f);
+            float h = Mathf.Min(560f, DesignHeight - 48f);
+            var rect = OverlayRect(w, h);
+            ModalBackdrop(rect);
+
+            var inner = new Rect(rect.x + 18f, rect.y + 14f, rect.width - 36f, rect.height - 28f);
+
+            GUI.Label(new Rect(inner.x, inner.y, inner.width * 0.5f, 32f), "宠物图鉴", _title);
+
+            var balance = new GUIStyle(_title) { alignment = TextAnchor.MiddleRight };
+            GUI.Label(new Rect(inner.x + inner.width * 0.5f, inner.y, inner.width * 0.5f, 32f),
+                $"🐾 {DshMobile.PetWallet.Coins:N0}", balance);
+
+            var tabs = new[] { CollectionTab.Shop, CollectionTab.Warehouse, CollectionTab.Backpack };
+            float tabWidth = Mathf.Min(140f, inner.width / 4f);
+            var tabRect = new Rect(inner.x, inner.y + 38f, inner.width, 34f);
+            for (int i = 0; i < tabs.Length; i++)
+            {
+                var cell = new Rect(tabRect.x + i * (tabWidth + 6f), tabRect.y, tabWidth, tabRect.height);
+                GUI.color = PetCollectionPanel.Tab == tabs[i] ? new Color(1f, 0.92f, 0.7f) : Color.white;
+                if (GUI.Button(cell, PetCollectionPanel.TabLabel(tabs[i]), _button))
+                {
+                    PetCollectionPanel.Tab = tabs[i];
+                }
+                GUI.color = Color.white;
+            }
+
+            if (GUI.Button(new Rect(inner.xMax - 76f, tabRect.y, 76f, tabRect.height), "关闭", _button))
+            {
+                _showCollection = false;
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(_collectionMessage))
+            {
+                var style = new GUIStyle(_small) { alignment = TextAnchor.MiddleLeft };
+                GUI.color = _collectionError ? new Color(1f, 0.65f, 0.55f) : new Color(0.7f, 0.95f, 0.75f);
+                GUI.Label(new Rect(inner.x, tabRect.yMax + 4f, inner.width, 22f), _collectionMessage, style);
+                GUI.color = Color.white;
+            }
+
+            var body = new Rect(inner.x, tabRect.yMax + 30f, inner.width, inner.yMax - tabRect.yMax - 30f);
+            switch (PetCollectionPanel.Tab)
+            {
+                case CollectionTab.Shop: DrawShopTab(body); break;
+                case CollectionTab.Warehouse: DrawPetsTab(body, inBackpack: false); break;
+                default: DrawPetsTab(body, inBackpack: true); break;
+            }
+
+            DrawModalEscape();
+        }
+
+        private string _collectionMessage = "";
+        private bool _collectionError;
+        private Vector2 _collectionScroll;
+
+        private void SetCollectionMessage(string message, bool error = false)
+        {
+            _collectionMessage = message;
+            _collectionError = error;
+        }
+
+        private void DrawShopTab(Rect body)
+        {
+            var hint = new GUIStyle(_small) { alignment = TextAnchor.MiddleLeft };
+            GUI.Label(new Rect(body.x, body.y, body.width, 22f),
+                "用宠物币带新伙伴回家（跑酷赚币）。同一物种可以再买一只，性格会重新生成。", hint);
+
+            var list = new Rect(body.x, body.y + 26f, body.width, body.height - 26f);
+            GUILayout.BeginArea(list);
+            _collectionScroll = GUILayout.BeginScrollView(_collectionScroll);
+
+            foreach (var species in PetCollectionPanel.ShopOrder())
+            {
+                bool owned = PetCollection.IsSpeciesUnlocked(species.Id);
+                int price = PetCollection.PriceFor(species.Id);
+
+                GUILayout.BeginHorizontal();
+                GUI.color = species.Fur;
+                GUILayout.Label("●", _title, GUILayout.Width(26f));
+                GUI.color = Color.white;
+
+                GUILayout.BeginVertical();
+                GUILayout.Label($"{species.DisplayName}　{species.Blurb}", _label);
+                GUILayout.Label(owned
+                    ? $"已拥有 {PetCollection.OwnedCount(species.Id)} 只　再买一只 {price} 币"
+                    : $"未解锁　{price} 币", _small);
+                GUILayout.EndVertical();
+
+                GUILayout.FlexibleSpace();
+                bool afford = DshMobile.PetWallet.CanAfford(price);
+                GUI.enabled = afford;
+                float buttonWidth = Mobile ? MobileUi.Touchable(150f) : 150f;
+                if (GUILayout.Button(afford ? $"领回家 {price}" : $"还差 {price - DshMobile.PetWallet.Coins}",
+                        _button, GUILayout.Width(buttonWidth), GUILayout.Height(38f)))
+                {
+                    var result = PetCollectionPanel.Buy(species.Id);
+                    SetCollectionMessage(result.Message, result.Error);
+                    GUIUtility.ExitGUI();
+                }
+                GUI.enabled = true;
+                GUILayout.EndHorizontal();
+                GUILayout.Space(8f);
+            }
+
+            GUILayout.EndScrollView();
+            GUILayout.EndArea();
+        }
+
+        private void DrawPetsTab(Rect body, bool inBackpack)
+        {
+            var hint = new GUIStyle(_small) { alignment = TextAnchor.MiddleLeft };
+
+            if (inBackpack)
+            {
+                GUI.Label(new Rect(body.x, body.y, body.width, 22f),
+                    $"背包 {PetCollection.Backpack.Count}/{PetCollection.BackpackSlots}　" +
+                    "在背包里的宠物会一起在房间里走动，点它可以摸它。", hint);
+                GUI.color = new Color(1f, 0.88f, 0.6f);
+                GUI.Label(new Rect(body.x, body.y + 22f, body.width, 22f),
+                    PetCollectionPanel.TokenAdvice(PetCollection.Backpack.Count), hint);
+                GUI.color = Color.white;
+            }
+            else
+            {
+                GUI.Label(new Rect(body.x, body.y, body.width, 22f),
+                    $"仓库里一共有 {PetCollection.Warehouse.Count} 只宠物，容量不限。", hint);
+            }
+
+            var list = new Rect(body.x, body.y + 50f, body.width, body.height - 50f);
+            GUILayout.BeginArea(list);
+            _collectionScroll = GUILayout.BeginScrollView(_collectionScroll);
+
+            var pets = inBackpack
+                ? RecordsIn(PetCollection.Backpack)
+                : new List<PetRecord>(PetCollection.Warehouse);
+
+            if (pets.Count == 0) GUILayout.Label("这里还没有宠物，去商城领一只吧。", _small);
+
+            foreach (var record in pets)
+            {
+                var species = PetSpecies.Get(record.SpeciesId);
+                bool isPrimary = PetCollection.Primary != null && PetCollection.Primary.Id == record.Id;
+                bool inBag = PetCollection.IsInBackpack(record.Id);
+
+                GUILayout.BeginHorizontal();
+                GUI.color = species.Fur;
+                GUILayout.Label("●", _title, GUILayout.Width(26f));
+                GUI.color = Color.white;
+
+                GUILayout.BeginVertical();
+                GUILayout.Label($"{record.Name}　{species.DisplayName}", _label);
+                GUILayout.Label($"{record.Personality.Archetype}　·　" +
+                                PetCollectionPanel.RoleLabel(inBag, isPrimary), _small);
+                GUILayout.Label("音色：" + PetVoice.Describe(species, record.Personality), _small);
+                GUILayout.EndVertical();
+
+                GUILayout.FlexibleSpace();
+                float buttonWidth = Mobile ? MobileUi.Touchable(112f) : 112f;
+
+                if (inBag)
+                {
+                    if (!isPrimary && GUILayout.Button("主要照顾", _buttonSmall,
+                            GUILayout.Width(buttonWidth), GUILayout.Height(30f)))
+                    {
+                        var result = PetCollectionPanel.MakePrimary(record.Id);
+                        SetCollectionMessage(result.Message, result.Error);
+                        GUIUtility.ExitGUI();
+                    }
+                    if (GUILayout.Button("放回仓库", _buttonSmall,
+                            GUILayout.Width(buttonWidth), GUILayout.Height(30f)))
+                    {
+                        var result = PetCollectionPanel.TakeOutOfBackpack(record.Id);
+                        SetCollectionMessage(result.Message, result.Error);
+                        GUIUtility.ExitGUI();
+                    }
+                }
+                else if (GUILayout.Button("放进背包", _buttonSmall,
+                             GUILayout.Width(buttonWidth), GUILayout.Height(30f)))
+                {
+                    var result = PetCollectionPanel.PutInBackpack(record.Id);
+                    SetCollectionMessage(result.Message, result.Error);
+                    GUIUtility.ExitGUI();
+                }
+
+                GUILayout.EndHorizontal();
+                GUILayout.Space(8f);
+            }
+
+            GUILayout.EndScrollView();
+            GUILayout.EndArea();
+        }
+
+        private static List<PetRecord> RecordsIn(IReadOnlyList<string> ids)
+        {
+            var list = new List<PetRecord>();
+            for (int i = 0; i < ids.Count; i++)
+            {
+                var record = PetCollection.Find(ids[i]);
+                if (record != null) list.Add(record);
+            }
+            return list;
+        }
     }
 }

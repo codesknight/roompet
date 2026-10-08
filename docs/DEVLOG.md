@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物），两个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **134/134 通过**（虚拟宠物 85 + 跑酷 15 + 手机端 34），EditMode |
+| 测试 | **148/148 通过**（虚拟宠物 99 + 跑酷 15 + 手机端 34），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -389,6 +389,20 @@
     能回答它的不是推理而是**把宠物放着跑一段**：先前的数值实测下来是每分钟左右一地，
     读起来像 bug；现在加了 200 秒冷却 + 按距离算的宽限。这些数字仍需要真机上长时间跑一次才算验过。
 
+48. **角色模型上默认没有碰撞体。** `PetAvatar` 会给每个 primitive 剥掉 collider（免得宠物
+    把房间的点击挡掉），所以"点宠物"根本收不到 `OnMouseDown` —— 修法是给宠物**根节点**加一个
+    胶囊体 + `PetClickTarget`。规则：**Unity 只把 OnMouseDown 派给 collider 自己所在的
+    GameObject**，所以可点的那个对象上必须真的有 collider。
+49. **`PlayerPrefs` 里那份存档会盖掉测试里的"替换成干净状态"。** 第一版
+    `ReplaceForTests(data)` 只替换内存、没落盘，随后的 `Load()` 又把 PlayerPrefs 里的旧数据
+    读回来，于是"新档应该只有 1 只宠物"的测试拿到 5 只。修法：替换时**一并落盘并补种初始宠物**，
+    让它和真实加载走同一条路——测试里的状态必须是游戏真会产生的状态。
+50. **跨玩法程序集共享的东西要放在共享层。** 跑酷发币、宠物房花币，而 `DshRunner` 与
+    `DshPet` 互不引用，所以 `PetWallet` 放在 `DshMobile` 里。想放在任意一边都会编译不过——
+    这不是麻烦，这是设计在提醒你"这属于两者之外"。
+51. **语音输入/输出是本项目最需要真机的一环。** 安卓的 `SpeechRecognizer` / `TextToSpeech`
+    都要 `AndroidJavaObject` 调用、都需要运行时权限，而且**只能靠耳朵验证延迟与发音**；
+    本轮只落地了"总开关 + 音色"，TTS/STT 留给下一轮并写进了 [BOARD.md](BOARD.md)。
 ---
 
 ## 七、下一步候选（按我建议的优先级）

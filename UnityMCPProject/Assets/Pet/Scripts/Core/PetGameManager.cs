@@ -105,6 +105,8 @@ namespace DshPet
                 Journal.Add(MemoryKind.Milestone, "今天见到主人了", "", 0.5f, true);
             }
 
+            PetCollection.Changed += SpawnCompanions;
+            SpawnCompanions();
             ChatChanged?.Invoke();
         }
 
@@ -170,6 +172,7 @@ namespace DshPet
                 Avatar = go.AddComponent<PetAvatar>();
             }
             Avatar.Build(Species, false);
+            EnsurePokeTarget(Avatar.gameObject, true);
 
             if (Controller == null) Controller = Avatar.GetComponent<PetController>();
             if (Controller == null) Controller = Avatar.gameObject.AddComponent<PetController>();
@@ -197,7 +200,98 @@ namespace DshPet
             BuildPlayer();
         }
 
+        // ---------------------------------------------------------------- companions
+
+        private readonly List<GameObject> _companions = new List<GameObject>();
+
+        /// <summary>
+        /// Puts the rest of the backpack on the floor.
+        ///
+        /// The primary pet is the one with the brain, the memory and the journal; the others are
+        /// companions that wander, use the furniture and can be poked, each with its own species,
+        /// temperament and voice. That split is deliberate and it is also the honest one: every
+        /// extra pet that talks to the model multiplies the token bill, and the player is the one
+        /// paying it. The panel says so out loud.
+        /// </summary>
+        public void SpawnCompanions()
+        {
+            DespawnCompanions();
+
+            var companions = PetCollection.Companions();
+            int index = 0;
+
+            foreach (var record in companions)
+            {
+                // Slot one is the primary pet, which already exists.
+                index++;
+                if (record == null || record.Primary || index == 1) continue;
+                if (_companions.Count >= PetCollection.BackpackSlots - 1) break;
+
+                var species = PetSpecies.Copy(record.SpeciesId);
+                var go = new GameObject("Companion_" + record.Name);
+                go.transform.SetParent(transform, false);
+
+                // Scattered around the middle of the room so they do not stack on spawn.
+                float angle = (_companions.Count + 1) * 2.1f;
+                go.transform.position = new Vector3(Mathf.Cos(angle) * 3.4f, 0f, Mathf.Sin(angle) * 3.4f);
+
+                var avatar = go.AddComponent<PetAvatar>();
+                avatar.Build(species, false);
+
+                var controller = go.AddComponent<PetController>();
+                controller.Avatar = avatar;
+                controller.Room = Room;
+                controller.Needs = new PetNeeds { Personality = record.Personality };
+                controller.Ball = Room != null ? Room.Ball : null;
+
+                EnsurePokeTarget(go, false);
+                var target = go.GetComponent<PetClickTarget>();
+                target.Species = species;
+                target.Personality = record.Personality;
+
+                _companions.Add(go);
+            }
+        }
+
+        public void DespawnCompanions()
+        {
+            for (int i = 0; i < _companions.Count; i++)
+            {
+                if (_companions[i] == null) continue;
+                if (Application.isPlaying) Destroy(_companions[i]);
+                else DestroyImmediate(_companions[i]);
+            }
+            _companions.Clear();
+        }
+
+        /// <summary>How many pets are walking around right now, including the primary one.</summary>
+        public int PetsInRoom => 1 + _companions.Count;
+
         /// <summary>Creates the walkable character and hands the camera a two-subject rig.</summary>
+        /// <summary>
+        /// Makes a pet clickable.
+        ///
+        /// The avatar strips the colliders from every primitive it builds, so a pet has no
+        /// clickable shape at all by default — which is why clicking it used to do nothing.
+        /// A capsule on the root is enough for both platforms: Unity synthesises mouse events
+        /// from the primary touch, so a tap on a phone arrives through the same OnMouseDown.
+        /// </summary>
+        public static void EnsurePokeTarget(GameObject petObject, bool primary)
+        {
+            if (petObject == null) return;
+
+            var capsule = petObject.GetComponent<CapsuleCollider>();
+            if (capsule == null) capsule = petObject.AddComponent<CapsuleCollider>();
+            capsule.radius = 0.42f;
+            capsule.height = 1.15f;
+            capsule.center = new Vector3(0f, 0.58f, 0f);
+            capsule.isTrigger = true;
+
+            var target = petObject.GetComponent<PetClickTarget>();
+            if (target == null) target = petObject.AddComponent<PetClickTarget>();
+            target.Primary = primary;
+        }
+
         private void BuildPlayer(bool editorMode = false)
         {
             if (Player == null) Player = GetComponentInChildren<PlayerRoomController>();
@@ -272,6 +366,8 @@ namespace DshPet
         private void OnDestroy()
         {
             if (Instance == this) Instance = null;
+            PetCollection.Changed -= SpawnCompanions;
+            DespawnCompanions();
 
             if (Controller != null)
             {
@@ -813,6 +909,43 @@ namespace DshPet
             Memory.Save(Species.Id);
             Journal.Save();
         }
+
+        /// <summary>
+        /// The player touches the pet.
+        ///
+        /// The reaction comes from the temperament, the sound from the voice profile and the
+        /// line from a local table — so poking the pet is instant feedback that costs nothing.
+        /// Routing it through the language model would make the most-repeated action in the
+        /// game the most expensive one, and a two-second wait for "（蹭了蹭你的手）" is a worse
+        /// answer than the table already has.
+        /// </summary>
+        public PokeReaction PokePet()
+        {
+            var reaction = PetInteraction.Choose(BuildBehaviorContext(), (float)_pokeRng.NextDouble());
+
+            LastPokeReaction = reaction;
+            LastActionLabel = PetUtil.ActionLabel(PetInteraction.Action(reaction));
+
+            Needs.Pet(PetInteraction.JoyDelta(reaction));
+            Needs.AddAffection(PetInteraction.AffectionDelta(reaction));
+
+            string line = PetInteraction.Line(reaction, PetName, Species != null ? Species.Id : "fox");
+            Memory.AddPet(line);
+            ChatChanged?.Invoke();
+
+            if (Controller != null) Controller.ReactTo(PetInteraction.Action(reaction), 1.6f);
+
+            PetAudioDirector.Instance?.Speak(Species, Personality,
+                PetInteraction.MoodFor(reaction, Needs.Mood));
+
+            DshMobile.MobileHaptics.Light();
+            return reaction;
+        }
+
+        /// <summary>The last poke reaction, for the HUD and the wiring report.</summary>
+        public PokeReaction? LastPokeReaction { get; private set; }
+
+        private readonly System.Random _pokeRng = new System.Random();
 
         /// <summary>
         /// The pet's accident, recorded so the notebook has the whole story.

@@ -872,6 +872,344 @@ namespace DshPet.Tests
             Assert.IsFalse(forced.CanUseNetwork, "the offline switch must win");
         }
 
+        // ------------------------------------------------------------------- voice
+
+        [Test]
+        public void Voice_SpeciesSetTheRegisterAndPersonalityBendsIt()
+        {
+            var fox = PetSpecies.Get("fox");
+            var bear = PetSpecies.Get("bear");
+            var rabbit = PetSpecies.Get("rabbit");
+
+            // The species has to survive the individual, or a lively bear and a lazy fox would be
+            // confusable: the registers are ordered and do not overlap.
+            Assert.Less(PetVoice.ForSpecies(bear).BaseHz, PetVoice.ForSpecies(fox).BaseHz);
+            Assert.Less(PetVoice.ForSpecies(fox).BaseHz, PetVoice.ForSpecies(rabbit).BaseHz);
+
+            var lively = new PetPersonality { Liveliness = 0.95f, Clinginess = 0.5f, Curiosity = 0.5f, Neatness = 0.5f };
+            var lazy = new PetPersonality { Liveliness = 0.05f, Clinginess = 0.5f, Curiosity = 0.5f, Neatness = 0.5f };
+
+            Assert.Greater(PetVoice.For(fox, lively).BaseHz, PetVoice.For(fox, lazy).BaseHz);
+            Assert.Less(PetVoice.For(fox, lively).SyllableSeconds, PetVoice.For(fox, lazy).SyllableSeconds);
+        }
+
+        [Test]
+        public void Voice_TraitsShapeTheCallInTheExpectedDirection()
+        {
+            var cat = PetSpecies.Get("cat");
+
+            var clingy = PetVoice.For(cat, new PetPersonality { Clinginess = 0.95f, Liveliness = 0.5f, Curiosity = 0.5f, Neatness = 0.5f });
+            var aloof = PetVoice.For(cat, new PetPersonality { Clinginess = 0.05f, Liveliness = 0.5f, Curiosity = 0.5f, Neatness = 0.5f });
+            Assert.Greater(clingy.SlideHz, aloof.SlideHz,
+                "a clingy pet's call rises like a question; an aloof one trails off");
+
+            var curious = PetVoice.For(cat, new PetPersonality { Curiosity = 0.95f, Liveliness = 0.5f, Clinginess = 0.5f, Neatness = 0.5f });
+            var incurious = PetVoice.For(cat, new PetPersonality { Curiosity = 0.05f, Liveliness = 0.5f, Clinginess = 0.5f, Neatness = 0.5f });
+            Assert.GreaterOrEqual(curious.Syllables, incurious.Syllables, "a curious pet chatters more");
+
+            // Everything stays inside sane synthesis limits whatever the traits say.
+            foreach (float liveliness in new[] { 0f, 0.5f, 1f })
+            foreach (float clinginess in new[] { 0f, 1f })
+            {
+                var profile = PetVoice.For(cat, new PetPersonality
+                {
+                    Liveliness = liveliness, Clinginess = clinginess, Curiosity = 1f, Neatness = 0f
+                });
+                Assert.Greater(profile.BaseHz, 60f);
+                Assert.Less(profile.BaseHz, 2000f);
+                Assert.GreaterOrEqual(profile.Syllables, 1);
+                Assert.LessOrEqual(profile.Syllables, 5);
+                Assert.Greater(profile.Gain, 0.1f);
+                Assert.LessOrEqual(profile.Gain, 0.95f);
+            }
+        }
+
+        [Test]
+        public void Voice_MoodColoursTheSameVoice()
+        {
+            var fox = PetSpecies.Get("fox");
+            var personality = new PetPersonality { Liveliness = 0.5f, Clinginess = 0.5f, Curiosity = 0.5f, Neatness = 0.5f };
+
+            var happy = PetVoice.For(fox, personality, PetMood.Happy);
+            var sleepy = PetVoice.For(fox, personality, PetMood.Sleepy);
+
+            Assert.Less(sleepy.BaseHz, happy.BaseHz, "a sleepy pet sounds lower");
+            Assert.Greater(sleepy.SyllableSeconds, happy.SyllableSeconds, "...and slower");
+        }
+
+        [Test]
+        public void Voice_TheSwitchIsHonoured()
+        {
+            bool original = PetVoice.Enabled;
+            try
+            {
+                PetVoice.Enabled = false;
+                Assert.IsFalse(PetVoice.Enabled);
+
+                // The audio director must produce nothing at all when the switch is off: a
+                // half-applied setting is worse than either extreme.
+                var director = PetAudioDirector.Instance;
+                if (director != null)
+                {
+                    Assert.IsNull(director.VoiceFor(PetSpecies.Get("fox"), null, PetMood.Happy));
+                }
+            }
+            finally
+            {
+                PetVoice.Enabled = original;
+            }
+        }
+
+        // -------------------------------------------------------------------- poke
+
+        private static bool IsWarm(PokeReaction reaction)
+            => reaction == PokeReaction.Nuzzle || reaction == PokeReaction.Lean
+               || reaction == PokeReaction.RollOver || reaction == PokeReaction.Purr
+               || reaction == PokeReaction.Hop;
+
+        [Test]
+        public void Poke_AffectionatePersonalityNuzzlesAndAnIndependentOneDodges()
+        {
+            var clingy = new PetPersonality { Liveliness = 0.5f, Clinginess = 0.95f, Curiosity = 0.4f, Neatness = 0.4f };
+            var aloof = new PetPersonality { Liveliness = 0.5f, Clinginess = 0.05f, Curiosity = 0.4f, Neatness = 0.4f };
+
+            var ctx = new PetBehaviorContext
+            {
+                Hunger = 0.9f, Energy = 0.9f, Joy = 0.7f, Cleanliness = 0.8f, Bladder = 0.9f, Affection = 0.5f
+            };
+
+            // Sample the whole roll space: the claim is about the distribution, not one roll.
+            int clingyWarm = 0, aloofWarm = 0;
+            for (int i = 0; i < 100; i++)
+            {
+                float roll = i / 100f;
+
+                ctx.Personality = clingy;
+                if (IsWarm(PetInteraction.Choose(ctx, roll))) clingyWarm++;
+
+                ctx.Personality = aloof;
+                if (IsWarm(PetInteraction.Choose(ctx, roll))) aloofWarm++;
+            }
+
+            Assert.Greater(clingyWarm, aloofWarm,
+                "over the whole roll space a clingy pet reacts warmly more often than an aloof one");
+        }
+
+        [Test]
+        public void Poke_MoodAndNeedsOverrideTemperament()
+        {
+            var bold = new PetPersonality { Liveliness = 0.9f, Clinginess = 0.9f, Curiosity = 0.9f, Neatness = 0.1f };
+
+            var exhausted = new PetBehaviorContext
+            {
+                Energy = 0.05f, Hunger = 0.9f, Joy = 0.7f, Cleanliness = 0.8f, Bladder = 0.9f,
+                Personality = bold
+            };
+            Assert.AreEqual(PokeReaction.Sleepy, PetInteraction.Choose(exhausted, 0.5f),
+                "too tired to care, however affectionate it is");
+
+            var desperate = new PetBehaviorContext
+            {
+                Energy = 0.9f, Hunger = 0.9f, Joy = 0.7f, Cleanliness = 0.8f, Bladder = 0.05f,
+                Personality = bold
+            };
+            Assert.AreEqual(PokeReaction.Dodge, PetInteraction.Choose(desperate, 0.5f),
+                "a pet about to have an accident has somewhere else to be");
+        }
+
+        [Test]
+        public void Poke_EveryReactionHasALineAnActionAndADirection()
+        {
+            foreach (PokeReaction reaction in System.Enum.GetValues(typeof(PokeReaction)))
+            {
+                Assert.IsFalse(string.IsNullOrEmpty(PetInteraction.Line(reaction, "小狐狸", "fox")),
+                    reaction + " has no line");
+                Assert.IsFalse(string.IsNullOrEmpty(PetUtil.ActionLabel(PetInteraction.Action(reaction))));
+
+                if (IsWarm(reaction))
+                {
+                    Assert.Greater(PetInteraction.AffectionDelta(reaction), 0f, reaction + " should warm the bond");
+                    Assert.Greater(PetInteraction.JoyDelta(reaction), 0f, reaction + " should cheer the pet up");
+                }
+            }
+
+            Assert.Less(PetInteraction.JoyDelta(PokeReaction.Yelp), 0f, "a startle is not pleasant");
+            Assert.Less(PetInteraction.AffectionDelta(PokeReaction.Dodge), 0f);
+        }
+
+        // -------------------------------------------------------------- collection
+
+        [Test]
+        public void Wallet_SpendingIsAtomicAndTheRunnerPaysIntoTheSamePot()
+        {
+            int original = DshMobile.PetWallet.Coins;
+            try
+            {
+                DshMobile.PetWallet.Reset();
+                Assert.AreEqual(0, DshMobile.PetWallet.Coins);
+
+                DshMobile.PetWallet.Add(500);
+                Assert.IsFalse(DshMobile.PetWallet.TrySpend(600), "cannot spend what is not there");
+                Assert.AreEqual(500, DshMobile.PetWallet.Coins, "a failed spend must change nothing");
+
+                Assert.IsTrue(DshMobile.PetWallet.TrySpend(200));
+                Assert.AreEqual(300, DshMobile.PetWallet.Coins);
+
+                DshMobile.PetWallet.DepositRunCoins(45);
+                Assert.AreEqual(345, DshMobile.PetWallet.Coins, "the runner pays into the same wallet");
+            }
+            finally
+            {
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(original);
+            }
+        }
+
+        [Test]
+        public void Collection_AFreshSaveStartsWithExactlyOnePetInTheRoom()
+        {
+            var previous = JsonUtility.ToJson(PetCollection.Data);
+            try
+            {
+                PetCollection.ReplaceForTests(new PetCollectionData());
+
+
+                Assert.AreEqual(1, PetCollection.Warehouse.Count, "a pet game with no pet is not a demo");
+                Assert.AreEqual(1, PetCollection.Backpack.Count);
+                Assert.IsNotNull(PetCollection.Primary);
+                Assert.IsTrue(PetCollection.IsSpeciesUnlocked(PetSpecies.All[0].Id), "the starter is owned");
+
+                var companions = PetCollection.Companions();
+                Assert.AreEqual(1, companions.Count, "exactly one pet walks around on a fresh save");
+                Assert.IsTrue(companions[0].Primary);
+            }
+            finally
+            {
+                PetCollection.ReplaceForTests(JsonUtility.FromJson<PetCollectionData>(previous));
+            }
+        }
+
+        [Test]
+        public void Collection_BuyingCostsCoinsAndFillsTheBackpack()
+        {
+            var previous = JsonUtility.ToJson(PetCollection.Data);
+            int original = DshMobile.PetWallet.Coins;
+            try
+            {
+                PetCollection.ReplaceForTests(new PetCollectionData());
+
+
+                var cat = PetSpecies.Get("cat");
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(cat.Price - 1);
+
+                string message;
+                Assert.IsNull(PetCollection.Buy("cat", out message), "cannot buy what you cannot afford");
+                Assert.IsTrue(message.Contains("还差"), "and it says how much is missing");
+
+                DshMobile.PetWallet.Add(1);
+                var bought = PetCollection.Buy("cat", out message);
+                Assert.IsNotNull(bought, "an affordable pet is bought");
+                Assert.AreEqual(0, DshMobile.PetWallet.Coins, "and the coins are gone");
+                Assert.IsTrue(PetCollection.IsSpeciesUnlocked("cat"));
+                Assert.AreEqual(2, PetCollection.Warehouse.Count);
+                Assert.AreEqual(2, PetCollection.Backpack.Count, "a new pet goes straight into the room");
+            }
+            finally
+            {
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(original);
+                PetCollection.ReplaceForTests(JsonUtility.FromJson<PetCollectionData>(previous));
+            }
+        }
+
+        [Test]
+        public void Collection_TheBackpackStopsAtThreeAndNeverEmptiesTheRoom()
+        {
+            var previous = JsonUtility.ToJson(PetCollection.Data);
+            int original = DshMobile.PetWallet.Coins;
+            try
+            {
+                PetCollection.ReplaceForTests(new PetCollectionData());
+
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(100000);
+
+                string message;
+                PetCollection.Buy("cat", out message);
+                PetCollection.Buy("rabbit", out message);
+                Assert.AreEqual(PetCollection.BackpackSlots, PetCollection.Backpack.Count);
+
+                // A fourth pet is still bought — the warehouse has no limit — it simply does not
+                // fit in the backpack, and the panel says so rather than failing silently.
+                var bear = PetCollection.Buy("bear", out message);
+                Assert.IsNotNull(bear);
+                Assert.AreEqual(4, PetCollection.Warehouse.Count);
+                Assert.AreEqual(PetCollection.BackpackSlots, PetCollection.Backpack.Count);
+                Assert.IsFalse(PetCollection.AddToBackpack(bear.Id), "the fourth slot does not exist");
+
+                var full = PetCollectionPanel.PutInBackpack(bear.Id);
+                Assert.IsTrue(full.Error);
+                Assert.IsTrue(full.Message.Contains("背包满了"), "the player is told why");
+
+                Assert.IsTrue(PetCollection.RemoveFromBackpack(PetCollection.Backpack[2]));
+                Assert.IsTrue(PetCollection.RemoveFromBackpack(PetCollection.Backpack[1]));
+                Assert.IsFalse(PetCollection.RemoveFromBackpack(PetCollection.Backpack[0]),
+                    "the room is never left empty");
+                Assert.AreEqual(1, PetCollection.Backpack.Count);
+            }
+            finally
+            {
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(original);
+                PetCollection.ReplaceForTests(JsonUtility.FromJson<PetCollectionData>(previous));
+            }
+        }
+
+        [Test]
+        public void Collection_RecordsKeepTheirOwnTemperament()
+        {
+            // Two cats are two animals: the whole reason for owning more than one is that they
+            // are not the same cat.
+            var first = PetRecord.Create("cat", "", PetPersonality.Create(11), 1);
+            var second = PetRecord.Create("cat", "", PetPersonality.Create(99), 2);
+
+            Assert.AreNotEqual(first.Id, second.Id);
+            Assert.AreNotEqual(first.Personality.Serialize(), second.Personality.Serialize());
+            Assert.AreEqual("小猫咪", first.Name, "an unnamed pet falls back to its species");
+
+            var record = PetRecord.Create("fox", "豆豆", new PetPersonality { Neatness = 0.8f }, 3);
+            Assert.AreEqual("豆豆", record.Name);
+            Assert.AreEqual(0.8f, record.Personality.Neatness, 0.001f);
+        }
+
+        [Test]
+        public void Collection_SurvivesASaveLoadRoundTrip()
+        {
+            var data = new PetCollectionData();
+            var record = PetRecord.Create("rabbit", "团子", PetPersonality.Create(5), 9);
+            record.Primary = true;
+            data.Pets.Add(record);
+            data.Backpack.Add(record.Id);
+            data.UnlockedSpecies.Add("rabbit");
+
+            var parsed = JsonUtility.FromJson<PetCollectionData>(JsonUtility.ToJson(data));
+
+            Assert.AreEqual(1, parsed.Pets.Count);
+            Assert.AreEqual("团子", parsed.Pets[0].Name);
+            Assert.AreEqual(record.Liveliness, parsed.Pets[0].Liveliness, 0.001f);
+            Assert.IsTrue(parsed.Pets[0].Primary);
+            Assert.AreEqual(record.Id, parsed.Backpack[0]);
+        }
+
+        [Test]
+        public void Collection_TheTokenAdviceIsHonestAboutExtraPets()
+        {
+            Assert.IsTrue(PetCollectionPanel.TokenAdvice(1).Contains("建议只放一只"));
+            Assert.IsTrue(PetCollectionPanel.TokenAdvice(3).Contains("token"),
+                "the player is about to spend money; the panel has to say so");
+        }
+
         // ---------------------------------------------------------- button fit
 
         [Test]

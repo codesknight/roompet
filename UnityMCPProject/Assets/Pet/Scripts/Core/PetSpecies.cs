@@ -36,6 +36,18 @@ namespace DshPet
         public string FavoriteFood = "苹果";
 
         /// <summary>
+        /// Shop price in pet coins. The starting species is free; the rest have to be earned.
+        ///
+        /// The first animal is free on purpose: a pet game that opens with a paywall has no
+        /// first five minutes. Everything after that is a goal, and the runner already pays
+        /// coins for distance, so the two halves of the game feed each other.
+        /// </summary>
+        public int Price;
+
+        /// <summary>True when a fresh save already owns this species.</summary>
+        public bool Starter;
+
+        /// <summary>
         /// A private copy, for storing in a serialized field.
         ///
         /// Never assign an entry of <see cref="All"/> directly to a MonoBehaviour's field:
@@ -71,7 +83,7 @@ namespace DshPet
                 BodyScale = 1f, BodyLength = 0.34f, HeadScale = 0.30f,
                 Ears = EarStyle.Pointy, Tail = TailStyle.Bushy,
                 EarLength = 0.17f, TailLength = 0.32f,
-                FavoriteFood = "苹果",
+                FavoriteFood = "苹果", Price = 0, Starter = true,
                 Personality = "机灵、好奇心重、喜欢探索新东西，偶尔有点小得意和逞强，但很在意主人。",
                 VoiceStyle = "说话轻快、句子短，爱用「诶？」「你看！」这类语气，偶尔自夸一句。"
             },
@@ -84,7 +96,7 @@ namespace DshPet
                 BodyScale = 0.94f, BodyLength = 0.32f, HeadScale = 0.29f,
                 Ears = EarStyle.Pointy, Tail = TailStyle.Curly,
                 EarLength = 0.14f, TailLength = 0.34f,
-                FavoriteFood = "小鱼干",
+                FavoriteFood = "小鱼干", Price = 260,
                 Personality = "表面高冷、爱答不理，其实很黏人。被摸的时候会假装不情愿，但尾巴会出卖它。",
                 VoiceStyle = "说话很短，常带「哼」「随便」「才不是」这类傲娇口吻，很少连续说三句以上。"
             },
@@ -97,7 +109,7 @@ namespace DshPet
                 BodyScale = 0.86f, BodyLength = 0.28f, HeadScale = 0.27f,
                 Ears = EarStyle.Long, Tail = TailStyle.Puff,
                 EarLength = 0.26f, TailLength = 0.12f,
-                FavoriteFood = "胡萝卜",
+                FavoriteFood = "胡萝卜", Price = 420,
                 Personality = "温柔、胆小，容易被突然的动静吓到，需要慢慢哄。熟悉之后会非常依赖你。",
                 VoiceStyle = "说话软软的、句子短，常用「嗯…」「那个…」，紧张时会重复你的话。"
             },
@@ -110,7 +122,7 @@ namespace DshPet
                 BodyScale = 1.18f, BodyLength = 0.38f, HeadScale = 0.34f,
                 Ears = EarStyle.Round, Tail = TailStyle.Short,
                 EarLength = 0.09f, TailLength = 0.10f,
-                FavoriteFood = "蜂蜜",
+                FavoriteFood = "蜂蜜", Price = 680,
                 Personality = "憨厚、慢性子、非常贪吃。思考事情要慢半拍，但脾气特别好，被欺负也不生气。",
                 VoiceStyle = "说话慢、爱用「唔…」「那个…那个…」，三句里有两句会提到吃的。"
             }

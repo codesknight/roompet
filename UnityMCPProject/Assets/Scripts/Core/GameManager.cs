@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 
 namespace DshRunner
@@ -153,6 +153,15 @@ namespace DshRunner
             ProgressStore.BestScore = snap.Score;
             ProgressStore.BestDistance = snap.Distance;
             ProgressStore.AddCoins(snap.Coins);
+
+            // The same coins, in the currency the pet shop reads.
+            //
+            // The two scenes deliberately do not reference each other's assemblies, so the
+            // bridge is a tiny shared layer rather than a call into the pet game: the runner
+            // pays into the wallet, the pet room spends out of it, and neither needs to know
+            // the other exists. Without this the runner's coins were a private score that
+            // bought nothing.
+            DshMobile.PetWallet.DepositRunCoins(snap.Coins);
 
             if (Level != null && !Level.Endless)
             {

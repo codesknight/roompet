@@ -3,6 +3,7 @@
     "rootNamespace": "DshPet.Tests",
     "references": [
         "DshPet",
+        "DshMobile",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

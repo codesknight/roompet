@@ -59,7 +59,7 @@ namespace DshPet
         private AudioSource _chirp;
 
         private readonly Dictionary<SfxId, AudioClip> _clips = new Dictionary<SfxId, AudioClip>();
-        private readonly Dictionary<PetMood, AudioClip> _voices = new Dictionary<PetMood, AudioClip>();
+        private readonly Dictionary<string, AudioClip> _voices = new Dictionary<string, AudioClip>();
         private AudioClip _ambientClip;
 
         private float _birdTimer;
@@ -150,9 +150,22 @@ namespace DshPet
         /// keeps repeated lines from sounding looped.</summary>
         public void Speak(PetMood mood, float volume = 1f)
         {
-            if (Muted) return;
+            var gm = PetGameManager.Instance;
+            Speak(gm != null ? gm.Species : null, gm != null ? gm.Personality : null, mood, volume);
+        }
 
-            var clip = Voice(mood);
+        /// <summary>
+        /// The pet's voice, in its own register.
+        ///
+        /// Takes the species and temperament explicitly rather than reading them off the
+        /// manager, so the companions walking around the room (which have no manager state of
+        /// their own) can speak in their own voice too.
+        /// </summary>
+        public void Speak(PetSpecies species, PetPersonality personality, PetMood mood, float volume = 1f)
+        {
+            if (Muted || !PetVoice.Enabled) return;
+
+            var clip = VoiceFor(species, personality, mood);
             if (clip == null) return;
 
             LastPlayed = "voice:" + mood;
@@ -302,43 +315,44 @@ namespace DshPet
         }
 
         /// <summary>
-        /// The pet's chirp for a mood. A swept carrier plus vibrato and a second harmonic —
-        /// the shape is what reads as an animal rather than a beep.
+        /// The pet's chirp, built from its own voice profile.
+        ///
+        /// The profile carries everything the sound needs — register, slide, wobble, syllable
+        /// count — so this is a synthesiser rather than a table of moods, and a cat and a bear
+        /// are recognisable without any recorded audio. See <see cref="PetVoice"/> for where
+        /// those numbers come from.
         /// </summary>
-        private AudioClip Voice(PetMood mood)
+        public AudioClip VoiceFor(PetSpecies species, PetPersonality personality, PetMood mood)
         {
-            if (_voices.TryGetValue(mood, out var cached) && cached != null) return cached;
+            if (!PetVoice.Enabled) return null;
 
-            float baseHz, endRatio, duration, vibratoHz, vibratoDepth, harmonic;
-            int pulses;
+            var profile = PetVoice.For(species, personality, mood);
+            string key = VoiceKey(species, profile);
+            if (_voices.TryGetValue(key, out var cached) && cached != null) return cached;
 
-            switch (mood)
+            var parts = new float[Mathf.Max(1, profile.Syllables)][];
+            for (int i = 0; i < parts.Length; i++)
             {
-                case PetMood.Excited: baseHz = 640f; endRatio = 1.55f; duration = 0.22f; vibratoHz = 30f; vibratoDepth = 0.05f; harmonic = 0.42f; pulses = 1; break;
-                case PetMood.Happy: baseHz = 520f; endRatio = 1.38f; duration = 0.28f; vibratoHz = 18f; vibratoDepth = 0.035f; harmonic = 0.35f; pulses = 1; break;
-                case PetMood.Content: baseHz = 430f; endRatio = 1.10f; duration = 0.30f; vibratoHz = 10f; vibratoDepth = 0.02f; harmonic = 0.28f; pulses = 1; break;
-                case PetMood.Bored: baseHz = 380f; endRatio = 0.80f; duration = 0.42f; vibratoHz = 6f; vibratoDepth = 0.015f; harmonic = 0.22f; pulses = 1; break;
-                case PetMood.Lonely: baseHz = 450f; endRatio = 0.72f; duration = 0.52f; vibratoHz = 8f; vibratoDepth = 0.03f; harmonic = 0.20f; pulses = 1; break;
-                case PetMood.Hungry: baseHz = 500f; endRatio = 1.05f; duration = 0.20f; vibratoHz = 24f; vibratoDepth = 0.05f; harmonic = 0.40f; pulses = 2; break;
-                case PetMood.Sleepy: baseHz = 300f; endRatio = 0.68f; duration = 0.58f; vibratoHz = 4f; vibratoDepth = 0.012f; harmonic = 0.16f; pulses = 1; break;
-                case PetMood.Dirty: baseHz = 400f; endRatio = 0.90f; duration = 0.40f; vibratoHz = 9f; vibratoDepth = 0.035f; harmonic = 0.30f; pulses = 1; break;
-                default: baseHz = 440f; endRatio = 1.0f; duration = 0.3f; vibratoHz = 12f; vibratoDepth = 0.02f; harmonic = 0.3f; pulses = 1; break;
+                // Each syllable starts a little higher and lands on the slide, so a multi-part
+                // call reads as speech rather than as the same blip repeated.
+                float start = profile.BaseHz * (1f + i * 0.05f);
+                float end = start + profile.SlideHz;
+                parts[i] = ProceduralAudio.Tone(start, end, profile.SyllableSeconds,
+                    0.02f, profile.SyllableSeconds * 0.5f, profile.Harmonic,
+                    profile.VibratoHz, profile.VibratoDepth);
             }
 
-            var parts = new float[pulses][];
-            for (int i = 0; i < pulses; i++)
-            {
-                parts[i] = ProceduralAudio.Tone(baseHz, baseHz * endRatio, duration,
-                    0.02f, duration * 0.45f, harmonic, vibratoHz, vibratoDepth);
-            }
+            var samples = parts.Length == 1 ? parts[0] : ProceduralAudio.Concat(parts);
+            ProceduralAudio.Normalize(samples, profile.Gain);
 
-            var samples = pulses == 1 ? parts[0] : ProceduralAudio.Concat(parts);
-            ProceduralAudio.Normalize(samples, 0.75f);
-
-            var clip = ProceduralAudio.ToClip("pet_voice_" + mood, samples);
-            _voices[mood] = clip;
+            var clip = ProceduralAudio.ToClip("pet_voice_" + key, samples);
+            _voices[key] = clip;
             return clip;
         }
+
+        private static string VoiceKey(PetSpecies species, PetVoiceProfile profile)
+            => $"{(species != null ? species.Id : "x")}_{profile.BaseHz:F0}_{profile.SlideHz:F0}_" +
+               $"{profile.Syllables}_{profile.SyllableSeconds:F2}_{profile.Harmonic:F2}";
 
         /// <summary>A quiet room bed: filtered noise with a slow swell, looped.</summary>
         private static float[] BuildAmbient(float seconds)
