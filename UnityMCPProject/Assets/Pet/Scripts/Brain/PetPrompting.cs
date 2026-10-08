@@ -31,6 +31,12 @@ namespace DshPet
             sb.AppendLine();
             sb.AppendLine("【你的性格】");
             sb.AppendLine(Fallback(ctx.Personality, "活泼、亲人。"));
+            if (!string.IsNullOrEmpty(ctx.Temperament))
+            {
+                // The per-pet temperament sits under the species persona: the species says what
+                // kind of animal this is, the temperament says which individual it is.
+                sb.AppendLine(ctx.Temperament);
+            }
             sb.AppendLine();
             sb.AppendLine("【你说话的方式】");
             sb.AppendLine(Fallback(ctx.VoiceStyle, "用口语短句。"));
@@ -38,6 +44,14 @@ namespace DshPet
             sb.AppendLine("【你现在的状态】");
             sb.AppendLine($"心情：{PetUtil.MoodLabel(ctx.Mood)}");
             sb.AppendLine($"饱食度：{ctx.Hunger:P0}　精力：{ctx.Energy:P0}　开心度：{ctx.Joy:P0}　干净：{ctx.Cleanliness:P0}");
+            if (ctx.Bladder < 0.35f)
+            {
+                // Only worth mentioning when it is nearly urgent, and phrased as a feeling:
+                // a pet that announces its bladder on every turn reads as a status readout.
+                sb.AppendLine(ctx.Bladder < 0.18f
+                    ? "你现在憋得很难受，坐都坐不住，想赶快去猫砂盆。"
+                    : "你有点想上厕所了。");
+            }
             sb.AppendLine($"和主人的亲密度：{ctx.Affection:P0}");
             if (!string.IsNullOrEmpty(ctx.DominantNeed))
             {

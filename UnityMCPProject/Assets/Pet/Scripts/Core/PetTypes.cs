@@ -32,14 +32,17 @@ namespace DshPet
         Bored,
         Content,
         Happy,
-        Excited
+        Excited,
+
+        /// <summary>Holding it in and looking for the tray — the one mood with a deadline.</summary>
+        NeedsToilet
     }
 
     public enum EarStyle { Pointy, Round, Long, Small }
 
     public enum TailStyle { Bushy, Curly, Puff, Short }
 
-    public enum InteractableKind { Food, Water, Ball, Bed, Brush, Toy, Door }
+    public enum InteractableKind { Food, Water, Ball, Bed, Brush, Toy, Door, Toilet, Bath, Mess }
 
     /// <summary>One turn of the conversation.</summary>
     [Serializable]
@@ -104,6 +107,7 @@ namespace DshPet
         public float Energy;
         public float Joy;
         public float Cleanliness;
+        public float Bladder;
         public float Affection;
         public string DominantNeed;
         /// <summary>Recent conversation, oldest first. Used both for the prompt text and
@@ -113,6 +117,11 @@ namespace DshPet
         /// <summary>Compact summary of the last few days from the journal.</summary>
         public string DayDigest;
         public string LastInteraction;
+
+        /// <summary>This pet's temperament, as a paragraph for the prompt.</summary>
+        public string Temperament;
+        /// <summary>Short archetype name, for the HUD and for the model's self-image.</summary>
+        public string Archetype;
 
         /// <summary>Player-authored text appended to the system prompt (see PetBrainConfig).</summary>
         public string ExtraInstructions;
@@ -127,6 +136,7 @@ namespace DshPet
         public float Energy;
         public float Joy;
         public float Cleanliness;
+        public float Bladder;
         public float Affection;
         public float MoodScore;
         public string DominantNeed;
@@ -171,6 +181,7 @@ namespace DshPet
                 case PetMood.Sleepy: return "困了";
                 case PetMood.Hungry: return "饿了";
                 case PetMood.Dirty: return "脏兮兮";
+                case PetMood.NeedsToilet: return "憋不住了";
                 case PetMood.Lonely: return "想你了";
                 case PetMood.Bored: return "有点无聊";
                 case PetMood.Content: return "还行";

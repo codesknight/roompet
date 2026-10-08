@@ -21,6 +21,13 @@ namespace DshPet
         public float Joy = 0.7f;
         public float Cleanliness = 0.9f;
 
+        /// <summary>
+        /// How empty the pet is, 1 being comfortable. Fills up from eating and drinking, and
+        /// unlike the other needs it cannot simply be ignored: past zero the pet has an
+        /// accident in the room, which leaves a mess the player has to clean up.
+        /// </summary>
+        public float Bladder = 0.9f;
+
         /// <summary>Long-term bond, 0..1. Only grows, and only from attention.</summary>
         public float Affection = 0.1f;
 
@@ -30,10 +37,17 @@ namespace DshPet
         public const float JoyPeriod = 240f;
         public const float CleanPeriod = 600f;
 
+        /// <summary>Bladder is not time-based; this is only the trickle of a slow metabolism.</summary>
+        public const float BladderPeriod = 900f;
+
         public float HungerRate => 1f / HungerPeriod;
         public float EnergyRate => 1f / EnergyPeriod;
         public float JoyRate => 1f / JoyPeriod;
         public float CleanRate => 1f / CleanPeriod;
+        public float BladderRate => 1f / BladderPeriod;
+
+        /// <summary>Set by the owner each frame: the pet's temperament scales the decay.</summary>
+        public PetPersonality Personality;
 
         public void Tick(float deltaSeconds)
         {
@@ -41,14 +55,20 @@ namespace DshPet
             float dt = deltaSeconds * Mathf.Max(0.01f, DecayScale);
 
             Hunger = Mathf.Clamp01(Hunger - HungerRate * dt);
-            Cleanliness = Mathf.Clamp01(Cleanliness - CleanRate * dt);
+
+            float cleanRate = CleanRate * (Personality != null ? Personality.CleanDrainScale : 1f);
+            Cleanliness = Mathf.Clamp01(Cleanliness - cleanRate * dt);
+
+            Bladder = Mathf.Clamp01(Bladder - BladderRate * dt);
 
             // Energy drains faster while awake and restless, and recovers while asleep.
-            float energyDrain = EnergyRate * dt * (Joy < 0.3f ? 1.35f : 1f);
+            float energyScale = Personality != null ? Personality.EnergyDrainScale : 1f;
+            float energyDrain = EnergyRate * dt * energyScale * (Joy < 0.3f ? 1.35f : 1f);
             Energy = Mathf.Clamp01(Energy - energyDrain);
 
             // Joy sags faster when the pet is hungry or filthy: neglect compounds.
-            float joyDrain = JoyRate * dt * (Hunger < 0.3f ? 1.4f : 1f) * (Cleanliness < 0.3f ? 1.3f : 1f);
+            float joyScale = Personality != null ? Personality.JoyDrainScale : 1f;
+            float joyDrain = JoyRate * dt * joyScale * (Hunger < 0.3f ? 1.4f : 1f) * (Cleanliness < 0.3f ? 1.3f : 1f);
             Joy = Mathf.Clamp01(Joy - joyDrain);
         }
 
@@ -56,12 +76,36 @@ namespace DshPet
         {
             Hunger = Mathf.Clamp01(Hunger + amount);
             Joy = Mathf.Clamp01(Joy + amount * 0.15f);
+
+            // Eating and drinking are what fill the bladder; a well-fed pet needs the tray
+            // sooner, which is the whole point of the loop.
+            Bladder = Mathf.Clamp01(Bladder - amount * 0.35f);
         }
 
         public void GiveWater(float amount = 0.3f)
         {
             Hunger = Mathf.Clamp01(Hunger + amount * 0.35f);
             Joy = Mathf.Clamp01(Joy + amount * 0.1f);
+            Bladder = Mathf.Clamp01(Bladder - amount * 0.45f);
+        }
+
+        /// <summary>Relief at the litter tray. Also a small comfort — a pet that has been
+        /// holding it is visibly happier afterwards.</summary>
+        public void Relieve()
+        {
+            Bladder = 1f;
+            Joy = Mathf.Clamp01(Joy + 0.12f);
+        }
+
+        /// <summary>
+        /// The pet could not hold it. Costs cleanliness and joy, and — unlike the other needs —
+        /// leaves something in the room for the player to deal with.
+        /// </summary>
+        public void Accident()
+        {
+            Bladder = 1f;
+            Cleanliness = Mathf.Clamp01(Cleanliness - 0.35f);
+            Joy = Mathf.Clamp01(Joy - 0.20f);
         }
 
         public void Sleep(float seconds)
@@ -75,6 +119,7 @@ namespace DshPet
         /// </summary>
         public void Play(float amount = 0.35f, bool fromPlayer = true)
         {
+            if (Personality != null) amount *= Personality.PlayJoyScale;
             Joy = Mathf.Clamp01(Joy + amount);
             Energy = Mathf.Clamp01(Energy - amount * 0.35f);
             Hunger = Mathf.Clamp01(Hunger - amount * 0.15f);
@@ -102,7 +147,10 @@ namespace DshPet
         /// <summary>Weighted 0..1 wellbeing. Affection nudges it because a bonded pet is
         /// happier at the same need levels.</summary>
         public float MoodScore =>
-            Hunger * 0.30f + Energy * 0.25f + Joy * 0.30f + Cleanliness * 0.15f;
+            Hunger * 0.28f + Energy * 0.22f + Joy * 0.27f + Cleanliness * 0.13f + Bladder * 0.10f;
+
+        /// <summary>True when the pet is about to have an accident if it cannot reach the tray.</summary>
+        public bool BladderCritical => Bladder < 0.18f;
 
         /// <summary>The need most worth acting on, or an empty string when comfortable.</summary>
         public string DominantNeed
@@ -111,6 +159,7 @@ namespace DshPet
             {
                 float worst = 0.45f;
                 string name = "";
+                if (Bladder < 0.35f) { worst = Bladder; name = "想上厕所"; }
                 if (Hunger < worst) { worst = Hunger; name = "饿了"; }
                 if (Energy < worst) { worst = Energy; name = "困了"; }
                 if (Joy < worst) { worst = Joy; name = "想玩"; }
@@ -123,6 +172,7 @@ namespace DshPet
         {
             get
             {
+                if (Bladder < 0.14f) return PetMood.NeedsToilet;
                 if (Energy < 0.20f) return PetMood.Sleepy;
                 if (Hunger < 0.20f) return PetMood.Hungry;
                 if (Cleanliness < 0.25f) return PetMood.Dirty;
@@ -140,6 +190,7 @@ namespace DshPet
             Energy = Energy,
             Joy = Joy,
             Cleanliness = Cleanliness,
+            Bladder = Bladder,
             Affection = Affection,
             MoodScore = MoodScore,
             DominantNeed = DominantNeed
@@ -151,6 +202,7 @@ namespace DshPet
             Energy = status.Energy;
             Joy = status.Joy;
             Cleanliness = status.Cleanliness;
+            Bladder = status.Bladder;
             Affection = status.Affection;
         }
     }

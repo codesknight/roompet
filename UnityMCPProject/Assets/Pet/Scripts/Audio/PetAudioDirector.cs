@@ -20,7 +20,13 @@ namespace DshPet
         Bird,
         PickUp,
         Wag,
-        Footstep
+        Footstep,
+
+        /// <summary>Water splashing: the bath, and the pet shaking itself dry.</summary>
+        Splash,
+
+        /// <summary>The small unhappy whine used for accidents and grumbling.</summary>
+        Whine
     }
 
     /// <summary>
@@ -260,6 +266,20 @@ namespace DshPet
 
                 case SfxId.Wag:
                     samples = ProceduralAudio.Arpeggio(new[] { 620f, 760f }, 0.06f, 0.22f);
+                    break;
+
+                case SfxId.Splash:
+                {
+                    // A downward chirp over pink noise: the chirp alone sounds like a synth
+                    // blip, the noise alone like static, and together they read as water.
+                    var spray = ProceduralAudio.Noise(0.34f, NoiseColor.Pink, 0.002f, 0.16f, 7411);
+                    var drop = ProceduralAudio.Tone(1400f, 320f, 0.18f, 0.001f, 0.07f, 0.35f);
+                    samples = ProceduralAudio.Mix(spray, drop, 0.55f);
+                    break;
+                }
+
+                case SfxId.Whine:
+                    samples = ProceduralAudio.Tone(520f, 300f, 0.42f, 0.05f, 0.2f, 0.28f, 5f, 0.03f);
                     break;
 
                 case SfxId.Bird:

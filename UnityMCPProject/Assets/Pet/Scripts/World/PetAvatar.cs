@@ -300,6 +300,8 @@ namespace DshPet
             for (int i = transform.childCount - 1; i >= 0; i--) RemovePart(transform.GetChild(i).gameObject);
             _hips.Clear();
             _rig = _body = _head = _tail = _tailMid = _earLeft = _earRight = _shadow = null;
+            _mudSpots = null;
+            _dirtiness = -1f;
             _built = false;
         }
 
@@ -378,6 +380,76 @@ namespace DshPet
 
         /// <summary>0 = standing still, 1 = full walking speed.</summary>
         public void SetLocomotion(float amount) => _locomotion = Mathf.Clamp01(amount);
+
+        // ------------------------------------------------------------------ dirtiness
+
+        private Transform[] _mudSpots;
+        private float _dirtiness = -1f;
+
+        /// <summary>
+        /// How grubby the pet looks, 0..1. Drives a handful of small mud patches on the body.
+        ///
+        /// Shown on the model rather than only as a bar in the HUD because "the pet is filthy"
+        /// is the kind of state a player should notice across the room — a number that quietly
+        /// sinks in a panel is exactly how a pet ends up never being bathed.
+        /// </summary>
+        public void SetDirtiness(float value)
+        {
+            value = Mathf.Clamp01(value);
+            if (Mathf.Abs(value - _dirtiness) < 0.02f) return;
+            _dirtiness = value;
+
+            EnsureMudSpots();
+            if (_mudSpots == null) return;
+
+            int visible = Mathf.RoundToInt(Mathf.Lerp(0f, _mudSpots.Length, value));
+            for (int i = 0; i < _mudSpots.Length; i++)
+            {
+                if (_mudSpots[i] != null) _mudSpots[i].gameObject.SetActive(i < visible);
+            }
+        }
+
+        private void EnsureMudSpots()
+        {
+            if (_mudSpots != null || _body == null) return;
+
+            // Placed in the body's local space so they ride every animation, and kept to the
+            // flanks and shoulders where a real animal picks up dirt.
+            var offsets = new[]
+            {
+                new Vector3(0.34f, 0.16f, 0.10f),
+                new Vector3(-0.34f, 0.04f, -0.14f),
+                new Vector3(0.20f, -0.18f, -0.30f),
+                new Vector3(-0.18f, 0.22f, 0.34f),
+                new Vector3(0.30f, -0.06f, 0.42f)
+            };
+
+            _mudSpots = new Transform[offsets.Length];
+            for (int i = 0; i < offsets.Length; i++)
+            {
+                var spot = Mesh("Mud" + i, MudMaterial(), _body, offsets[i], Vector3.one * 0.16f);
+                spot.gameObject.SetActive(false);
+                _mudSpots[i] = spot;
+            }
+        }
+
+        /// <summary>
+        /// The dirt material, built once and shared.
+        ///
+        /// Deliberately flat and slightly larger than the surface it sits on: a patch that
+        /// z-fights with the fur reads as a rendering bug rather than as mud.
+        /// </summary>
+        private Material _mudMaterial;
+
+        private Material MudMaterial()
+        {
+            if (_mudMaterial != null) return _mudMaterial;
+
+            var shader = Shader.Find("DSH/Neon");
+            _mudMaterial = new Material(shader != null ? shader : Shader.Find("Standard"));
+            _mudMaterial.color = new Color(0.35f, 0.27f, 0.19f);
+            return _mudMaterial;
+        }
 
         public void FaceTowards(Vector3 worldPoint, float smoothing = -1f)
         {

@@ -75,11 +75,17 @@ namespace DshRunner
 
             DshMobile.MobileTouch.PlayInputEnabled = gm.State == GameState.Playing;
 
+            if (gm.State == GameState.Playing) MaybeArmGestureHint();
+
             switch (gm.State)
             {
                 case GameState.Menu: DrawMenu(gm); break;
                 case GameState.LevelSelect: DrawLevelSelect(gm); break;
-                case GameState.Playing: DrawHud(gm); DrawTouchControls(gm, scale, safe); break;
+                case GameState.Playing:
+                    DrawHud(gm);
+                    DrawTouchControls(gm, scale, safe);
+                    DrawGestureHint();
+                    break;
                 case GameState.Paused: DrawHud(gm); DrawTouchControls(gm, scale, safe); DrawPaused(gm); break;
                 case GameState.GameOver: DrawGameOver(gm); break;
                 case GameState.LevelComplete: DrawLevelComplete(gm); break;
@@ -89,12 +95,30 @@ namespace DshRunner
         }
 
         /// <summary>
-        /// On-screen runner controls.
+        /// A modal panel for the menus.
         ///
-        /// Swiping is the primary gesture (swipe left/right to change lane, up to jump, down
-        /// to slide, tap to jump — see <see cref="DshRunner.PlayerController"/>); these
-        /// buttons are for players who prefer holding a control, and they work simultaneously
-        /// with a swipe because they go through the multi-touch layer rather than IMGUI.
+        /// GUI.skin.box is translucent, so the forest showed straight through the menu and the
+        /// text fought the treeline for contrast. A rounded, opaque panel with a shadow is both
+        /// readable and the difference between "a debug window over a game" and "a game menu".
+        /// </summary>
+        private static void MenuPanel(Rect rect)
+        {
+            DshMobile.UiSkin.Panel(rect, 18f, new Color(0.09f, 0.10f, 0.13f, 0.97f),
+                new Color(1f, 1f, 1f, 0.14f), 2f, shadow: true);
+        }
+
+        /// <summary>
+        /// On-screen runner controls: pause, and nothing else.
+        ///
+        /// The lane/jump/slide buttons are gone. They sat in the bottom corners, which is
+        /// exactly where a thumb rests while swiping, so the buttons and the gesture fought
+        /// each other and the screen was permanently cluttered with four large rectangles that
+        /// the player did not need once they had learned the swipes. Movement is gesture-only
+        /// now — swipe left/right to change lane, up or tap to jump, down to slide — which is
+        /// how every runner on a phone works.
+        ///
+        /// A first-run hint fades in over the first seconds of a run to teach that (see
+        /// <see cref="DrawGestureHint"/>); after that the screen belongs to the game.
         /// </summary>
         private void DrawTouchControls(GameManager gm, float scale, Rect safe)
         {
@@ -104,24 +128,6 @@ namespace DshRunner
             // this tells them how the two relate. See DshMobile.MobileWidgets.
             DshMobile.MobileWidgets.BeginFrame(scale, new Vector2(safe.x, safe.y));
 
-            float size = TouchButtonSize;
-            float gap = 12f;
-            float bottom = TouchButtonRowTop;
-
-            var left = new Rect(20f, bottom, size, size);
-            var right = new Rect(left.xMax + gap, bottom, size, size);
-            var jump = new Rect(W - 20f - size, bottom, size, size);
-            var slide = new Rect(jump.x - gap - size, bottom, size, size);
-
-            DshMobile.MobileWidgets.Button(DshMobile.MobileButtonIds.RunnerLeft,
-                left, "◀", new Color(0.35f, 0.55f, 0.85f));
-            DshMobile.MobileWidgets.Button(DshMobile.MobileButtonIds.RunnerRight,
-                right, "▶", new Color(0.35f, 0.55f, 0.85f));
-            DshMobile.MobileWidgets.Button(DshMobile.MobileButtonIds.RunnerJump,
-                jump, "跳", new Color(0.35f, 0.72f, 0.45f));
-            DshMobile.MobileWidgets.Button(DshMobile.MobileButtonIds.RunnerSlide,
-                slide, "滑", new Color(0.85f, 0.62f, 0.30f));
-
             // Pause sits top-right, out of both thumbs' way.
             var pause = new Rect(W - 20f - DshMobile.MobileUi.Touchable(64f), 16f,
                 DshMobile.MobileUi.Touchable(64f), DshMobile.MobileUi.Touchable(44f));
@@ -130,6 +136,61 @@ namespace DshRunner
             {
                 gm.TogglePause();
             }
+        }
+
+        /// <summary>
+        /// The swipe tutorial, shown over the first seconds of the first run.
+        ///
+        /// Drawn only while <see cref="_gestureHintUntil"/> is in the future, and faded out so
+        /// it never has to be dismissed. It exists because removing the buttons removes the only
+        /// place the controls were explained.
+        /// </summary>
+        private void DrawGestureHint()
+        {
+            float remaining = _gestureHintUntil - Time.unscaledTime;
+            if (remaining <= 0f) return;
+
+            float alpha = Mathf.Clamp01(remaining / 1.2f) * Mathf.Clamp01((GestureHintSeconds - remaining) / 0.5f);
+            if (alpha <= 0.01f) return;
+
+            var panel = new Rect(W * 0.5f - 240f, H * 0.5f - 60f, 480f, 120f);
+            var previous = GUI.color;
+            GUI.color = new Color(1f, 1f, 1f, alpha);
+
+            DshMobile.UiSkin.Panel(panel, 18f, new Color(0.07f, 0.08f, 0.11f, 0.78f),
+                new Color(1f, 1f, 1f, 0.18f), 2f);
+
+            var style = new GUIStyle(_hudSmall) { alignment = TextAnchor.MiddleCenter, fontSize = 20 };
+            var big = new GUIStyle(_title) { fontSize = 26 };
+
+            GUI.Label(new Rect(panel.x, panel.y + 14f, panel.width, 30f), "滑动屏幕来操作", big);
+            GUI.Label(new Rect(panel.x, panel.y + 52f, panel.width, 26f),
+                "← → 换道　　↑ 或点一下 跳跃（按住更高）　　↓ 滑铲", style);
+            GUI.Label(new Rect(panel.x, panel.y + 80f, panel.width, 24f), "也可以直接点屏幕跳跃", _hudSmall);
+
+            GUI.color = previous;
+        }
+
+        /// <summary>Seconds the swipe tutorial stays on screen at the start of a run.</summary>
+        private const float GestureHintSeconds = 5.5f;
+
+        private static float _gestureHintUntil;
+        private static bool _gestureHintShown;
+
+        /// <summary>
+        /// Arms the tutorial the first time a run starts.
+        ///
+        /// Once per launch rather than once per run: a player who restarts after dying does not
+        /// need the controls explained again, and a hint that reappears every thirty seconds is
+        /// just an obstruction.
+        /// </summary>
+        private static void MaybeArmGestureHint()
+        {
+            if (!DshMobile.MobileUi.UseTouchControls) return;
+            if (_gestureHintShown) return;
+
+            _gestureHintShown = true;
+            _gestureHintUntil = Time.unscaledTime + GestureHintSeconds;
         }
 
         // ------------------------------------------------------------------- in-game
@@ -168,7 +229,7 @@ namespace DshRunner
             // the half of it describing the on-screen buttons.
             bool touch = DshMobile.MobileUi.UseTouchControls;
             string hint = touch
-                ? "滑动换道 · 上滑/点击跳跃 · 下滑滑铲 · 也可用按钮"
+                ? "滑动换道 · 上滑或点击跳跃 · 下滑滑铲"
                 : "A/D 或 ←/→ 换道    W/↑/空格 跳跃    S/↓ 滑铲    P/Esc 暂停";
 
             float hintY = touch ? TouchButtonRowTop - 26f : H - 30f;
@@ -207,10 +268,19 @@ namespace DshRunner
 
             if (GUI.Button(new Rect(W - 168f, y, 148f, 30f), "返回宠物小屋"))
             {
-                PlayerPrefs.SetInt(AwayFlagKey, 0);
-                PlayerPrefs.Save();
-                UnityEngine.SceneManagement.SceneManager.LoadScene(RoomSceneName);
+                ReturnToRoom();
             }
+        }
+
+        /// <summary>
+        /// Goes back to the pet room and clears the "away" flag, so the pet's HUD stops
+        /// offering to bring the player home.
+        /// </summary>
+        public static void ReturnToRoom()
+        {
+            PlayerPrefs.SetInt(AwayFlagKey, 0);
+            PlayerPrefs.Save();
+            UnityEngine.SceneManagement.SceneManager.LoadScene(RoomSceneName);
         }
 
         private const string AwayFlagKey = "dshpet.away";
@@ -269,10 +339,10 @@ namespace DshRunner
         private void DrawMenu(GameManager gm)
         {
             float w = 460f;
-            float h = 420f;
+            float h = 470f;
             var rect = new Rect(W * 0.5f - w * 0.5f, H * 0.5f - h * 0.5f, w, h);
 
-            GUI.Box(rect, GUIContent.none, _panel);
+            MenuPanel(rect);
             GUILayout.BeginArea(new Rect(rect.x + 24f, rect.y + 20f, w - 48f, h - 40f));
 
             GUILayout.Label("森 林 奔 跑", _title);
@@ -301,6 +371,18 @@ namespace DshRunner
                 ProgressStore.ResetAll();
             }
 
+            // The way home is offered here too, not only mid-run: a player who came out of the
+            // cabin and landed on this menu had no way back except quitting the game, which is
+            // a dead end the moment the two scenes are one world.
+            if (ReturnToRoomVisible)
+            {
+                GUILayout.Space(10f);
+                if (GUILayout.Button("返回宠物小屋", _button, GUILayout.Height(40f)))
+                {
+                    ReturnToRoom();
+                }
+            }
+
             GUILayout.EndArea();
 
             if (Event.current.type == EventType.KeyDown)
@@ -322,7 +404,7 @@ namespace DshRunner
             float h = 560f;
             var rect = new Rect(W * 0.5f - w * 0.5f, H * 0.5f - h * 0.5f, w, h);
 
-            GUI.Box(rect, GUIContent.none, _panel);
+            MenuPanel(rect);
             GUILayout.BeginArea(new Rect(rect.x + 24f, rect.y + 18f, w - 48f, h - 36f));
 
             GUILayout.Label("选择关卡", _title);
@@ -351,6 +433,14 @@ namespace DshRunner
                 gm.ReturnToMenu();
             }
 
+            if (ReturnToRoomVisible)
+            {
+                if (GUILayout.Button("返回宠物小屋", _button, GUILayout.Height(40f)))
+                {
+                    ReturnToRoom();
+                }
+            }
+
             GUILayout.EndArea();
 
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape)
@@ -362,7 +452,7 @@ namespace DshRunner
         private void DrawPaused(GameManager gm)
         {
             var rect = CenterBox(360f, 300f);
-            GUI.Box(rect, GUIContent.none, _panel);
+            MenuPanel(rect);
             GUILayout.BeginArea(new Rect(rect.x + 24f, rect.y + 24f, rect.width - 48f, rect.height - 48f));
 
             GUILayout.Label("暂停", _title);
@@ -371,6 +461,10 @@ namespace DshRunner
             if (GUILayout.Button("继续  (Esc)", _button, GUILayout.Height(44f))) gm.TogglePause();
             if (GUILayout.Button("重新开始  (R)", _button, GUILayout.Height(44f))) gm.RestartRun();
             if (GUILayout.Button("返回主菜单", _button, GUILayout.Height(44f))) gm.ReturnToMenu();
+            if (ReturnToRoomVisible && GUILayout.Button("返回宠物小屋", _button, GUILayout.Height(44f)))
+            {
+                ReturnToRoom();
+            }
 
             GUILayout.EndArea();
 
@@ -384,7 +478,7 @@ namespace DshRunner
         {
             var score = gm.Score.Snapshot();
             var rect = CenterBox(440f, 380f);
-            GUI.Box(rect, GUIContent.none, _panel);
+            MenuPanel(rect);
             GUILayout.BeginArea(new Rect(rect.x + 24f, rect.y + 22f, rect.width - 48f, rect.height - 44f));
 
             GUILayout.Label("游戏结束", _title);
@@ -401,6 +495,10 @@ namespace DshRunner
 
             if (GUILayout.Button("再来一次  (R)", _button, GUILayout.Height(46f))) gm.RestartRun();
             if (GUILayout.Button("返回主菜单", _button, GUILayout.Height(46f))) gm.ReturnToMenu();
+            if (ReturnToRoomVisible && GUILayout.Button("返回宠物小屋", _button, GUILayout.Height(46f)))
+            {
+                ReturnToRoom();
+            }
 
             GUILayout.EndArea();
 
@@ -416,7 +514,7 @@ namespace DshRunner
             bool hasNext = gm.Level != null && !gm.Level.Endless && gm.Level.Index + 1 < LevelLibrary.Count;
 
             var rect = CenterBox(460f, 400f);
-            GUI.Box(rect, GUIContent.none, _panel);
+            MenuPanel(rect);
             GUILayout.BeginArea(new Rect(rect.x + 24f, rect.y + 22f, rect.width - 48f, rect.height - 44f));
 
             GUILayout.Label("通关！", _title);
@@ -431,6 +529,10 @@ namespace DshRunner
             }
             if (GUILayout.Button("重玩本关  (R)", _button, GUILayout.Height(46f))) gm.RestartRun();
             if (GUILayout.Button("返回主菜单", _button, GUILayout.Height(46f))) gm.ReturnToMenu();
+            if (ReturnToRoomVisible && GUILayout.Button("返回宠物小屋", _button, GUILayout.Height(46f)))
+            {
+                ReturnToRoom();
+            }
 
             GUILayout.EndArea();
 

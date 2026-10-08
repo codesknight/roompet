@@ -59,6 +59,8 @@ namespace DshPet
 
             float dt = Time.deltaTime;
 
+            TickBladder(dt);
+
             switch (CurrentMode)
             {
                 case Mode.React:
@@ -87,6 +89,83 @@ namespace DshPet
                     TickIdle(dt);
                     break;
             }
+        }
+
+        // -------------------------------------------------------------------- bladder
+
+        /// <summary>
+        /// The one need with a deadline.
+        ///
+        /// The pet heads for the tray on its own (the behaviour table has a row for it), but a
+        /// pet that is asleep, mid-fetch or simply too far away does not always make it — and
+        /// that failure is the point: it leaves a mess, the mood takes a hit, and tidying up is
+        /// something the player (or a sheepish pet) has to do. A game where the tray is
+        /// optional decoration would have no reason to exist in the room at all.
+        ///
+        /// The grace period is what makes this fair rather than instant. Without it the
+        /// accident fires on the same frame the need goes critical — the scheduler only scores
+        /// the behaviour table every few seconds, so the pet would never once reach the tray,
+        /// and a system the player can never avoid is just a punishment on a timer.
+        /// </summary>
+        private void TickBladder(float dt)
+        {
+            if (!Needs.BladderCritical)
+            {
+                _bladderGrace = 0f;
+                return;
+            }
+
+            // Already on the way to the tray? Give it the benefit of the doubt.
+            if (CurrentMode == Mode.Approach && _pending != null && _pending.Kind == InteractableKind.Toilet)
+            {
+                _bladderGrace = 0f;
+                return;
+            }
+
+            _bladderGrace += dt;
+
+            // Sleeping pets get a longer grace rather than a hard veto: waking up to a mess
+            // every single night would make putting it to bed feel like a trap.
+            float allowed = CurrentMode == Mode.Sleep ? SleepGraceSeconds : GraceSeconds;
+            if (_bladderGrace < allowed) return;
+
+            _bladderGrace = 0f;
+            Needs.Accident();
+            HasAccident = true;
+            Avatar.PlayAction(PetAction.Sad, 2.6f);
+            PetAudioDirector.Instance?.Play(SfxId.Whine);
+
+            if (Room != null)
+            {
+                Vector3 where = transform.position + AvatarFacing() * 0.5f;
+                Room.SpawnMess(where);
+            }
+        }
+
+        /// <summary>Seconds a pet can hold it before it has an accident.</summary>
+        public float GraceSeconds = 6.5f;
+
+        /// <summary>Longer while asleep, so bedtime is not a trap.</summary>
+        public float SleepGraceSeconds = 22f;
+
+        private float _bladderGrace;
+        private Vector3 AvatarFacing() => Avatar != null ? Avatar.transform.forward : transform.forward;
+
+        /// <summary>Consumed by the HUD/prompt layer: true for a few seconds after an accident.</summary>
+        public bool HasAccident { get; private set; }
+
+        public void ClearAccidentFlag() => HasAccident = false;
+
+        /// <summary>
+        /// A short-lived spray of bubbles above the bath: three spheres that rise and fade.
+        /// Procedural, like everything else here, and cheap enough to fire on every bath.
+        /// </summary>
+        private void StartBubbles(Vector3 origin)
+        {
+            var root = new GameObject("Bubbles");
+            root.transform.position = origin + Vector3.up * 0.7f;
+            var script = root.AddComponent<PetBubbles>();
+            script.Lifetime = 1.6f;
         }
 
         // -------------------------------------------------------------------- states
@@ -487,6 +566,24 @@ namespace DshPet
                 case InteractableKind.Brush:
                     Needs.Clean();
                     Avatar.PlayAction(PetAction.Wag, 2.6f);
+                    break;
+                case InteractableKind.Bath:
+                    // A bath is a proper wash, not a brush-down, and the pet shakes itself dry.
+                    Needs.Clean(1f);
+                    Avatar.PlayAction(PetAction.Jump, 2.4f);
+                    PetAudioDirector.Instance?.Play(SfxId.Splash);
+                    StartBubbles(target.transform.position);
+                    break;
+                case InteractableKind.Toilet:
+                    Needs.Relieve();
+                    Avatar.PlayAction(PetAction.Sit, 3f);
+                    break;
+                case InteractableKind.Mess:
+                    // The pet tidying up after itself, or the player cleaning: either way the
+                    // puddle is gone. `Needs.Clean` is small — scrubbing is not a bath.
+                    Needs.Clean(0.25f);
+                    Avatar.PlayAction(PetAction.Sad, 1.8f);
+                    Room?.RemoveMess(target);
                     break;
                 case InteractableKind.Bed:
                     CurrentMode = Mode.Sleep;

@@ -140,6 +140,8 @@ namespace DshPet
         /// <summary>Weighted-random ambient quirk. Never returns the one that just played.</summary>
         public PetBehavior PickPassive(PetBehaviorContext ctx, List<PetBehavior> pool)
         {
+            // AmbientWeight, not Weight: the personality has to colour the quirks too, or a
+            // lazy pet and a restless one would stretch and hop equally often.
             float total = 0f;
             for (int i = 0; i < pool.Count; i++)
             {
@@ -148,7 +150,7 @@ namespace DshPet
                 if (!IsReady(behavior)) continue;
                 if (!behavior.IsEligible(ctx)) continue;
                 if (behavior == LastPassive && pool.Count > 2) continue; // avoid immediate repeats
-                total += Mathf.Max(0.01f, behavior.Weight);
+                total += behavior.AmbientWeight(ctx);
             }
 
             if (total <= 0f) return null;
@@ -162,7 +164,7 @@ namespace DshPet
                 if (!behavior.IsEligible(ctx)) continue;
                 if (behavior == LastPassive && pool.Count > 2) continue;
 
-                roll -= Mathf.Max(0.01f, behavior.Weight);
+                roll -= behavior.AmbientWeight(ctx);
                 if (roll <= 0) return behavior;
             }
 

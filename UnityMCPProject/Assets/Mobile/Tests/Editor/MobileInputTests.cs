@@ -369,12 +369,16 @@ namespace DshMobile.Tests
         public void PhoneLayout_StatusAndChatStillDoNotOverlap()
         {
             // The desktop invariant, re-checked at phone design sizes: the chat panel is drawn
-            // after the status panel, so any overlap swallows the buttons.
+            // after the status panel, so any overlap swallows the buttons. The layout is
+            // responsive now (a wide viewport puts the transcript in a side column), so the
+            // test is "these rectangles do not intersect", not "chat is below status".
             foreach (var design in PhoneDesigns)
             {
                 var layout = DshPet.PetHud.ComputeLayout(design.x, design.y, 4);
-                Assert.LessOrEqual(layout.Status.yMax, layout.Chat.y,
+                Assert.IsFalse(layout.Status.Overlaps(layout.Chat),
                     $"status and chat overlap at {design.x}x{design.y}");
+                Assert.IsFalse(layout.Status.Overlaps(layout.Switcher),
+                    $"status and switcher overlap at {design.x}x{design.y}");
             }
         }
 

@@ -77,6 +77,31 @@ namespace DshPet
                 },
                 new PetBehavior
                 {
+                    // A real bath, as opposed to a quick groom: only when genuinely filthy,
+                    // and heavy enough that it beats wandering off to play.
+                    Id = "bathe", Label = "去洗澡", Drive = BehaviorDrive.Proactive,
+                    Action = PetAction.Play, Duration = 4.2f, Cooldown = 200f, Weight = 1.5f,
+                    RequiresNeed = "Cleanliness", NeedBelow = 0.28f, TargetKind = "Bath",
+                    Lines = new[] { "我身上都是灰……我要洗澡！", "（抖了抖毛，扬起一小片灰）" }
+                },
+                new PetBehavior
+                {
+                    Id = "use_toilet", Label = "去上厕所", Drive = BehaviorDrive.Proactive,
+                    Action = PetAction.Sit, Duration = 3.0f, Cooldown = 30f, Weight = 2.2f,
+                    RequiresNeed = "Bladder", NeedBelow = 0.35f, TargetKind = "Toilet",
+                    Lines = new[] { "（原地转了两圈）……等一下。", "我先去一下猫砂盆。" }
+                },
+                new PetBehavior
+                {
+                    // The pet's own tidy-up after an accident, and only after one: `NeedsMess`
+                    // gates it, so it never fires just because a mess object exists.
+                    Id = "hide_mess", Label = "心虚地扒拉", Drive = BehaviorDrive.Proactive,
+                    Action = PetAction.Sad, Duration = 2.8f, Cooldown = 120f, Weight = 1.2f,
+                    NeedsMess = true, CleansMess = true,
+                    Lines = new[] { "（用爪子扒拉着地面，假装什么都没发生）", "……不是我干的。" }
+                },
+                new PetBehavior
+                {
                     Id = "seek_attention", Label = "来找你", Drive = BehaviorDrive.Proactive,
                     Action = PetAction.Sit, Duration = 3.5f, Cooldown = 45f, Weight = 1.3f,
                     RequiresNeed = "Affection", NeedBelow = 0.5f, TargetKind = "Player",

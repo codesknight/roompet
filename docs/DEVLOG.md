@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物），两个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **115/115 通过**（虚拟宠物 69 + 跑酷 15 + 手机端 31），EditMode |
+| 测试 | **127/127 通过**（虚拟宠物 78 + 跑酷 15 + 手机端 34），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -75,6 +75,9 @@
 | `World/PetController.cs` | 行为执行：Idle/Wander/Approach/React/Sleep/**Fetch** |
 | `World/PetAvatar.cs` | 宠物外观与动作 |
 | `World/PetBall.cs` | 球的物理与状态机（手持/飞行/叼着/静止） |
+| `World/PetBubbles.cs` | 洗澡时冒的程序化肥皂泡（自建自毁，不留残渣） |
+| `UI/UiSkin.cs` | **在 `Assets/Mobile/`**：运行时生成的圆角面板 + 投影（九宫格），两个游戏共用 |
+| `Core/PetPersonality.cs` | 四维性格 + 原型名，按物种稳定生成并存档 |
 | `World/PlayerRoomController.cs` | 玩家角色移动、E 交互、扔球 |
 | `World/PlayerAvatar.cs` | 玩家外观 |
 | `World/Interactable.cs` | 可点击物件（碗/床/球/梳子/门） |
@@ -352,6 +355,26 @@
     `Tools/DSH Mobile/Icons/Render Size Preview Sheet` 把 192/96/72/48/36px 并排出图再看：
     第一版把猫画成了"圆头 + 圆身"的雪人，1:1 看没问题，缩到 48px 就只剩一坨黑；
     改成"三角形身体 + 圆头 + 耳朵 + 尾巴"的坐姿剪影之后才认得出是猫。
+40. **"锚在哪个矩形上"本身就是一个设计决定。** 触控控件原本挂在聊天面板上（底部布局里
+    聊天面板就等于屏幕下半部）。第 7 轮把对话搬到侧边栏之后，那套锚点把**摇杆放到了右手边**——
+    面板还在，但它已经不在拇指待的地方了。规矩：**拇指控件锚视口，不锚面板**
+    （`HudLayout.Viewport`），面板只用来决定"别压住什么"。
+41. **响应式布局一改，"X 永远在 Y 下面"这类断言就全废了。** 把对话搬到侧边栏之后，
+    四条老测试同时挂掉，因为它们的断言是 `status.yMax <= chat.y`。正确的不变量是
+    **"这两个矩形不相交"**（`!a.Overlaps(b)`）——它同时能表达上下排布与左右排布，
+    而且比原来的断言更接近真实约束（重叠会吞掉点击）。**别为了让测试过而放宽，
+    要把断言换成真正想守的那条。**
+42. **IMGUI 的 `GUI.skin.box` 是半透明的**（同一个坑第 2 次）：跑酷菜单用它画，
+    森林直接透上来，标题和背景树线打架。凡是要当"面板"用的地方，一律走
+    `DshMobile.UiSkin.Panel`（运行时生成的圆角不透明面板 + 投影）。
+43. **同一份状态不要在两处各自演算。** 抛球落点预览如果自己写一套抛物线，
+    迟早会和 `PetBall` 的积分器漂开；这里直接把 `Gravity / MinThrowSpeed /
+    MaxThrowSpeed / ThrowElevationDegrees` 拿来跑**同一个积分步进**，预览才敢叫"预测"。
+44. **`ComputeLayout` 这类"静态查询"要小心它和绘制用的是不是同一份输入。**
+    第 7 轮给布局加了"对话是否展开"的参数，绘制路径传了新参数，
+    但 `ComputeLayout()`（无参、给相机用）读的是另一个静态字段——
+    结果**相机以为边栏没了、HUD 还在画边栏**，画面里房间缩着、右边一片空。
+    凡是"同一个几何被两处查询"，就把它收敛成一个入口。
 
 ---
 

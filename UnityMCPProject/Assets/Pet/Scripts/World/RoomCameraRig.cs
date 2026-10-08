@@ -247,6 +247,22 @@ namespace DshPet
             return 0f;
         }
 
+        /// <summary>
+        /// Width of the room's free band, in screen pixels; 0 means "the whole viewport".
+        ///
+        /// The camera used to assume the free area was "everything above the chat panel". That
+        /// stopped being true the moment the transcript moved into a side column — the band is
+        /// now wide and short in one layout and tall and narrow in the other, and only the HUD
+        /// knows which. Feeding the real width into the horizontal fit is what keeps the room
+        /// out from under the sidebar.
+        /// </summary>
+        private float HudBandWidth()
+        {
+            if (!PetHud.Exists) return 0f;
+            var band = PetHud.FreeBandScreen();
+            return band.width > 40f && band.width < Screen.width - 1f ? band.width : 0f;
+        }
+
         /// <summary>Starting pitch for the current viewport and HUD, before the fit below.</summary>
         private void UpdateHudPitch()
         {
@@ -402,9 +418,17 @@ namespace DshPet
         {
             if (View != CameraViewMode.Panorama) return 1f;
 
+            // The fit is measured against the HUD's free band, so the seed has to use the same
+            // width — otherwise the first frame after a snap is framed for the whole viewport
+            // and the room visibly jumps when the sidebar starts being accounted for.
+            float bandWidth = HudBandWidth();
+            float aspect = bandWidth > 40f
+                ? bandWidth * Cam.aspect / Mathf.Max(1f, ProjectionWidth)
+                : Cam.aspect;
+
             return DshMobile.MobileUi.WidthFitScale(
                 Mathf.Sqrt(PanoramaBack * PanoramaBack + PanoramaHeight * PanoramaHeight),
-                RoomHalfWidth(), Cam.fieldOfView, Cam.aspect);
+                RoomHalfWidth(), Cam.fieldOfView, aspect);
         }
 
         /// <summary>
@@ -428,7 +452,10 @@ namespace DshPet
             int count = _subjectCount;
             if (count == 0) return;
 
-            float width = ProjectionWidth;
+            // Fit into the band the HUD actually leaves free, not the whole viewport: with the
+            // transcript in a side column the room would otherwise be centred under it.
+            float bandWidth = HudBandWidth();
+            float width = bandWidth > 40f ? bandWidth * (ProjectionWidth / Mathf.Max(1f, Screen.width)) : ProjectionWidth;
             if (width < 40f) return;
 
             float available = width * (1f - 2f * WidthMargin);

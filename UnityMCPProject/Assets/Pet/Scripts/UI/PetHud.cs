@@ -20,6 +20,12 @@ namespace DshPet
         private GUIStyle _small;
         private GUIStyle _petLine;
         private GUIStyle _userLine;
+        private GUIStyle _bubble;
+        private GUIStyle _bubblePet;
+        private GUIStyle _bubbleUser;
+        private GUIStyle _avatar;
+        private GUIStyle _sendButton;
+        private int _inputFontSize = 17;
         private GUIStyle _panel;
         private GUIStyle _button;
         private GUIStyle _buttonSmall;
@@ -71,27 +77,57 @@ namespace DshPet
             if (_stylesReady) return;
             _stylesReady = true;
 
-            _title = new GUIStyle(GUI.skin.label) { fontSize = 22, fontStyle = FontStyle.Bold };
+            // Everything is a couple of points bigger than it was. The old sizes were tuned to
+            // fit as much as possible on a 720p window, with the result that the conversation —
+            // the entire point of the game — was the smallest text on screen, and on a phone it
+            // was unreadable. A HUD that has to be squinted at is not a dense HUD, it is a
+            // broken one.
+            _title = new GUIStyle(GUI.skin.label) { fontSize = 24, fontStyle = FontStyle.Bold };
             _title.normal.textColor = new Color(1f, 0.94f, 0.82f);
 
-            _label = new GUIStyle(GUI.skin.label) { fontSize = 15 };
+            _label = new GUIStyle(GUI.skin.label) { fontSize = 16 };
             _label.normal.textColor = Color.white;
 
-            _small = new GUIStyle(GUI.skin.label) { fontSize = 13 };
-            _small.normal.textColor = new Color(0.85f, 0.86f, 0.9f);
+            _small = new GUIStyle(GUI.skin.label) { fontSize = 14 };
+            _small.normal.textColor = new Color(0.86f, 0.87f, 0.91f);
 
-            _petLine = new GUIStyle(GUI.skin.label) { fontSize = 15, wordWrap = true };
-            _petLine.normal.textColor = new Color(1f, 0.88f, 0.72f);
+            _petLine = new GUIStyle(GUI.skin.label) { fontSize = 18, wordWrap = true };
+            _petLine.normal.textColor = new Color(0.22f, 0.17f, 0.13f);
 
-            _userLine = new GUIStyle(GUI.skin.label) { fontSize = 15, wordWrap = true };
-            _userLine.normal.textColor = new Color(0.72f, 0.88f, 1f);
+            _userLine = new GUIStyle(GUI.skin.label) { fontSize = 18, wordWrap = true };
+            _userLine.normal.textColor = Color.white;
+
+            // Bubble text, named separately from the transcript colours so the panel can use a
+            // light bubble for the pet and a dark one for the player.
+            _bubblePet = new GUIStyle(GUI.skin.label) { fontSize = 18, wordWrap = true };
+            _bubblePet.normal.textColor = new Color(0.20f, 0.15f, 0.12f);
+
+            _bubbleUser = new GUIStyle(GUI.skin.label) { fontSize = 18, wordWrap = true };
+            _bubbleUser.normal.textColor = Color.white;
+
+            _bubble = new GUIStyle(GUI.skin.label) { fontSize = 18, wordWrap = true };
+
+            _avatar = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 17,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter
+            };
+            _avatar.normal.textColor = new Color(0.14f, 0.11f, 0.10f);
 
             _panel = new GUIStyle(GUI.skin.box) { padding = new RectOffset(12, 12, 12, 12) };
 
-            _button = new GUIStyle(GUI.skin.button) { fontSize = 15, padding = new RectOffset(12, 12, 7, 7) };
-            _buttonSmall = new GUIStyle(GUI.skin.button) { fontSize = 12, padding = new RectOffset(6, 6, 4, 4) };
+            _button = new GUIStyle(GUI.skin.button) { fontSize = 16, padding = new RectOffset(12, 12, 7, 7) };
+            _buttonSmall = new GUIStyle(GUI.skin.button) { fontSize = 14, padding = new RectOffset(8, 8, 5, 5) };
 
-            _thinking = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Italic };
+            _sendButton = new GUIStyle(GUI.skin.button)
+            {
+                fontSize = 17,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter
+            };
+
+            _thinking = new GUIStyle(GUI.skin.label) { fontSize = 15, fontStyle = FontStyle.Italic };
             _thinking.normal.textColor = new Color(1f, 0.85f, 0.4f);
 
             // The name field doubles as the panel title, so it is sized like one.
@@ -103,6 +139,8 @@ namespace DshPet
             };
             _nameField.normal.textColor = new Color(1f, 0.94f, 0.82f);
             _nameField.focused.textColor = Color.white;
+
+            _inputFontSize = 17;
         }
 
         private void OnGUI()
@@ -139,7 +177,11 @@ namespace DshPet
             DesignWidth = designWidth;
             DesignHeight = designHeight;
 
-            var layout = ComputeLayout(designWidth, designHeight, PetSpecies.Count);
+            // The sidebar is worth its width only while the transcript is showing; with the
+            // chat collapsed on a phone the room should get the whole screen back.
+            TranscriptVisible = !Mobile || _chatExpanded;
+
+            var layout = ComputeLayout(designWidth, designHeight, PetSpecies.Count, TranscriptVisible);
 
             // The touch layer has to know whether the play area is interactive at all.
             if (Mobile)
@@ -162,6 +204,7 @@ namespace DshPet
             DrawSpeciesSwitcher(gm, layout);
             DrawViewSwitcher(gm, layout);
             if (!Mobile) DrawThrowMeter(gm, layout);
+            else ShowMobileAimGuide(gm);
             DrawOverlays(gm, layout);
             GUI.enabled = true;
 
@@ -254,12 +297,42 @@ namespace DshPet
 
             /// <summary>Top edge of the chat panel: the floor for anything floating above it.</summary>
             public float ChatTop;
+
+            /// <summary>
+            /// True when the transcript sits in a right-hand sidebar rather than under the room.
+            ///
+            /// The conversation is the point of this game, and a 260px strip along the bottom
+            /// made it the least noticeable thing on screen. On a wide viewport it moves to a
+            /// proper column beside the room; on a phone in portrait there is no room for a
+            /// column, so it stays a (much taller, much louder) bottom sheet.
+            /// </summary>
+            public bool ChatOnSide;
+
+            /// <summary>
+            /// The part of the viewport the room should be framed in, in design pixels.
+            ///
+            /// With the transcript on the side this is a wide, short band; with it at the
+            /// bottom it is a tall, narrow one. The camera reads this instead of assuming
+            /// "everything above the chat panel", which is what lets both layouts work.
+            /// </summary>
+            public Rect FreeBand;
+
+            /// <summary>
+            /// The whole usable viewport. The touch controls anchor to THIS rather than to the
+            /// chat panel: thumbs live at the corners of the screen, and with the transcript in
+            /// a sidebar the chat panel is no longer anywhere near them.
+            /// </summary>
+            public Rect Viewport;
         }
+
+        /// <summary>Minimum viewport width for the sidebar layout. Below this, the column would
+        /// squeeze the room into a slot, so the transcript goes back under it.</summary>
+        public const float SidebarMinWidth = 1024f;
 
         /// <summary>
         /// The HUD's geometry, in one place.
         ///
-        /// Two rules are encoded here, both learned from real bugs:
+        /// Three rules are encoded here, all learned from real bugs:
         ///  1. the status panel and the chat panel must NEVER overlap. They used to be sized
         ///     independently (status up to 360px tall from the top, chat 250px tall pinned to
         ///     the bottom), so on a Game view shorter than ~630px the chat panel — drawn
@@ -267,15 +340,84 @@ namespace DshPet
         ///     clicks meant for 记事本 and 设置. That is why the buttons "did not work";
         ///  2. every floating panel is clamped to the viewport. A fixed 720x560 calendar is
         ///     centred, so on a short view its own title bar and month arrows render above
-        ///     y=0 and the player sees nothing.
+        ///     y=0 and the player sees nothing;
+        ///  3. the layout is responsive. Wide viewports get a transcript sidebar with the
+        ///     status and switcher stacked in a left column; narrow ones keep the original
+        ///     top-and-bottom arrangement, which is the only one that fits a phone.
         /// </summary>
         public static HudLayout ComputeLayout()
-            => ComputeLayout(Screen.width, Screen.height, PetSpecies.Count);
+            => ComputeLayout(Screen.width, Screen.height, PetSpecies.Count, TranscriptVisible);
 
+        /// <summary>
+        /// Whether the transcript is on screen right now.
+        ///
+        /// On a phone the chat is collapsed by default, and a sidebar that reserves a quarter
+        /// of the screen for a bar nobody has opened yet is worse than no sidebar at all — the
+        /// room shrinks for nothing. So the column only exists while the transcript does, which
+        /// also means the room visibly widens when the chat is put away.
+        /// </summary>
+        public static bool TranscriptVisible { get; private set; } = true;
+
+        /// <summary>
+        /// The room's free band in real screen pixels, for the camera.
+        ///
+        /// The camera used to assume "everything above the chat panel", which stopped being
+        /// true the moment the transcript moved into a side column: the band is now wide and
+        /// short in one layout and tall and narrow in the other, and only the HUD knows which.
+        /// </summary>
+        public static Rect FreeBandScreen() => ComputeLayout().FreeBand;
+
+        /// <summary>Layout for a fully visible transcript. Kept for tests and reports.</summary>
         public static HudLayout ComputeLayout(float w, float h, int speciesCount)
+            => ComputeLayout(w, h, speciesCount, true);
+
+        public static HudLayout ComputeLayout(float w, float h, int speciesCount, bool transcriptVisible)
+        {
+            bool sidebar = transcriptVisible
+                           && w >= SidebarMinWidth
+                           && w * 0.34f >= 340f          // the column has to be worth having
+                           && w - Mathf.Clamp(w * 0.30f, 340f, 520f) >= 520f;  // ...and leave a room
+
+            return sidebar ? ComputeSidebarLayout(w, h, speciesCount)
+                           : ComputeStackedLayout(w, h, speciesCount);
+        }
+
+        /// <summary>Wide viewport: transcript on the right, one left column for everything else.</summary>
+        private static HudLayout ComputeSidebarLayout(float w, float h, int speciesCount)
+        {
+            float margin = 14f;
+            float chatWidth = Mathf.Clamp(w * 0.30f, 340f, 520f);
+
+            var chat = new Rect(w - chatWidth - margin, margin, chatWidth, h - margin * 2f);
+
+            // The left column is as wide as the space the sidebar leaves, capped so the status
+            // panel does not stretch into a wall of text.
+            float columnWidth = Mathf.Clamp(chat.x - margin * 2f - 8f, 220f, 340f);
+            float switchHeight = 34f + speciesCount * 30f;
+
+            float left = margin;
+            var status = new Rect(left, margin, columnWidth, Mathf.Clamp(h * 0.44f, 190f, 380f));
+            var switcher = new Rect(left, status.yMax + 10f, columnWidth,
+                Mathf.Min(switchHeight, Mathf.Max(60f, h - status.yMax - 20f)));
+
+            return new HudLayout
+            {
+                Status = status,
+                Chat = chat,
+                Switcher = switcher,
+                ChatTop = h - margin,
+                ChatOnSide = true,
+                FreeBand = new Rect(margin + columnWidth + 8f, margin,
+                    Mathf.Max(120f, chat.x - columnWidth - margin * 2f - 8f), h - margin * 2f),
+                Viewport = new Rect(0f, 0f, w, h)
+            };
+        }
+
+        /// <summary>Narrow viewport: the original top panels with the transcript underneath.</summary>
+        private static HudLayout ComputeStackedLayout(float w, float h, int speciesCount)
         {
             // The transcript is the main event in this app, so it takes a third of the view.
-            float chatHeight = Mathf.Clamp(h * 0.34f, 160f, 260f);
+            float chatHeight = Mathf.Clamp(h * 0.34f, 200f, 340f);
             var chat = new Rect(14f, h - chatHeight - 14f, Mathf.Max(260f, w - 28f), chatHeight);
 
             // Right-aligned switcher, and a status panel narrow enough that the two can never
@@ -296,7 +438,10 @@ namespace DshPet
                 Status = status,
                 Chat = chat,
                 Switcher = switcher,
-                ChatTop = chat.y
+                ChatTop = chat.y,
+                ChatOnSide = false,
+                FreeBand = new Rect(0f, 0f, w, chat.y),
+                Viewport = new Rect(0f, 0f, w, h)
             };
         }
 
@@ -502,8 +647,22 @@ namespace DshPet
             Bar("开心", gm.Needs.Joy, new Color(0.98f, 0.80f, 0.35f));
             Bar("清洁", gm.Needs.Cleanliness, new Color(0.60f, 0.90f, 0.65f));
 
+            // The bladder only appears once it matters: a permanent bar that spends most of its
+            // life full is noise, while a bar that appears when the pet starts fidgeting is a
+            // warning the player actually reads.
+            if (gm.Needs.Bladder < 0.6f)
+            {
+                Bar("便意", gm.Needs.Bladder, new Color(0.85f, 0.72f, 0.45f));
+            }
+
             GUILayout.Space(4f);
             GUILayout.Label(string.IsNullOrEmpty(gm.Needs.DominantNeed) ? "状态不错" : "想要：" + gm.Needs.DominantNeed, _small);
+
+            if (gm.Personality != null)
+            {
+                GUILayout.Label("性格：" + gm.Personality.Archetype, _small);
+                if (!Mobile || _statusDetail) GUILayout.Label(gm.Personality.Summary, _small);
+            }
 
             // On a phone the panel is small and the debug lines are the first thing to go:
             // they are for tuning, not for playing. The toggle in the footer brings them back.
@@ -566,6 +725,92 @@ namespace DshPet
         // ------------------------------------------------------------ throw / fetch
 
         /// <summary>
+        /// The aim guide on a phone.
+        ///
+        /// The desktop throw meter is skipped on touch (its panel would sit under the thumbs),
+        /// but the guide is exactly what a thumb needs: without it, aiming with the stick and
+        /// throwing with a button is guesswork.
+        /// </summary>
+        private void ShowMobileAimGuide(PetGameManager gm)
+        {
+            var player = gm.Player;
+            var ball = player != null ? player.Ball : (gm.Room != null ? gm.Room.Ball : null);
+            if (ball == null || ball.State != BallState.Held) return;
+
+            DrawAimGuide(gm, ball);
+        }
+
+        /// <summary>
+        /// Where a thrown ball would land, and the arc it would take to get there.
+        ///
+        /// Throwing used to be a charge bar and nothing else: you held the button, a bar filled,
+        /// the ball disappeared over the horizon and you found out afterwards where it went.
+        /// Showing the landing spot turns it into an aimed action — and because the simulation
+        /// is a plain ballistic arc, the preview can be the same maths the ball will run rather
+        /// than an approximation that drifts.
+        /// </summary>
+        private void DrawAimGuide(PetGameManager gm, PetBall ball)
+        {
+            var player = gm.Player;
+            var camera = Camera.main;
+            if (player == null || ball == null || camera == null) return;
+
+            Vector3 origin = player.transform.position + Vector3.up * 0.55f;
+            Vector3 direction = player.AimPoint - player.transform.position;
+            direction.y = 0f;
+            if (direction.sqrMagnitude < 0.0001f) direction = player.transform.forward;
+            direction.Normalize();
+
+            float speed = Mathf.Lerp(ball.MinThrowSpeed, ball.MaxThrowSpeed, ball.Charge);
+            float elevation = ball.ThrowElevationDegrees * Mathf.Deg2Rad;
+            Vector3 velocity = direction * (speed * Mathf.Cos(elevation)) + Vector3.up * (speed * Mathf.Sin(elevation));
+
+            // March the same integrator the ball uses, and stop at the floor.
+            const float step = 0.05f;
+            Vector3 point = origin;
+            Vector3 stepVelocity = velocity;
+            float groundY = 0.26f;   // the ball's own radius, which is where it comes to rest
+
+            for (int i = 0; i < 80; i++)
+            {
+                stepVelocity += Vector3.down * (ball.Gravity * step);
+                point += stepVelocity * step;
+                if (point.y <= groundY) break;
+
+                // Every third sample, so the arc is dotted rather than a solid line.
+                if (i % 3 != 0) continue;
+
+                var screen = camera.WorldToScreenPoint(point);
+                if (screen.z <= 0f) continue;
+
+                var design = ScreenToDesign(new Vector2(screen.x, Screen.height - screen.y));
+                float size = Mathf.Lerp(5f, 9f, ball.Charge);
+                GUI.color = new Color(1f, 0.92f, 0.62f, 0.55f);
+                GUI.DrawTexture(new Rect(design.x - size * 0.5f, design.y - size * 0.5f, size, size),
+                    Texture2D.whiteTexture);
+                GUI.color = Color.white;
+            }
+
+            // The landing marker: a ring that tightens as the charge fills, so the player can
+            // feel the throw firming up without reading the bar.
+            Vector3 landing = new Vector3(point.x, 0.02f, point.z);
+            var landingScreen = camera.WorldToScreenPoint(landing);
+            if (landingScreen.z <= 0f) return;
+
+            var centre = ScreenToDesign(new Vector2(landingScreen.x, Screen.height - landingScreen.y));
+            float radius = Mathf.Lerp(34f, 16f, ball.Charge);
+            var style = new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter };
+            var previous = GUI.color;
+
+            GUI.color = new Color(1f, 0.9f, 0.55f, 0.9f);
+            UiSkin.Panel(new Rect(centre.x - radius, centre.y - radius * 0.45f, radius * 2f, radius * 0.9f),
+                radius * 0.45f, new Color(1f, 0.9f, 0.55f, 0.18f), new Color(1f, 0.92f, 0.6f, 0.85f), 2f);
+            GUI.Label(new Rect(centre.x - 60f, centre.y - radius * 0.45f + 4f, 120f, 20f),
+                ball.Charge > 0.85f ? "用力扔！" : "会落在这里", style);
+            GUI.color = previous;
+        }
+
+        /// <summary>
         /// The throwing loop's only UI. Without it "press E, then hold the left button" is
         /// invisible, and the fetch behaviour — the payoff — never gets discovered.
         /// </summary>
@@ -592,6 +837,8 @@ namespace DshPet
                         GUI.color = Color.white;
                     }
                 }
+
+                DrawAimGuide(gm, ball);
 
                 var panel = new Rect(DesignWidth * 0.5f - 170f, layout.ChatTop - 84f, 340f, 62f);
                 GUI.Box(panel, GUIContent.none, _panel);
@@ -684,49 +931,70 @@ namespace DshPet
         }
 
         /// <summary>
-        /// Chat on a phone: a one-line bar by default, expanding into the real transcript
-        /// (which also brings up the keyboard).
+        /// Chat on a phone: a prominent one-line bubble by default, expanding into the real
+        /// transcript (which also brings up the keyboard).
         ///
         /// The desktop panel owns the bottom third of the screen, which is exactly where
         /// both thumbs live — leaving it open would put the movement stick and the action
-        /// buttons underneath a text box.
+        /// buttons underneath a text box. Collapsed it is deliberately loud rather than
+        /// discreet: a thin dark strip with small grey text is a chat nobody notices, and the
+        /// whole game is the chat.
         /// </summary>
         private void DrawMobileChat(PetGameManager gm, HudLayout layout)
         {
             float height = _chatExpanded ? layout.Chat.height : MobileChatBarHeight;
             var rect = new Rect(layout.Chat.x, layout.Chat.yMax - height, layout.Chat.width, height);
 
-            GUI.Box(rect, GUIContent.none, _panel);
-
             if (!_chatExpanded)
             {
+                UiSkin.Panel(rect, 16f, new Color(0.11f, 0.10f, 0.15f, 0.95f),
+                    new Color(1f, 1f, 1f, 0.12f), 2f, shadow: true);
+
                 // Drawn with absolute rects, NOT inside a GUILayout.BeginArea. The widgets are
                 // hand-drawn and register themselves in design space, and GUI coordinates
                 // inside an area are relative to that area — nesting the two offset every
                 // rect by another bar height and pushed the whole bar off the bottom of the
                 // screen, which is why the collapsed bar rendered as an empty strip.
-                var inner = new Rect(rect.x + 12f, rect.y + 8f, rect.width - 24f, rect.height - 16f);
-                float buttonWidth = MobileUi.Touchable(120f);
+                var inner = new Rect(rect.x + 10f, rect.y + 8f, rect.width - 20f, rect.height - 16f);
+                float buttonWidth = MobileUi.Touchable(132f);
 
                 if (MobileWidgets.Button(MobileButtonIds.PetChat,
                         new Rect(inner.x, inner.y, buttonWidth, inner.height),
-                        "说点什么", new Color(0.35f, 0.62f, 0.85f)))
+                        "和它说说话", new Color(0.30f, 0.60f, 0.86f)))
                 {
                     _chatExpanded = true;
                     FillEditConfig(gm);
                 }
 
-                var lineRect = new Rect(inner.x + buttonWidth + 12f, inner.y,
-                    Mathf.Max(0f, inner.xMax - inner.x - buttonWidth - 12f), inner.height);
-                GUI.Label(lineRect, LastLine(gm), _petLine);
+                // The pet's last line gets a bubble of its own, at transcript size: this is the
+                // thing that has to catch the eye from across the room.
+                var lineRect = new Rect(inner.x + buttonWidth + 10f, inner.y,
+                    Mathf.Max(0f, inner.xMax - inner.x - buttonWidth - 10f), inner.height);
+                if (lineRect.width > 60f)
+                {
+                    UiSkin.Panel(lineRect, 12f, new Color(0.98f, 0.93f, 0.84f, 0.95f),
+                        new Color(1f, 1f, 1f, 0.10f), 1.5f);
+                    GUI.Label(new Rect(lineRect.x + 12f, lineRect.y + 8f,
+                        lineRect.width - 24f, lineRect.height - 16f), LastLine(gm), _bubblePet);
+                }
+
+                if (UnreadFromPet(gm))
+                {
+                    // A small pulsing dot: the pet said something and the player has not looked.
+                    float pulse = 0.6f + 0.4f * Mathf.Sin(Time.unscaledTime * 5f);
+                    var dot = new Rect(inner.xMax - 14f, inner.y - 2f, 12f, 12f);
+                    UiSkin.Panel(dot, 6f, new Color(1f, 0.55f, 0.35f, pulse),
+                        new Color(1f, 1f, 1f, 0.5f), 1f);
+                }
                 return;
             }
 
-            // Expanded: reuse the desktop transcript, with a close button in its corner.
+            // Expanded: the real transcript, with a close button in its corner.
             DrawChat(gm, layout);
+            _unreadMark = gm.Memory.Recent.Count;
 
-            var close = new Rect(rect.xMax - MobileUi.Touchable(96f) - 10f, rect.y + 8f,
-                MobileUi.Touchable(96f), MobileUi.Touchable(36f));
+            var close = new Rect(rect.xMax - MobileUi.Touchable(88f) - 14f, rect.y + 14f,
+                MobileUi.Touchable(88f), MobileUi.Touchable(34f));
             if (MobileWidgets.Button("pet.chatclose", close, "收起", new Color(0.75f, 0.35f, 0.35f)))
             {
                 _chatExpanded = false;
@@ -734,14 +1002,32 @@ namespace DshPet
             }
         }
 
+        private int _unreadMark;
+
+        /// <summary>True when the pet has said something since the transcript was last open.</summary>
+        private bool UnreadFromPet(PetGameManager gm)
+        {
+            var recent = gm.Memory.Recent;
+            if (recent.Count == 0) return false;
+            if (recent.Count <= _unreadMark) return false;
+            return !recent[recent.Count - 1].IsUser;
+        }
+
         private static string LastLine(PetGameManager gm)
         {
             var recent = gm.Memory.Recent;
             if (recent.Count == 0) return "（还没聊过）";
 
-            var last = recent[recent.Count - 1];
-            string text = (last.IsUser ? "你：" : gm.PetName + "：") + last.Text;
-            return text.Length > 40 ? text.Substring(0, 40) + "…" : text;
+            for (int i = recent.Count - 1; i >= 0; i--)
+            {
+                if (!recent[i].IsUser)
+                {
+                    string text = recent[i].Text ?? "";
+                    return text.Length > 42 ? text.Substring(0, 42) + "…" : text;
+                }
+            }
+
+            return "（还没聊过）";
         }
 
         /// <summary>Where the touch controls sit, in design pixels. Pure, so it is testable.</summary>
@@ -754,7 +1040,7 @@ namespace DshPet
         }
 
         /// <summary>Height of the collapsed chat bar on a phone.</summary>
-        public const float MobileChatBarHeight = 54f;
+        public const float MobileChatBarHeight = 68f;
 
         /// <summary>
         /// Geometry for the touch controls.
@@ -765,27 +1051,37 @@ namespace DshPet
         /// other — overlapping touch targets is how a UI ends up feeling broken on a phone.
         /// (An earlier version put the buttons at the panel's very bottom edge and landed them
         /// right on top of the chat bar; the layout test caught it.)
+        ///
+        /// They anchor to the viewport, not to the chat panel. With the transcript in a side
+        /// column the chat panel is nowhere near the thumbs, and anchoring to it put the
+        /// movement stick under the right hand.
         /// </summary>
         public static MobileControls ComputeMobileControls(HudLayout layout)
         {
+            var view = layout.Viewport;
             float size = MobileUi.Touchable(96f);
             float gap = 14f;
-            float right = layout.Chat.xMax - 16f;
 
-            // Sit above the collapsed chat bar, not on it.
-            float bottom = layout.Chat.yMax - MobileChatBarHeight - 14f;
+            // The right thumb's resting place: the bottom-right of the room, which is the
+            // viewport's corner or the edge of the sidebar when there is one.
+            float right = (layout.ChatOnSide ? Mathf.Min(layout.FreeBand.xMax, view.xMax) : view.xMax) - 16f;
+
+            // Sit above the collapsed chat bar, not on it — but only where the bar really does
+            // own that strip.
+            float bottom = layout.ChatOnSide
+                ? view.yMax - 20f
+                : layout.Chat.yMax - MobileChatBarHeight - 14f;
 
             var action = new Rect(right - size, bottom - size, size, size);
             var throwRect = new Rect(action.x - size - gap, bottom - size, size, size);
-            var chat = new Rect(right - MobileUi.Touchable(120f),
-                action.y - gap - MobileUi.Touchable(52f),
-                MobileUi.Touchable(120f), MobileUi.Touchable(52f));
+            var chat = new Rect(right - MobileUi.Touchable(132f),
+                action.y - gap - MobileUi.Touchable(56f),
+                MobileUi.Touchable(132f), MobileUi.Touchable(56f));
 
             // The stick owns the lower-left quadrant, stopping just above the chat bar so a
             // thumb resting near the middle does not grab it by accident.
-            float stickTop = layout.Chat.yMax - MobileChatBarHeight - 14f - size * 2f;
-            var stick = new Rect(layout.Chat.x, stickTop,
-                layout.Chat.width * 0.46f, layout.Chat.yMax - MobileChatBarHeight - 14f - stickTop);
+            float stickTop = bottom - size * 2f;
+            var stick = new Rect(view.x, stickTop, view.width * 0.42f, Mathf.Max(size, bottom - stickTop));
 
             return new MobileControls
             {
@@ -864,52 +1160,165 @@ namespace DshPet
         private void DrawChat(PetGameManager gm, HudLayout layout)
         {
             var rect = layout.Chat;
-            GUI.Box(rect, GUIContent.none, _panel);
 
-            var inner = new Rect(rect.x + 14f, rect.y + 12f, rect.width - 28f, rect.height - 24f);
-            GUILayout.BeginArea(inner);
+            // A rounded, shadowed panel instead of a flat box: this is the interface the player
+            // looks at most, and the stock IMGUI box is what made a working screen look like a
+            // debug overlay.
+            UiSkin.Panel(rect, 16f, new Color(0.10f, 0.09f, 0.13f, 0.94f),
+                new Color(1f, 1f, 1f, 0.10f), 2f, shadow: true);
+
+            float headerHeight = 46f;
+            var header = new Rect(rect.x + 18f, rect.y + 12f, rect.width - 36f, headerHeight);
+            DrawChatHeader(gm, header);
+            UiSkin.Fill(new Rect(rect.x + 14f, header.yMax + 4f, rect.width - 28f, 1f),
+                new Color(1f, 1f, 1f, 0.09f));
 
             // --- transcript ---
-            float logHeight = inner.height - 74f;
-            _logScroll = GUILayout.BeginScrollView(_logScroll, GUILayout.Height(logHeight));
+            float footerHeight = 96f;
+            var logRect = new Rect(rect.x + 8f, header.yMax + 10f, rect.width - 16f,
+                Mathf.Max(60f, rect.yMax - footerHeight - header.yMax - 16f));
 
+            DrawTranscript(gm, logRect);
+
+            // --- input row + quick actions ---
+            var footer = new Rect(rect.x + 16f, rect.yMax - footerHeight + 8f, rect.width - 32f, footerHeight - 8f);
+            DrawChatFooter(gm, footer);
+        }
+
+        /// <summary>
+        /// The panel's head: who is talking, how they feel, and their temperament.
+        ///
+        /// The name and the mood used to be nowhere near the transcript — you had to read the
+        /// status panel across the screen to know the pet was starving while it chatted happily.
+        /// </summary>
+        private void DrawChatHeader(PetGameManager gm, Rect rect)
+        {
+            // Avatar: a soft disc in the species' fur colour, with the initial letter. No art,
+            // but it anchors the column and makes the pet feel present in the conversation.
+            float disc = Mathf.Min(36f, rect.height);
+            var avatarRect = new Rect(rect.x, rect.y + (rect.height - disc) * 0.5f, disc, disc);
+            UiSkin.Panel(avatarRect, disc * 0.5f, gm.Species.Fur, new Color(1f, 1f, 1f, 0.35f), 2f);
+            GUI.Label(avatarRect, Initial(gm.PetName), _avatar);
+
+            var nameRect = new Rect(avatarRect.xMax + 10f, rect.y, rect.width - disc - 10f, 26f);
+            GUI.Label(nameRect, gm.PetName, _title);
+
+            var moodRect = new Rect(avatarRect.xMax + 10f, rect.y + 24f, rect.width - disc - 10f, 20f);
+            string mood = PetUtil.MoodLabel(gm.Needs.Mood);
+            string temperament = gm.Personality != null ? gm.Personality.Archetype : "";
+            GUI.Label(moodRect, $"{mood}　·　{temperament}", _small);
+
+            if (gm.IsThinking)
+            {
+                var thinking = new Rect(rect.xMax - 92f, rect.y + 12f, 92f, 22f);
+                GUI.Label(thinking, "正在想…", _thinking);
+            }
+        }
+
+        private static string Initial(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return "·";
+            // Chinese names read better as their first character than as a Latin initial.
+            return name.Substring(0, 1);
+        }
+
+        /// <summary>
+        /// The conversation as speech bubbles: the pet on the left in warm cream, the player on
+        /// the right in blue.
+        ///
+        /// Alignment plus colour is what makes a transcript scannable at a glance — the old
+        /// "你：…" / "小狐狸：…" prefix lines all looked alike, which is most of why the panel
+        /// was easy to ignore.
+        /// </summary>
+        private void DrawTranscript(PetGameManager gm, Rect rect)
+        {
             var recent = gm.Memory.Recent;
             int start = Mathf.Max(0, recent.Count - MaxLogLines);
+
+            _logScroll = GUI.BeginScrollView(rect, _logScroll,
+                new Rect(0f, 0f, rect.width - 20f, Mathf.Max(rect.height, (recent.Count - start) * 62f + 12f)));
+
+            var bubble = new GUIStyle(_bubble) { wordWrap = true };
+
+            float y = 6f;
             for (int i = start; i < recent.Count; i++)
             {
                 var line = recent[i];
-                GUILayout.Label((line.IsUser ? "你：" : gm.PetName + "：") + line.Text,
-                    line.IsUser ? _userLine : _petLine);
+                string text = line.Text ?? "";
+
+                float maxWidth = rect.width * 0.78f;
+                float width = Mathf.Min(maxWidth, bubble.CalcSize(new GUIContent(text)).x + 24f);
+                width = Mathf.Max(width, 62f);
+                float height = Mathf.Max(34f, bubble.CalcHeight(new GUIContent(text), width - 24f) + 16f);
+
+                var bubbleRect = line.IsUser
+                    ? new Rect(rect.width - 24f - width, y, width, height)
+                    : new Rect(12f, y, width, height);
+
+                var tint = line.IsUser
+                    ? new Color(0.30f, 0.52f, 0.78f, 0.95f)
+                    : new Color(0.98f, 0.93f, 0.84f, 0.96f);
+
+                UiSkin.Panel(bubbleRect, 12f, tint, new Color(1f, 1f, 1f, 0.12f), 1.5f);
+
+                var textRect = new Rect(bubbleRect.x + 12f, bubbleRect.y + 7f,
+                    bubbleRect.width - 24f, bubbleRect.height - 14f);
+                GUI.Label(textRect, text, line.IsUser ? _bubbleUser : _bubblePet);
+
+                y += height + 8f;
             }
 
             if (gm.IsThinking)
             {
-                GUILayout.Label("……（它正在想）", _thinking);
+                y += 6f;
+                GUI.Label(new Rect(16f, y, rect.width - 32f, 24f), "……（它正在想）", _thinking);
             }
 
-            GUILayout.EndScrollView();
+            GUI.EndScrollView();
 
-            // --- input row ---
-            GUILayout.Space(4f);
+            // Keep the newest line in view: a chat that opens halfway up the history is a chat
+            // the player has to fight before they can read the reply they just waited for.
+            if (Event.current.type == EventType.Repaint && recent.Count > start)
+            {
+                float content = y + 12f;
+                if (content > _lastChatContent + 1f)
+                {
+                    _lastChatContent = content;
+                    _logScroll.y = Mathf.Max(0f, content - rect.height);
+                }
+            }
+        }
 
+        private float _lastChatContent;
+
+        /// <summary>Input field, send button and the quick actions.</summary>
+        private void DrawChatFooter(PetGameManager gm, Rect rect)
+        {
             if (!string.IsNullOrEmpty(gm.LastError))
             {
-                GUI.color = new Color(1f, 0.6f, 0.55f);
-                GUILayout.Label("接口出错，已用离线回复：" + gm.LastError, _small);
+                GUI.color = new Color(1f, 0.62f, 0.56f);
+                GUI.Label(new Rect(rect.x, rect.y - 2f, rect.width, 20f),
+                    "接口出错，已用离线回复：" + gm.LastError, _small);
                 GUI.color = Color.white;
             }
 
-            GUILayout.BeginHorizontal();
+            var field = new Rect(rect.x, rect.y + 20f, rect.width - 92f, 38f);
+            UiSkin.Panel(field, 10f, new Color(1f, 1f, 1f, 0.10f), new Color(1f, 1f, 1f, 0.22f), 1.5f);
 
             GUI.SetNextControlName("PetInput");
             bool enter = Event.current.type == EventType.KeyDown &&
                          (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter) &&
                          GUI.GetNameOfFocusedControl() == "PetInput";
 
-            _input = GUILayout.TextField(_input ?? "", 400, GUILayout.Height(30f));
+            var previous = GUI.skin.textField.fontSize;
+            GUI.skin.textField.fontSize = _inputFontSize;
+            _input = GUI.TextField(new Rect(field.x + 10f, field.y + 7f, field.width - 20f, 24f),
+                _input ?? "", 400);
+            GUI.skin.textField.fontSize = previous;
             IsTextInputFocused = GUI.GetNameOfFocusedControl() == "PetInput";
 
-            bool send = GUILayout.Button("发送", _button, GUILayout.Width(64f), GUILayout.Height(30f));
+            var sendRect = new Rect(field.xMax + 8f, field.y, 84f, 38f);
+            bool send = GUI.Button(sendRect, gm.IsThinking ? "…" : "发送", _sendButton);
             if ((send || enter) && !gm.IsThinking)
             {
                 gm.Talk(_input);
@@ -917,26 +1326,27 @@ namespace DshPet
                 if (enter) Event.current.Use();
             }
 
-            GUILayout.EndHorizontal();
-
+            var actions = new Rect(rect.x, field.yMax + 8f, rect.width, 30f);
+            GUILayout.BeginArea(actions);
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("摸摸它", _buttonSmall, GUILayout.Width(74f))) gm.QuickAction("pet");
-            if (GUILayout.Button("去吃饭", _buttonSmall, GUILayout.Width(74f))) gm.QuickAction("feed");
-            if (GUILayout.Button("去玩球", _buttonSmall, GUILayout.Width(74f))) gm.QuickAction("play");
+            if (GUILayout.Button("摸摸它", _buttonSmall, GUILayout.Height(26f))) gm.QuickAction("pet");
+            if (GUILayout.Button("去吃饭", _buttonSmall, GUILayout.Height(26f))) gm.QuickAction("feed");
+            if (GUILayout.Button("去玩球", _buttonSmall, GUILayout.Height(26f))) gm.QuickAction("play");
 
             var audio = PetAudioDirector.Instance;
             if (audio != null)
             {
-                if (GUILayout.Button(audio.Muted ? "🔇" : "🔊", _buttonSmall, GUILayout.Width(40f)))
+                if (GUILayout.Button(audio.Muted ? "🔇" : "🔊", _buttonSmall, GUILayout.Width(40f),
+                        GUILayout.Height(26f)))
                 {
                     audio.ToggleMute();
                 }
-                audio.SetMasterVolume(GUILayout.HorizontalSlider(audio.MasterVolume, 0f, 1f, GUILayout.Width(80f)));
+                audio.SetMasterVolume(GUILayout.HorizontalSlider(audio.MasterVolume, 0f, 1f, GUILayout.Width(70f)));
             }
 
-            GUILayout.Label("WASD 走动　E 互动", _small);
+            GUILayout.FlexibleSpace();
+            GUILayout.Label(Mobile ? "摇杆走动　按钮互动" : "WASD 走动　E 互动", _small);
             GUILayout.EndHorizontal();
-
             GUILayout.EndArea();
         }
 
@@ -1120,6 +1530,17 @@ namespace DshPet
                     MobileHaptics.Enabled = vibrationOn;
                     if (vibrationOn) MobileHaptics.Light();   // confirm it can be felt
                 }
+            }
+
+            // A pet's temperament is the most personal thing about it, so the player gets to
+            // reroll it — but it is buried here rather than offered at every launch, because
+            // "who is this animal" is not a decision to make every time you open the game.
+            GUILayout.Space(8f);
+            GUILayout.Label("性格：" + gm.Personality.Archetype, _label);
+            GUILayout.Label(gm.Personality.Summary, _small);
+            if (GUILayout.Button("换一个性格", _buttonSmall, GUILayout.Height(28f)))
+            {
+                gm.RerollPersonality();
             }
 
             GUILayout.Space(8f);

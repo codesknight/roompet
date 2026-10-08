@@ -183,5 +183,28 @@ namespace DshPet
             }
             return Concat(parts);
         }
+
+        /// <summary>
+        /// Overlays two sounds instead of playing them one after another.
+        ///
+        /// Concat is a sequence; some effects only work stacked — water is noise (the spray)
+        /// with a falling tone inside it (the droplet), and either half on its own sounds like
+        /// a synth patch rather than water.
+        /// </summary>
+        public static float[] Mix(float[] a, float[] b, float bGain = 1f)
+        {
+            int length = Mathf.Max(a != null ? a.Length : 0, b != null ? b.Length : 0);
+            var result = new float[Mathf.Max(8, length)];
+
+            for (int i = 0; i < result.Length; i++)
+            {
+                float value = 0f;
+                if (a != null && i < a.Length) value += a[i];
+                if (b != null && i < b.Length) value += b[i] * bGain;
+                result[i] = Mathf.Clamp(value, -1f, 1f);
+            }
+
+            return result;
+        }
     }
 }

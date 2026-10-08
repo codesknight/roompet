@@ -62,6 +62,8 @@ namespace DshPet
             BuildBed();
             BuildBall();
             BuildBrush();
+            BuildToilet();
+            BuildBath();
             BuildDoor();
 
             BuildDecor();
@@ -480,6 +482,156 @@ namespace DshPet
             interactable.Label = "梳子";
             interactable.ApproachPoint = new Vector3(-1.6f, 0f, 3.4f);
             return interactable;
+        }
+
+        /// <summary>
+        /// The litter tray. Deliberately in a corner: a pet that has to cross the room to
+        /// reach it is a pet that sometimes does not make it, which is where the mess system
+        /// comes from.
+        /// </summary>
+        private Interactable BuildToilet()
+        {
+            var go = new GameObject("Toilet");
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(5.1f, 0f, -5.0f);
+
+            BoxUnder(go.transform, "Tray", new Vector3(0f, 0.12f, 0f), new Vector3(1.7f, 0.24f, 1.3f),
+                new Color(0.55f, 0.62f, 0.68f), 0.25f);
+            BoxUnder(go.transform, "Litter", new Vector3(0f, 0.25f, 0f), new Vector3(1.5f, 0.10f, 1.1f),
+                new Color(0.86f, 0.82f, 0.70f), 0.9f);
+            BoxUnder(go.transform, "Lip", new Vector3(0f, 0.30f, -0.62f), new Vector3(1.7f, 0.14f, 0.08f),
+                new Color(0.45f, 0.52f, 0.58f), 0.3f);
+
+            var hit = go.AddComponent<BoxCollider>();
+            hit.size = new Vector3(1.7f, 0.6f, 1.3f);
+            hit.center = new Vector3(0f, 0.3f, 0f);
+
+            var interactable = go.AddComponent<Interactable>();
+            interactable.Kind = InteractableKind.Toilet;
+            interactable.Label = "猫砂盆";
+            interactable.ApproachPoint = new Vector3(5.1f, 0f, -3.6f);
+            return interactable;
+        }
+
+        /// <summary>A wash basin with a raised lip, plus a soap bar so it reads as a bath.</summary>
+        private Interactable BuildBath()
+        {
+            var go = new GameObject("Bath");
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(-5.2f, 0f, 4.6f);
+
+            BoxUnder(go.transform, "Tub", new Vector3(0f, 0.26f, 0f), new Vector3(1.9f, 0.52f, 1.5f),
+                new Color(0.80f, 0.86f, 0.90f), 0.35f);
+            BoxUnder(go.transform, "Water", new Vector3(0f, 0.50f, 0f), new Vector3(1.7f, 0.10f, 1.3f),
+                new Color(0.45f, 0.72f, 0.86f), 0.9f);
+            BoxUnder(go.transform, "Soap", new Vector3(0.62f, 0.58f, 0.42f), new Vector3(0.34f, 0.14f, 0.22f),
+                new Color(0.98f, 0.80f, 0.86f), 0.7f);
+
+            var hit = go.AddComponent<BoxCollider>();
+            hit.size = new Vector3(1.9f, 0.8f, 1.5f);
+            hit.center = new Vector3(0f, 0.4f, 0f);
+
+            var interactable = go.AddComponent<Interactable>();
+            interactable.Kind = InteractableKind.Bath;
+            interactable.Label = "澡盆";
+            interactable.ApproachPoint = new Vector3(-5.2f, 0f, 3.4f);
+            return interactable;
+        }
+
+        // ---------------------------------------------------------------------- messes
+
+        /// <summary>A puddle left after an accident. Lives in its own list so the room can
+        /// report "there is something to clean up" without scanning everything.</summary>
+        public readonly List<Interactable> Messes = new List<Interactable>();
+
+        private Transform _messRoot;
+
+        /// <summary>
+        /// Leaves a mess at a position. Idempotent per position: a pet that has two accidents
+        /// in the same corner should not stack up overlapping puddles.
+        /// </summary>
+        public Interactable SpawnMess(Vector3 position)
+        {
+            if (_messRoot == null)
+            {
+                var root = new GameObject("Messes");
+                root.transform.SetParent(_root != null ? _root : transform, false);
+                _messRoot = root.transform;
+            }
+
+            for (int i = 0; i < Messes.Count; i++)
+            {
+                if (Messes[i] == null) continue;
+                if (Vector3.Distance(Messes[i].transform.position, position) < 1.2f) return Messes[i];
+            }
+
+            var go = new GameObject("Puddle");
+            go.transform.SetParent(_messRoot, false);
+            go.transform.position = new Vector3(position.x, 0f, position.z);
+
+            // A flattened disc reads as a puddle at this camera angle where a sphere would
+            // read as an object the pet could pick up.
+            var disc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            disc.name = "Stain";
+            disc.transform.SetParent(go.transform, false);
+            disc.transform.localScale = new Vector3(0.86f, 0.012f, 0.62f);
+            disc.transform.localPosition = new Vector3(0f, 0.02f, 0f);
+            SetColor(disc, new Color(0.78f, 0.72f, 0.42f), 0f);
+            Destroy(disc.GetComponent<Collider>());
+
+            var drop = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            drop.name = "Drop";
+            drop.transform.SetParent(go.transform, false);
+            drop.transform.localScale = Vector3.one * 0.16f;
+            drop.transform.localPosition = new Vector3(0.28f, 0.05f, -0.16f);
+            SetColor(drop, new Color(0.72f, 0.66f, 0.38f), 0f);
+            Destroy(drop.GetComponent<Collider>());
+
+            var hit = go.AddComponent<BoxCollider>();
+            hit.size = new Vector3(1.1f, 0.35f, 0.9f);
+            hit.center = new Vector3(0f, 0.15f, 0f);
+
+            var interactable = go.AddComponent<Interactable>();
+            interactable.Kind = InteractableKind.Mess;
+            interactable.Label = "地上的污渍（按 E 擦掉）";
+            interactable.ApproachPoint = new Vector3(position.x, 0f, position.z - 1.1f);
+            Messes.Add(interactable);
+            return interactable;
+        }
+
+        /// <summary>Removes a cleaned-up mess from the room.</summary>
+        public void RemoveMess(Interactable mess)
+        {
+            if (mess == null) return;
+            Messes.Remove(mess);
+            if (Application.isPlaying) Destroy(mess.gameObject);
+            else DestroyImmediate(mess.gameObject);
+        }
+
+        public bool HasMess
+        {
+            get
+            {
+                for (int i = 0; i < Messes.Count; i++)
+                {
+                    if (Messes[i] != null) return true;
+                }
+                return false;
+            }
+        }
+
+        public Interactable NearestMess(Vector3 from)
+        {
+            Interactable best = null;
+            float bestDistance = float.MaxValue;
+            for (int i = 0; i < Messes.Count; i++)
+            {
+                var mess = Messes[i];
+                if (mess == null) continue;
+                float distance = Vector3.Distance(from, mess.transform.position);
+                if (distance < bestDistance) { bestDistance = distance; best = mess; }
+            }
+            return best;
         }
 
         /// <summary>

@@ -23,6 +23,7 @@ namespace DshPet
         public float Energy;
         public float Joy;
         public float Cleanliness;
+        public float Bladder;
         public float Affection;
         public PetMood Mood;
         public string DominantNeed;
@@ -36,8 +37,17 @@ namespace DshPet
         /// <summary>True while the ball is out of its resting spot and worth chasing.</summary>
         public bool BallLoose;
 
+        /// <summary>True while a mess is waiting to be cleaned up.</summary>
+        public bool MessPresent;
+
         /// <summary>Kinds of interactable currently reachable and off cooldown.</summary>
         public InteractableKind[] AvailableTargets;
+
+        /// <summary>
+        /// The pet's temperament. Optional: a null personality simply means "no bias", which
+        /// is what keeps the behaviour table testable on its own.
+        /// </summary>
+        public PetPersonality Personality;
 
         public float Need(string name)
         {
@@ -47,6 +57,7 @@ namespace DshPet
                 case "Energy": return Energy;
                 case "Joy": return Joy;
                 case "Cleanliness": return Cleanliness;
+                case "Bladder": return Bladder;
                 case "Affection": return Affection;
                 default: return 1f;
             }
@@ -115,6 +126,12 @@ namespace DshPet
         /// <summary>When true the row runs the ball retrieve loop instead of a plain action.</summary>
         public bool Fetch;
 
+        /// <summary>When true the row fires only while a mess is on the floor.</summary>
+        public bool NeedsMess;
+
+        /// <summary>When true the row cleans up a mess instead of using a target.</summary>
+        public bool CleansMess;
+
         public InteractableKind? Target
         {
             get
@@ -146,6 +163,7 @@ namespace DshPet
             // A ball sitting in its corner is not worth a trip; a ball that has just been
             // thrown across the room is the most interesting thing in the world.
             if (Fetch && !ctx.BallLoose) return false;
+            if (NeedsMess && !ctx.MessPresent) return false;
 
             if (!string.IsNullOrEmpty(RequiresNeed))
             {
@@ -160,6 +178,12 @@ namespace DshPet
         /// <summary>
         /// How much the pet wants to do this right now. 0 means "not applicable".
         /// Pure, so the whole table's behaviour is unit testable.
+        ///
+        /// The personality multiplies the result rather than replacing it, and the multiplier
+        /// fades out as the need gets desperate: at half-empty the pet's character decides
+        /// between two options, at nearly zero the need does. Without that fade a lively but
+        /// scruffy pet would rather play than wash at 3% cleanliness forever — which is
+        /// characterful right up to the point where the mud never comes off.
         /// </summary>
         public float Score(PetBehaviorContext ctx)
         {
@@ -170,7 +194,21 @@ namespace DshPet
                 ? 0.5f
                 : 1f - Mathf.Clamp01(ctx.Need(RequiresNeed));
 
-            return Mathf.Max(0.01f, urgency) * Mathf.Max(0.01f, Weight);
+            float bias = ctx.Personality != null ? ctx.Personality.BiasFor(Id) : 1f;
+            bias = Mathf.Lerp(1f, bias, 1f - urgency);
+
+            return Mathf.Max(0.01f, urgency) * Mathf.Max(0.01f, Weight) * Mathf.Max(0.05f, bias);
+        }
+
+        /// <summary>
+        /// The same weighting for a passive quirk, where there is no urgency to fade against:
+        /// ambient behaviour is exactly where temperament should show through at full strength.
+        /// </summary>
+        public float AmbientWeight(PetBehaviorContext ctx)
+        {
+            if (!IsEligible(ctx)) return 0f;
+            float bias = ctx.Personality != null ? ctx.Personality.BiasFor(Id) : 1f;
+            return Mathf.Max(0.01f, Weight * Mathf.Max(0.05f, bias));
         }
 
         public bool AllowsSpeech => SpeakUp || (Lines != null && Lines.Length > 0);

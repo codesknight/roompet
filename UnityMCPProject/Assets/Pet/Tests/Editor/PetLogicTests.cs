@@ -86,8 +86,13 @@ namespace DshPet.Tests
         public void Needs_MoodFollowsTheWorstNeed()
         {
             // 0.6 across the board sits above every "bad" threshold but below the happy
-            // one (MoodScore > 0.62), so this is the neutral baseline.
-            var needs = new PetNeeds { Hunger = 0.6f, Energy = 0.6f, Joy = 0.6f, Cleanliness = 0.6f, Affection = 0.2f };
+            // one (MoodScore > 0.62), so this is the neutral baseline. The bladder counts
+            // towards that score like every other need.
+            var needs = new PetNeeds
+            {
+                Hunger = 0.6f, Energy = 0.6f, Joy = 0.6f, Cleanliness = 0.6f,
+                Bladder = 0.6f, Affection = 0.2f
+            };
             Assert.AreEqual(PetMood.Content, needs.Mood);
 
             // ...and a genuinely well-kept pet reads as happy.
@@ -222,14 +227,41 @@ namespace DshPet.Tests
         {
             // The bug this guards: the chat panel is drawn after the status panel, so any
             // overlap hides the 记事本 / 设置 buttons and swallows their clicks.
+            //
+            // The layout is responsive now — wide viewports put the transcript in a side column
+            // and stack the status and switcher in a left column — so the invariant is "these
+            // two rectangles never intersect", not "chat is always below status".
             foreach (var size in Viewports)
             {
                 var layout = PetHud.ComputeLayout(size.x, size.y, PetSpecies.Count);
-                Assert.LessOrEqual(layout.Status.yMax, layout.Chat.y,
+                Assert.IsFalse(layout.Status.Overlaps(layout.Chat),
                     $"status and chat overlap at {size.x}x{size.y}");
                 Assert.GreaterOrEqual(layout.Chat.y, 0f, $"chat panel runs off the top at {size.x}x{size.y}");
                 Assert.LessOrEqual(layout.Chat.yMax, size.y, $"chat panel runs off the bottom at {size.x}x{size.y}");
+                Assert.LessOrEqual(layout.Chat.xMax, size.x, $"chat panel runs off the right at {size.x}x{size.y}");
             }
+        }
+
+        [Test]
+        public void Hud_ChatIsASidebarWhenThereIsRoomForOne()
+        {
+            // The transcript is the point of the game, so on a wide screen it gets a column of
+            // its own — and on a narrow one it must NOT, or the room would be squeezed into a
+            // slot between two panels.
+            var wide = PetHud.ComputeLayout(1920f, 1080f, PetSpecies.Count);
+            Assert.IsTrue(wide.ChatOnSide, "a 1920-wide viewport should give the chat a sidebar");
+            Assert.Greater(wide.Chat.x, wide.Status.xMax, "the sidebar sits to the right of the left column");
+            Assert.Greater(wide.Chat.width, 300f, "the sidebar has to be wide enough to read");
+
+            var phone = PetHud.ComputeLayout(720f, 1200f, PetSpecies.Count);
+            Assert.IsFalse(phone.ChatOnSide, "a portrait phone keeps the transcript under the room");
+            Assert.AreEqual(720f - 28f, phone.Chat.width, 1f, "the bottom sheet spans the screen");
+
+            // Either way the free band the camera frames into has to be a real rectangle, and
+            // the room has to keep a sensible share of it.
+            Assert.Greater(wide.FreeBand.width, 400f, "the room keeps a workable width beside the sidebar");
+            Assert.Greater(wide.FreeBand.height, 400f);
+            Assert.Greater(phone.FreeBand.height, 300f, "the room keeps a workable height above the sheet");
         }
 
         [Test]
@@ -251,13 +283,18 @@ namespace DshPet.Tests
         [Test]
         public void Hud_StatusPanelAndSpeciesSwitcherStayClear()
         {
+            // Stacked below the status panel on a wide viewport, beside it on a narrow one —
+            // either way they must not sit on top of each other, because the switcher is drawn
+            // second and would eat the status panel's buttons.
             foreach (var size in Viewports)
             {
                 var layout = PetHud.ComputeLayout(size.x, size.y, PetSpecies.Count);
-                Assert.GreaterOrEqual(layout.Switcher.x, layout.Status.xMax,
+                Assert.IsFalse(layout.Switcher.Overlaps(layout.Status),
                     $"the species switcher sits on top of the status panel at {size.x}x{size.y}");
                 Assert.LessOrEqual(layout.Switcher.xMax, size.x,
                     $"the species switcher runs off the right at {size.x}x{size.y}");
+                Assert.LessOrEqual(layout.Switcher.yMax, size.y,
+                    $"the species switcher runs off the bottom at {size.x}x{size.y}");
             }
         }
 
@@ -833,6 +870,181 @@ namespace DshPet.Tests
 
             var forced = new PetBrainConfig { ApiKey = "sk-abc", ForceOffline = true };
             Assert.IsFalse(forced.CanUseNetwork, "the offline switch must win");
+        }
+
+        // ------------------------------------------------------------- personality
+
+        [Test]
+        public void Personality_IsStablePerSpeciesAndAlwaysHasACharacter()
+        {
+            // The same animal must come back the same character: a fox that is a lap cat today
+            // and a lunatic tomorrow is not a pet, it is a random number generator.
+            var first = PetPersonality.Create(PetPersonality.StableSeed("fox"));
+            var again = PetPersonality.Create(PetPersonality.StableSeed("fox"));
+            Assert.AreEqual(first.Liveliness, again.Liveliness, 0.0001f);
+            Assert.AreEqual(first.Neatness, again.Neatness, 0.0001f);
+
+            // Different species are different animals.
+            var cat = PetPersonality.Create(PetPersonality.StableSeed("cat"));
+            Assert.AreNotEqual(first.Serialize(), cat.Serialize());
+
+            // Four independent rolls would average out to the same bland middle every time,
+            // which is the problem the class exists to solve — so one trait is always strong.
+            Assert.Greater(first.Traits[first.DominantTrait], 0.65f,
+                "the dominant trait has to actually dominate");
+            Assert.IsFalse(string.IsNullOrEmpty(first.Archetype));
+        }
+
+        [Test]
+        public void Personality_SurvivesASaveLoadRoundTrip()
+        {
+            var original = new PetPersonality
+            {
+                Liveliness = 0.91f, Clinginess = 0.12f, Curiosity = 0.44f, Neatness = 0.72f
+            };
+
+            var parsed = PetPersonality.Parse(original.Serialize(), null);
+            Assert.AreEqual(original.Liveliness, parsed.Liveliness, 0.01f);
+            Assert.AreEqual(original.Clinginess, parsed.Clinginess, 0.01f);
+            Assert.AreEqual(original.Curiosity, parsed.Curiosity, 0.01f);
+            Assert.AreEqual(original.Neatness, parsed.Neatness, 0.01f);
+
+            // A corrupt string costs one trait, not the whole character.
+            var broken = PetPersonality.Parse("0.5|oops|0.4", original);
+            Assert.AreEqual(original.Liveliness, broken.Liveliness, 0.0001f, "kept the fallback");
+            Assert.AreEqual(original.Neatness, broken.Neatness, 0.0001f);
+        }
+
+        [Test]
+        public void Personality_BiasesTheBehaviourTable()
+        {
+            var lively = new PetPersonality
+            {
+                Liveliness = 0.95f, Clinginess = 0.2f, Curiosity = 0.2f, Neatness = 0.2f
+            };
+            var lazy = new PetPersonality
+            {
+                Liveliness = 0.05f, Clinginess = 0.2f, Curiosity = 0.2f, Neatness = 0.2f
+            };
+
+            Assert.Greater(lively.BiasFor("play"), lazy.BiasFor("play"));
+            Assert.Greater(lively.BiasFor("fetch"), lazy.BiasFor("fetch"));
+            Assert.Greater(lazy.BiasFor("sleep"), lively.BiasFor("sleep"));
+
+            // ...and the bias has to reach the score, or the personality would be decoration.
+            var ctx = new PetBehaviorContext
+            {
+                Hunger = 1f, Energy = 0.5f, Joy = 0.3f, Cleanliness = 1f, Bladder = 1f, Affection = 1f,
+                AvailableTargets = new[] { InteractableKind.Ball }, Personality = lively
+            };
+            var play = PetBehaviorLibrary.Get("play");
+            float livelyScore = play.Score(ctx);
+            ctx.Personality = lazy;
+            Assert.Greater(livelyScore, play.Score(ctx),
+                "the same situation must read differently to a lively pet and a lazy one");
+        }
+
+        [Test]
+        public void Personality_ReachesThePromptAsProse()
+        {
+            var personality = new PetPersonality
+            {
+                Liveliness = 0.9f, Clinginess = 0.8f, Curiosity = 0.3f, Neatness = 0.2f
+            };
+
+            string prompt = PetPrompting.BuildSystemPrompt(new PetContext
+            {
+                SpeciesName = "小狐狸",
+                Personality = "活泼、亲人。",
+                Temperament = personality.PromptLine()
+            });
+
+            Assert.IsTrue(prompt.Contains(personality.Archetype),
+                "the model is told which individual this is, not just which species");
+            Assert.IsTrue(prompt.Contains("闲不住"), "the traits have to be described, not tabulated");
+        }
+
+        // ------------------------------------------------------------------ bladder
+
+        [Test]
+        public void Bladder_FillsFromEatingAndEmptiesAtTheTray()
+        {
+            var needs = new PetNeeds { Bladder = 0.9f };
+            needs.Feed();
+            Assert.Less(needs.Bladder, 0.9f, "eating is what fills it");
+            needs.GiveWater();
+            Assert.Less(needs.Bladder, 0.9f);
+
+            needs.Bladder = 0.1f;
+            Assert.IsTrue(needs.BladderCritical);
+            needs.Relieve();
+            Assert.AreEqual(1f, needs.Bladder, 0.0001f);
+            Assert.IsFalse(needs.BladderCritical);
+        }
+
+        [Test]
+        public void Bladder_AnAccidentCostsCleanlinessAndJoyAndNamesTheNeed()
+        {
+            var needs = new PetNeeds { Cleanliness = 0.9f, Joy = 0.9f, Bladder = 0.1f };
+
+            // The need outranks everything else while it is this urgent.
+            Assert.AreEqual("想上厕所", needs.DominantNeed);
+            Assert.AreEqual(PetMood.NeedsToilet, needs.Mood);
+
+            needs.Accident();
+            Assert.AreEqual(1f, needs.Bladder, 0.0001f, "the pressure is gone either way");
+            Assert.Less(needs.Cleanliness, 0.9f);
+            Assert.Less(needs.Joy, 0.9f);
+        }
+
+        [Test]
+        public void Bladder_TheTrayOutranksGoingToPlay()
+        {
+            var ctx = new PetBehaviorContext
+            {
+                Hunger = 1f, Energy = 1f, Joy = 0.35f, Cleanliness = 1f, Bladder = 0.1f, Affection = 1f,
+                BallLoose = true,
+                AvailableTargets = new[] { InteractableKind.Ball, InteractableKind.Toilet }
+            };
+
+            var toilet = PetBehaviorLibrary.Get("use_toilet");
+            var play = PetBehaviorLibrary.Get("play");
+            var fetch = PetBehaviorLibrary.Get("fetch");
+
+            Assert.Greater(toilet.Score(ctx), play.Score(ctx),
+                "a pet about to have an accident does not stop to play");
+            Assert.Greater(toilet.Score(ctx), fetch.Score(ctx));
+        }
+
+        [Test]
+        public void Behavior_ADesperateNeedOutranksTemperament()
+        {
+            // The failure this prevents: a lively, scruffy pet rated 去玩球 above 去洗澡 even at
+            // 3% cleanliness, so the mud never came off. Character decides between two live
+            // options; it does not get to ignore a need that is nearly empty.
+            var scruffy = new PetPersonality
+            {
+                Liveliness = 0.95f, Clinginess = 0.3f, Curiosity = 0.3f, Neatness = 0.15f
+            };
+
+            var ctx = new PetBehaviorContext
+            {
+                Hunger = 1f, Energy = 1f, Joy = 0.25f, Cleanliness = 0.03f, Bladder = 1f, Affection = 1f,
+                AvailableTargets = new[] { InteractableKind.Ball, InteractableKind.Bath },
+                Personality = scruffy
+            };
+
+            var bathe = PetBehaviorLibrary.Get("bathe");
+            var play = PetBehaviorLibrary.Get("play");
+
+            Assert.Greater(bathe.Score(ctx), play.Score(ctx),
+                "at 3% cleanliness even a playful pet goes to the bath");
+
+            // ...while at a mild 0.6 the same pet is allowed to prefer playing.
+            ctx.Cleanliness = 0.6f;
+            ctx.Joy = 0.25f;
+            Assert.Greater(play.Score(ctx), bathe.Score(ctx),
+                "with nothing urgent wrong, temperament is what shows");
         }
     }
 }

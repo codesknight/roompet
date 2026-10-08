@@ -41,6 +41,14 @@ namespace DshPet
         public readonly PetJournal Journal = new PetJournal();
         public PetBrainConfig BrainConfig = new PetBrainConfig();
 
+        /// <summary>
+        /// This pet's temperament, loaded per species and handed to the needs (decay rates),
+        /// the behaviour scorer (what it prefers doing) and the prompt (how it talks about
+        /// itself). One object, three consumers, so the pet cannot behave like one character
+        /// and describe itself as another.
+        /// </summary>
+        public PetPersonality Personality { get; private set; } = new PetPersonality();
+
         /// <summary>Tuning for the proactive/passive behaviour split.</summary>
         public PetBehaviorScheduler Scheduler = new PetBehaviorScheduler();
 
@@ -77,6 +85,7 @@ namespace DshPet
             string savedSpecies = PlayerPrefs.GetString(SpeciesKey, PetSpecies.All[0].Id);
             Species = PetSpecies.Copy(savedSpecies);
             PetName = PlayerPrefs.GetString(NameKey + "." + Species.Id, Species.DisplayName);
+            BindPersonality();
             LoadNeeds();
 
             BuildRoomAndPet();
@@ -96,6 +105,32 @@ namespace DshPet
                 Journal.Add(MemoryKind.Milestone, "今天见到主人了", "", 0.5f, true);
             }
 
+            ChatChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// Loads the temperament for the current species and points every consumer at it.
+        ///
+        /// Called on load and on every species switch, because a personality belongs to the
+        /// animal: the fox you have known for a week must not become a different fox just
+        /// because you looked at the rabbit.
+        /// </summary>
+        private void BindPersonality()
+        {
+            Personality = PetPersonality.Load(Species.Id ?? "");
+            Needs.Personality = Personality;
+        }
+
+        /// <summary>Rolls a new temperament for this species, for when the player wants a
+        /// different companion rather than the same one again.</summary>
+        public void RerollPersonality()
+        {
+            int seed = Environment.TickCount ^ (Species.Id != null ? Species.Id.GetHashCode() : 0);
+            Personality = PetPersonality.Create(seed);
+            Personality.Save(Species.Id ?? "");
+            Needs.Personality = Personality;
+            Journal.Add(MemoryKind.Milestone, "换了个脾气",
+                $"现在的脾气是「{Personality.Archetype}」。", 0.4f);
             ChatChanged?.Invoke();
         }
 
@@ -259,6 +294,7 @@ namespace DshPet
             TickBehaviors(Time.deltaTime);
             TickNudges(Time.deltaTime);
             TickAutoFetch();
+            TickAppearance();
 
             // Persist every few seconds rather than on every frame.
             _saveTimer += Time.deltaTime;
@@ -269,6 +305,32 @@ namespace DshPet
                 Journal.Save();
             }
         }
+
+        /// <summary>
+        /// Keeps the pet's appearance in step with its state: mud when it is filthy, and the
+        /// accident flag cleared once the pet's line about it has been delivered.
+        /// </summary>
+        private void TickAppearance()
+        {
+            if (Avatar == null) return;
+
+            // Only the bottom half of the cleanliness bar shows on the model: a pet that
+            // started sprouting mud the moment it was less than pristine would look permanently
+            // dirty, and the bath would stop feeling like a decision.
+            float dirt = Mathf.InverseLerp(0.55f, 0.10f, Needs.Cleanliness);
+            Avatar.SetDirtiness(dirt);
+
+            if (Controller != null && Controller.HasAccident)
+            {
+                _accidentFlagTimer -= Time.deltaTime;
+                if (_accidentFlagTimer <= 0f)
+                {
+                    Controller.ClearAccidentFlag();
+                }
+            }
+        }
+
+        private float _accidentFlagTimer = 6f;
 
         /// <summary>
         /// Runs the proactive/passive behaviour split. The scheduler only chooses; acting
@@ -306,7 +368,9 @@ namespace DshPet
             {
                 case "eat":
                 case "drink":
-                case "groom": return MemoryKind.Care;
+                case "groom":
+                case "bathe":
+                case "use_toilet": return MemoryKind.Care;
                 case "play":
                 case "fetch": return MemoryKind.Play;
                 case "sleep":
@@ -336,13 +400,16 @@ namespace DshPet
                 Energy = Needs.Energy,
                 Joy = Needs.Joy,
                 Cleanliness = Needs.Cleanliness,
+                Bladder = Needs.Bladder,
                 Affection = Needs.Affection,
                 Mood = Needs.Mood,
                 DominantNeed = Needs.DominantNeed,
                 HourOfDay = DateTime.Now.Hour + DateTime.Now.Minute / 60f,
                 PlayerPresent = true,
                 BallLoose = Room != null && Room.Ball != null && Room.Ball.IsLoose,
-                AvailableTargets = targets.ToArray()
+                MessPresent = Room != null && Room.HasMess,
+                AvailableTargets = targets.ToArray(),
+                Personality = Personality
             };
         }
 
@@ -585,12 +652,15 @@ namespace DshPet
                 SpeciesName = Species.DisplayName,
                 Personality = Species.Personality,
                 VoiceStyle = Species.VoiceStyle,
+                Temperament = Personality != null ? Personality.PromptLine() : "",
+                Archetype = Personality != null ? Personality.Archetype : "",
                 PetName = PetName,
                 Mood = Needs.Mood,
                 Hunger = Needs.Hunger,
                 Energy = Needs.Energy,
                 Joy = Needs.Joy,
                 Cleanliness = Needs.Cleanliness,
+                Bladder = Needs.Bladder,
                 Affection = Needs.Affection,
                 DominantNeed = Needs.DominantNeed,
                 History = Memory.HistoryArray(),
@@ -616,6 +686,14 @@ namespace DshPet
                 return;
             }
 
+            // A mess is the player's job, done on the spot: sending the pet over to clean up
+            // after itself would take the only consequence out of the accident system.
+            if (target.Kind == InteractableKind.Mess)
+            {
+                CleanMess(target);
+                return;
+            }
+
             // A ball that has been thrown is "go get it"; a ball sitting in its corner is
             // just a toy to go play with. Same click, two different verbs.
             if (target.Kind == InteractableKind.Ball && Controller != null && Controller.CanFetch)
@@ -626,6 +704,27 @@ namespace DshPet
             }
 
             if (Controller != null) Controller.GoTo(target);
+        }
+
+        /// <summary>
+        /// Wipes up an accident. The pet notices and is quietly grateful — cleaning up after
+        /// someone is a caring act, and the affection system should read it as one.
+        /// </summary>
+        public void CleanMess(Interactable mess)
+        {
+            if (mess == null || Room == null) return;
+
+            Room.RemoveMess(mess);
+            Needs.Clean(0.12f);
+            Needs.AddAffection(0.03f);
+            Needs.Pet(0.08f);
+
+            PetAudioDirector.Instance?.Play(SfxId.Brush);
+            DshMobile.MobileHaptics.Light();
+
+            Memory.AddPet("（主人把地上的污渍擦干净了，你有点不好意思地蹭了蹭她的腿）");
+            Journal.Add(MemoryKind.Care, "主人帮我收拾", "", 0.35f);
+            ChatChanged?.Invoke();
         }
 
         // -------------------------------------------------------------- throw & fetch
@@ -817,6 +916,7 @@ namespace DshPet
             PlayerPrefs.Save();
 
             LoadNeeds();
+            BindPersonality();
             Avatar.Build(Species, false);
             Memory.Load(Species.Id);
             Journal.Bind(Species.Id);
