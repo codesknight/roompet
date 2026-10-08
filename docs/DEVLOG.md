@@ -267,6 +267,15 @@ D:\projects\dsh-unity\UnityMCPProject
 Assets\Scenes\Main.unity            # 跑酷
 Assets\Pet\Scenes\PetRoom.unity     # 虚拟宠物
 
+# 仓库
+git remote -v                       # origin = github.com/codesknight/roompet
+# 提交里不含 unity-mcp/ 与 .venv/，也不含本机的包路径：
+# Packages/manifest.json 与 packages-lock.json 的本机改动被 skip-worktree 隐藏了。
+# 这两行要是被 reset 冲掉，一条命令装回来：
+powershell -File scripts/enable-mcp-package.ps1
+# GitHub 侧的标签/里程碑/issue/release 也能一键重建（幂等）：
+powershell -File scripts/setup-github.ps1
+
 # 自检菜单（Unity 里）
 Tools/DSH Pet/Validate Wiring       # 宠物侧完整状态报告
 Tools/DSH Pet/Build Pet Scene       # 重建场景里的房间（改了 PetRoom 的摆放逻辑后必须跑）

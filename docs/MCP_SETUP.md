@@ -93,6 +93,14 @@ git -c http.sslBackend=openssl clone https://github.com/CoplayDev/unity-mcp D:\p
 > `packages-lock.json` 已经用 `git update-index --skip-worktree` 隐藏了本地改动，
 > 所以这一行不会被误提交。想看到/提交它：
 > `git update-index --no-skip-worktree UnityMCPProject/Packages/manifest.json`。
+>
+> **如果哪天这一行丢了**（`git reset --hard`、`git checkout -- .` 之类会覆盖
+> skip-worktree 文件），一条命令就能装回来：
+>
+> ```powershell
+> powershell -File scripts/enable-mcp-package.ps1            # 装上（幂等）
+> powershell -File scripts/enable-mcp-package.ps1 -Remove    # 拆掉
+> ```
 
 ### 3.4 把编辑器传输方式切成 stdio
 
