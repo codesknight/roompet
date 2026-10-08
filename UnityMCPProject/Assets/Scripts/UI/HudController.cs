@@ -1,0 +1,348 @@
+﻿using UnityEngine;
+
+namespace DshRunner
+{
+    /// <summary>
+    /// Immediate-mode HUD and menus. IMGUI is used deliberately: it needs no Canvas,
+    /// no font asset and no extra package, so the game runs in any project state.
+    /// </summary>
+    public class HudController : MonoBehaviour
+    {
+        private GUIStyle _title;
+        private GUIStyle _hud;
+        private GUIStyle _hudSmall;
+        private GUIStyle _button;
+        private GUIStyle _buttonTiny;
+        private GUIStyle _panel;
+        private GUIStyle _center;
+        private bool _stylesReady;
+
+        private void EnsureStyles()
+        {
+            if (_stylesReady) return;
+            _stylesReady = true;
+
+            _title = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 44,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter
+            };
+            _title.normal.textColor = new Color(0.75f, 0.95f, 1f);
+
+            _hud = new GUIStyle(GUI.skin.label) { fontSize = 22, fontStyle = FontStyle.Bold };
+            _hud.normal.textColor = Color.white;
+
+            _hudSmall = new GUIStyle(GUI.skin.label) { fontSize = 16 };
+            _hudSmall.normal.textColor = new Color(0.85f, 0.9f, 1f);
+
+            _button = new GUIStyle(GUI.skin.button) { fontSize = 20, padding = new RectOffset(18, 18, 10, 10) };
+            _buttonTiny = new GUIStyle(GUI.skin.button) { fontSize = 15, padding = new RectOffset(10, 10, 6, 6) };
+
+            _panel = new GUIStyle(GUI.skin.box) { padding = new RectOffset(18, 18, 18, 18) };
+
+            _center = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 18 };
+            _center.normal.textColor = Color.white;
+        }
+
+        private void OnGUI()
+        {
+            var gm = GameManager.Instance;
+            if (gm == null) return;
+
+            EnsureStyles();
+
+            switch (gm.State)
+            {
+                case GameState.Menu: DrawMenu(gm); break;
+                case GameState.LevelSelect: DrawLevelSelect(gm); break;
+                case GameState.Playing: DrawHud(gm); break;
+                case GameState.Paused: DrawHud(gm); DrawPaused(gm); break;
+                case GameState.GameOver: DrawGameOver(gm); break;
+                case GameState.LevelComplete: DrawLevelComplete(gm); break;
+            }
+        }
+
+        // ------------------------------------------------------------------- in-game
+
+        private void DrawHud(GameManager gm)
+        {
+            var score = gm.Score.Snapshot();
+
+            GUILayout.BeginArea(new Rect(20, 16, 320, 200));
+            GUILayout.Label($"{score.Score:N0}", _hud);
+            GUILayout.Label($"{score.Distance:F0} m   倍率 x{score.Multiplier:F2}", _hudSmall);
+            GUILayout.Label($"果子 {score.Coins}", _hudSmall);
+            GUILayout.Label($"速度 {gm.CurrentSpeed:F1} m/s", _hudSmall);
+            GUILayout.EndArea();
+
+            // Level progress (only for finite levels).
+            if (gm.Level != null && !gm.Level.Endless)
+            {
+                float progress = Difficulty.Progress(gm.Level, score.Distance);
+                var bar = new Rect(Screen.width * 0.5f - 160f, 22f, 320f, 16f);
+                GUI.color = new Color(1f, 1f, 1f, 0.25f);
+                GUI.Box(bar, GUIContent.none);
+                GUI.color = new Color(0.4f, 0.95f, 1f, 0.95f);
+                GUI.Box(new Rect(bar.x, bar.y, bar.width * progress, bar.height), GUIContent.none);
+                GUI.color = Color.white;
+
+                GUI.Label(new Rect(bar.x, bar.y + 20f, bar.width, 22f),
+                    $"{gm.Level.Name}  {score.Distance:F0}/{gm.Level.TargetDistance:F0} m", _center);
+            }
+
+            DrawPowerUps(gm);
+
+            GUI.Label(new Rect(20f, Screen.height - 34f, Screen.width - 40f, 24f),
+                "A/D 或 ←/→ 换道    W/↑/空格 跳跃    S/↓ 滑铲    P/Esc 暂停", _hudSmall);
+
+            DrawReturnToRoom();
+        }
+
+        /// <summary>
+        /// When the run was started from the pet room, offer the way home. The two gameplay
+        /// assemblies deliberately do not reference each other, so the hand-off is a
+        /// PlayerPrefs flag and a scene name rather than a direct call.
+        /// </summary>
+        private static void DrawReturnToRoom()
+        {
+            if (PlayerPrefs.GetInt(AwayFlagKey, 0) != 1) return;
+
+            if (GUI.Button(new Rect(Screen.width - 168f, Screen.height - 44f, 148f, 30f), "返回宠物小屋"))
+            {
+                PlayerPrefs.SetInt(AwayFlagKey, 0);
+                PlayerPrefs.Save();
+                UnityEngine.SceneManagement.SceneManager.LoadScene(RoomSceneName);
+            }
+        }
+
+        private const string AwayFlagKey = "dshpet.away";
+        private const string RoomSceneName = "PetRoom";
+
+        private void DrawPowerUps(GameManager gm)
+        {
+            var powerUps = gm.PowerUps;
+            if (powerUps == null) return;
+
+            float x = Screen.width - 240f;
+            float y = 16f;
+            var kinds = new[]
+            {
+                PowerUpKind.Shield, PowerUpKind.Magnet,
+                PowerUpKind.DoubleScore, PowerUpKind.SlowMotion
+            };
+
+            foreach (var kind in kinds)
+            {
+                float remaining = powerUps.Remaining(kind);
+                bool active = kind == PowerUpKind.Shield ? powerUps.ShieldActive : remaining > 0f;
+                if (!active) continue;
+
+                var rect = new Rect(x, y, 220f, 26f);
+                GUI.color = new Color(1f, 1f, 1f, 0.2f);
+                GUI.Box(rect, GUIContent.none);
+                GUI.color = PowerUpTint(kind);
+                GUI.Box(new Rect(rect.x, rect.y, rect.width * powerUps.Normalised(kind), rect.height), GUIContent.none);
+                GUI.color = Color.white;
+                GUI.Label(new Rect(rect.x + 8f, rect.y + 2f, rect.width, rect.height),
+                    $"{powerUps.Describe(kind)}  {remaining:F1}s", _hudSmall);
+                y += 32f;
+            }
+        }
+
+        private static Color PowerUpTint(PowerUpKind kind)
+        {
+            switch (kind)
+            {
+                case PowerUpKind.Shield: return new Color(0.35f, 0.85f, 1f, 0.85f);
+                case PowerUpKind.Magnet: return new Color(1f, 0.55f, 0.2f, 0.85f);
+                case PowerUpKind.DoubleScore: return new Color(1f, 0.9f, 0.3f, 0.85f);
+                case PowerUpKind.SlowMotion: return new Color(0.6f, 0.6f, 1f, 0.85f);
+                default: return new Color(1f, 1f, 1f, 0.85f);
+            }
+        }
+
+        // --------------------------------------------------------------------- menus
+
+        private void DrawMenu(GameManager gm)
+        {
+            float w = 460f;
+            float h = 420f;
+            var rect = new Rect(Screen.width * 0.5f - w * 0.5f, Screen.height * 0.5f - h * 0.5f, w, h);
+
+            GUI.Box(rect, GUIContent.none, _panel);
+            GUILayout.BeginArea(new Rect(rect.x + 24f, rect.y + 20f, w - 48f, h - 40f));
+
+            GUILayout.Label("森 林 奔 跑", _title);
+            GUILayout.Space(6f);
+            GUILayout.Label("FOREST RUNNER · 换道 / 跳跃 / 滑铲 / 道具", _center);
+            GUILayout.Space(18f);
+
+            GUILayout.Label($"最高分  {ProgressStore.BestScore:N0}", _hudSmall);
+            GUILayout.Label($"最远距离  {ProgressStore.BestDistance:F0} m", _hudSmall);
+            GUILayout.Label($"累计果子  {ProgressStore.TotalCoins:N0}", _hudSmall);
+            GUILayout.Space(18f);
+
+            if (GUILayout.Button("无尽模式  (Enter)", _button, GUILayout.Height(48f)))
+            {
+                gm.StartRun(LevelLibrary.Endless);
+            }
+
+            if (GUILayout.Button("关卡模式  (L)", _button, GUILayout.Height(48f)))
+            {
+                gm.OpenLevelSelect();
+            }
+
+            GUILayout.Space(10f);
+            if (GUILayout.Button("重置进度", _buttonTiny, GUILayout.Height(30f)))
+            {
+                ProgressStore.ResetAll();
+            }
+
+            GUILayout.EndArea();
+
+            if (Event.current.type == EventType.KeyDown)
+            {
+                if (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter)
+                {
+                    gm.StartRun(LevelLibrary.Endless);
+                }
+                else if (Event.current.keyCode == KeyCode.L)
+                {
+                    gm.OpenLevelSelect();
+                }
+            }
+        }
+
+        private void DrawLevelSelect(GameManager gm)
+        {
+            float w = 720f;
+            float h = 560f;
+            var rect = new Rect(Screen.width * 0.5f - w * 0.5f, Screen.height * 0.5f - h * 0.5f, w, h);
+
+            GUI.Box(rect, GUIContent.none, _panel);
+            GUILayout.BeginArea(new Rect(rect.x + 24f, rect.y + 18f, w - 48f, h - 36f));
+
+            GUILayout.Label("选择关卡", _title);
+            GUILayout.Space(10f);
+
+            for (int i = 1; i < LevelLibrary.Count; i++)
+            {
+                var level = LevelLibrary.Get(i);
+                bool unlocked = i <= ProgressStore.UnlockedLevels;
+                int best = ProgressStore.LevelBest(i);
+                string label = unlocked
+                    ? $"{level.Name}   ·   {level.Blurb}   ·   目标 {level.TargetDistance:F0} m   ·   最佳 {best:N0}"
+                    : $"{level.Name}   ·   未解锁（先通关第 {i - 1} 关）";
+
+                GUI.enabled = unlocked;
+                if (GUILayout.Button(label, _button, GUILayout.Height(40f)))
+                {
+                    gm.StartRun(level);
+                }
+                GUI.enabled = true;
+            }
+
+            GUILayout.Space(12f);
+            if (GUILayout.Button("返回主菜单  (Esc)", _button, GUILayout.Height(40f)))
+            {
+                gm.ReturnToMenu();
+            }
+
+            GUILayout.EndArea();
+
+            if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape)
+            {
+                gm.ReturnToMenu();
+            }
+        }
+
+        private void DrawPaused(GameManager gm)
+        {
+            var rect = CenterBox(360f, 300f);
+            GUI.Box(rect, GUIContent.none, _panel);
+            GUILayout.BeginArea(new Rect(rect.x + 24f, rect.y + 24f, rect.width - 48f, rect.height - 48f));
+
+            GUILayout.Label("暂停", _title);
+            GUILayout.Space(14f);
+
+            if (GUILayout.Button("继续  (Esc)", _button, GUILayout.Height(44f))) gm.TogglePause();
+            if (GUILayout.Button("重新开始  (R)", _button, GUILayout.Height(44f))) gm.RestartRun();
+            if (GUILayout.Button("返回主菜单", _button, GUILayout.Height(44f))) gm.ReturnToMenu();
+
+            GUILayout.EndArea();
+
+            if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.R)
+            {
+                gm.RestartRun();
+            }
+        }
+
+        private void DrawGameOver(GameManager gm)
+        {
+            var score = gm.Score.Snapshot();
+            var rect = CenterBox(440f, 380f);
+            GUI.Box(rect, GUIContent.none, _panel);
+            GUILayout.BeginArea(new Rect(rect.x + 24f, rect.y + 22f, rect.width - 48f, rect.height - 44f));
+
+            GUILayout.Label("游戏结束", _title);
+            if (!string.IsNullOrEmpty(gm.LastFailReason))
+            {
+                GUILayout.Label(gm.LastFailReason, _center);
+            }
+            GUILayout.Space(12f);
+
+            GUILayout.Label($"本次得分  {score.Score:N0}", _hud);
+            GUILayout.Label($"距离  {score.Distance:F0} m      金币  {score.Coins}", _hudSmall);
+            GUILayout.Label($"最高分  {ProgressStore.BestScore:N0}", _hudSmall);
+            GUILayout.Space(16f);
+
+            if (GUILayout.Button("再来一次  (R)", _button, GUILayout.Height(46f))) gm.RestartRun();
+            if (GUILayout.Button("返回主菜单", _button, GUILayout.Height(46f))) gm.ReturnToMenu();
+
+            GUILayout.EndArea();
+
+            if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.R)
+            {
+                gm.RestartRun();
+            }
+        }
+
+        private void DrawLevelComplete(GameManager gm)
+        {
+            var score = gm.Score.Snapshot();
+            bool hasNext = gm.Level != null && !gm.Level.Endless && gm.Level.Index + 1 < LevelLibrary.Count;
+
+            var rect = CenterBox(460f, 400f);
+            GUI.Box(rect, GUIContent.none, _panel);
+            GUILayout.BeginArea(new Rect(rect.x + 24f, rect.y + 22f, rect.width - 48f, rect.height - 44f));
+
+            GUILayout.Label("通关！", _title);
+            GUILayout.Space(10f);
+            GUILayout.Label($"本次得分  {score.Score:N0}", _hud);
+            GUILayout.Label($"距离  {score.Distance:F0} m      金币  {score.Coins}", _hudSmall);
+            GUILayout.Space(16f);
+
+            if (hasNext)
+            {
+                if (GUILayout.Button("下一关  (Enter)", _button, GUILayout.Height(46f))) gm.NextLevel();
+            }
+            if (GUILayout.Button("重玩本关  (R)", _button, GUILayout.Height(46f))) gm.RestartRun();
+            if (GUILayout.Button("返回主菜单", _button, GUILayout.Height(46f))) gm.ReturnToMenu();
+
+            GUILayout.EndArea();
+
+            if (Event.current.type == EventType.KeyDown)
+            {
+                if (Event.current.keyCode == KeyCode.R) gm.RestartRun();
+                else if (hasNext && (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter))
+                {
+                    gm.NextLevel();
+                }
+            }
+        }
+
+        private static Rect CenterBox(float w, float h)
+            => new Rect(Screen.width * 0.5f - w * 0.5f, Screen.height * 0.5f - h * 0.5f, w, h);
+    }
+}

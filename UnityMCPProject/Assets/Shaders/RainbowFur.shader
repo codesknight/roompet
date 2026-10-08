@@ -1,0 +1,249 @@
+Shader "DSH/Rainbow Fur"
+{
+    Properties
+    {
+        [Header(Fur)]
+        _BaseColor ("Base Color", Color) = (0.28, 0.17, 0.08, 1)
+        _TipColor ("Tip Color", Color) = (0.95, 0.76, 0.45, 1)
+        _FurLength ("Fur Length", Range(0.0, 1.0)) = 0.18
+        _ShellCount ("Shell Count", Range(1, 31)) = 22
+        _Density ("Strand Density", Range(0.0, 1.0)) = 0.45
+        _StrandScale ("Strand Scale", Range(2.0, 300.0)) = 60.0
+        _Gravity ("Gravity Droop", Range(0.0, 2.0)) = 0.45
+        _BaseOcclusion ("Base Occlusion", Range(0.0, 1.0)) = 0.5
+        _NormalJitter ("Normal Jitter", Range(0.0, 1.0)) = 0.45
+
+        [Header(Rainbow Glow)]
+        _HueShift ("Hue Offset", Range(0.0, 1.0)) = 0.0
+        _HueSpread ("Hue Spread (per unit)", Range(0.0, 8.0)) = 1.6
+        _HueTipShift ("Hue Shift To Tip", Range(-1.0, 1.0)) = 0.28
+        _FlowSpeed ("Flow Speed", Range(-4.0, 4.0)) = 0.55
+        _Saturation ("Saturation", Range(0.0, 1.0)) = 1.0
+        _GlowPower ("Glow Tip Falloff", Range(0.25, 8.0)) = 2.2
+        _GlowStrength ("Glow Strength", Range(0.0, 4.0)) = 1.25
+        _RainbowMix ("Rainbow Mix", Range(0.0, 1.0)) = 0.85
+        _RimPower ("Rim Falloff", Range(0.25, 8.0)) = 2.0
+        _GlowAdd ("Additive Halo", Range(0.0, 3.0)) = 0.45
+        _Shimmer ("Strand Shimmer", Range(0.0, 1.0)) = 0.8
+        _PulseSpeed ("Pulse Speed", Range(0.0, 12.0)) = 3.0
+        _PulseDepth ("Pulse Depth", Range(0.0, 1.0)) = 0.22
+    }
+
+    SubShader
+    {
+        Tags { "RenderType" = "Opaque" "Queue" = "Geometry" }
+        LOD 300
+
+        Pass
+        {
+            Name "RAINBOW_FUR_FORWARD"
+            Tags { "LightMode" = "ForwardBase" }
+
+            Cull Back
+            ZWrite On
+
+            CGPROGRAM
+            #pragma target 4.0
+            #pragma vertex vert
+            #pragma geometry geom
+            #pragma fragment frag
+            #pragma multi_compile_fog
+
+            #include "UnityCG.cginc"
+            #include "Lighting.cginc"
+
+            fixed4 _BaseColor;
+            fixed4 _TipColor;
+            float _FurLength;
+            float _ShellCount;
+            float _Density;
+            float _StrandScale;
+            float _Gravity;
+            float _BaseOcclusion;
+            float _NormalJitter;
+
+            float _HueShift;
+            float _HueSpread;
+            float _HueTipShift;
+            float _FlowSpeed;
+            float _Saturation;
+            float _GlowPower;
+            float _GlowStrength;
+            float _RainbowMix;
+            float _RimPower;
+            float _GlowAdd;
+            float _Shimmer;
+            float _PulseSpeed;
+            float _PulseDepth;
+
+            struct appdata
+            {
+                float4 vertex : POSITION;
+                float3 normal : NORMAL;
+            };
+
+            struct v2g
+            {
+                float4 objPos    : TEXCOORD0;
+                float3 objNormal : TEXCOORD1;
+            };
+
+            struct g2f
+            {
+                float4 pos         : SV_POSITION;
+                float3 worldNormal : TEXCOORD0;
+                float3 worldPos    : TEXCOORD1;
+                float  shell       : TEXCOORD2;
+                UNITY_FOG_COORDS(3)
+            };
+
+            float hash13(float3 p3)
+            {
+                p3 = frac(p3 * 0.1031);
+                p3 += dot(p3, p3.zyx + 31.32);
+                return frac((p3.x + p3.y) * p3.z);
+            }
+
+            float vnoise(float3 p)
+            {
+                float3 i = floor(p);
+                float3 f = frac(p);
+                f = f * f * (3.0 - 2.0 * f);
+
+                float n000 = hash13(i + float3(0, 0, 0));
+                float n100 = hash13(i + float3(1, 0, 0));
+                float n010 = hash13(i + float3(0, 1, 0));
+                float n110 = hash13(i + float3(1, 1, 0));
+                float n001 = hash13(i + float3(0, 0, 1));
+                float n101 = hash13(i + float3(1, 0, 1));
+                float n011 = hash13(i + float3(0, 1, 1));
+                float n111 = hash13(i + float3(1, 1, 1));
+
+                return lerp(
+                    lerp(lerp(n000, n100, f.x), lerp(n010, n110, f.x), f.y),
+                    lerp(lerp(n001, n101, f.x), lerp(n011, n111, f.x), f.y),
+                    f.z);
+            }
+
+            float fbm(float3 p)
+            {
+                float v = 0.0;
+                float a = 0.5;
+                [unroll]
+                for (int k = 0; k < 3; k++)
+                {
+                    v += a * vnoise(p);
+                    p *= 2.03;
+                    a *= 0.5;
+                }
+                return v * 1.142857; // 1 / 0.875
+            }
+
+            float3 hsv2rgb(float3 c)
+            {
+                float4 K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+                float3 p = abs(frac(c.xxx + K.xyz) * 6.0 - K.www);
+                return c.z * lerp(K.xxx, saturate(p - K.xxx), c.y);
+            }
+
+            v2g vert(appdata v)
+            {
+                v2g o;
+                o.objPos = v.vertex;
+                o.objNormal = v.normal;
+                return o;
+            }
+
+            // One triangle copy per fur shell, pushed out along the normal.
+            // D3D caps (maxvertexcount * scalar components of the output struct) at 1024.
+            // g2f is 11 scalars, so 93 vertices is the ceiling: 31 shells * 3 vertices.
+            [maxvertexcount(93)]
+            void geom(triangle v2g input[3], inout TriangleStream<g2f> stream)
+            {
+                float shells = clamp(floor(_ShellCount), 1.0, 31.0);
+                float last = max(1.0, shells - 1.0);
+
+                for (float s = 0.0; s < shells; s += 1.0)
+                {
+                    float f = s / last; // 0 at the skin, 1 at the tips
+
+                    g2f o[3];
+                    for (int j = 0; j < 3; j++)
+                    {
+                        float4 wp = mul(unity_ObjectToWorld, float4(input[j].objPos.xyz, 1.0));
+                        float3 wn = UnityObjectToWorldNormal(input[j].objNormal);
+
+                        float3 offset = normalize(wn) * (f * _FurLength);
+                        offset.y -= f * f * _Gravity * _FurLength; // droop
+
+                        wp.xyz += offset;
+
+                        o[j].pos = mul(UNITY_MATRIX_VP, wp);
+                        o[j].worldPos = wp.xyz;
+                        o[j].worldNormal = normalize(wn);
+                        o[j].shell = f;
+                        UNITY_TRANSFER_FOG(o[j], o[j].pos);
+                    }
+
+                    stream.Append(o[0]);
+                    stream.Append(o[1]);
+                    stream.Append(o[2]);
+                    stream.RestartStrip();
+                }
+            }
+
+            fixed4 frag(g2f i) : SV_Target
+            {
+                // Per-pixel strand mask: shells thin out toward the tip so the
+                // silhouette breaks up into fur instead of smooth layers.
+                float strand = fbm(i.worldPos * _StrandScale);
+                clip(strand - i.shell * _Density);
+
+                float3 cell = floor(i.worldPos * _StrandScale);
+                float3 jitter = float3(
+                    hash13(cell),
+                    hash13(cell + 19.19),
+                    hash13(cell + 53.53)) * 2.0 - 1.0;
+                float3 n = normalize(i.worldNormal + jitter * _NormalJitter);
+
+                float3 lightDir = normalize(_WorldSpaceLightPos0.xyz);
+                float ndl = saturate(dot(n, lightDir));
+                float3 ambient = ShadeSH9(float4(n, 1.0));
+
+                float ao = lerp(1.0 - _BaseOcclusion, 1.0, i.shell);
+                float3 albedo = lerp(_BaseColor.rgb, _TipColor.rgb, i.shell);
+                float3 furLit = albedo * (_LightColor0.rgb * ndl * ao + ambient * ao);
+
+                float3 viewDir = normalize(_WorldSpaceCameraPos - i.worldPos);
+                float rim = pow(1.0 - saturate(dot(n, viewDir)), _RimPower);
+
+                // ---- animated rainbow glow ----
+                // Hue drifts with time and is offset by position and shell depth, so the
+                // cube carries a moving spectrum rather than one flat colour.
+                float hue = frac(_HueShift
+                                 + _Time.y * _FlowSpeed
+                                 + i.worldPos.y * _HueSpread
+                                 + i.worldPos.x * _HueSpread * 0.5
+                                 + i.shell * _HueTipShift);
+                float3 rainbow = hsv2rgb(float3(hue, _Saturation, 1.0));
+
+                float pulse = 1.0 - _PulseDepth + _PulseDepth * sin(_Time.y * _PulseSpeed);
+                float twinkle = lerp(1.0, 0.35 + 1.3 * strand, _Shimmer);
+
+                float tip = pow(saturate(i.shell), _GlowPower);
+                float mask = saturate(tip * _GlowStrength) * (0.55 + 0.45 * rim) * pulse * twinkle;
+
+                // Mix toward the rainbow instead of only adding it, so saturated tips
+                // read as colour rather than clipping straight to white.
+                float3 col = lerp(furLit, rainbow, _RainbowMix * mask);
+                col += rainbow * _GlowAdd * mask * rim;
+
+                UNITY_APPLY_FOG(i.fogCoord, col);
+                return fixed4(col, 1.0);
+            }
+            ENDCG
+        }
+    }
+
+    Fallback "Diffuse"
+}

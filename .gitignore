@@ -1,0 +1,66 @@
+# ---------------------------------------------------------------- Unity generated
+# These are rebuilt from Assets/ + ProjectSettings/ on first open. Committing them
+# adds tens of MB and nothing but merge conflicts.
+#
+# NOTE: patterns are deliberately NOT anchored with a leading slash — the Unity
+# project lives in UnityMCPProject/, one level below the repository root, so
+# "/[Ll]ibrary/" would miss it entirely.
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Unity writes these into the project root; the IDE regenerates them.
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Editor / IDE state
+.vs/
+.idea/
+.vscode/
+.consulo/
+
+# Python bytecode (scripts/ holds a few helper scripts)
+__pycache__/
+*.pyc
+
+# Build output
+*.apk
+*.aab
+*.unitypackage
+*.app
+crashlytics-build.properties
+sysinfo.txt
+
+# ------------------------------------------------------- this project's own bits
+# The MCP for Unity checkout and its Python environment are machine-level dev
+# tooling, not part of the game. See docs/MCP_SETUP.md to recreate them.
+/unity-mcp/
+/.venv/
+/.tools/
+/.unity-mcp-status/
+
+# Scratch captures. Evidence worth keeping goes to docs/evidence/ instead.
+/logs/
+UnityMCPProject/Assets/Screenshots/
+
+# Unity's asset-store importer scratch
+UnityMCPProject/Assets/AssetStoreTools*
+UnityMCPProject/Assets/StreamingAssets/aa*

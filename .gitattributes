@@ -1,0 +1,65 @@
+# Line-ending policy.
+#
+# Code and docs are normalised to LF so diffs are clean across machines.
+* text=auto eol=lf
+
+# ------------------------------------------------------------------ Unity assets
+# Unity writes these YAML files itself and is happy with either ending. Normalising
+# them means every save on Windows shows up as "modified" — git rewrites CRLF to LF
+# in the index while Unity keeps writing CRLF. Treating them as opaque (-text) keeps
+# the tree clean; the trade-off is that they are not diffed as text, which for
+# generated YAML is no loss.
+*.unity      -text
+*.prefab     -text
+*.asset      -text
+*.mat        -text
+*.meta       -text
+*.controller -text
+*.anim       -text
+*.physicMaterial -text
+*.physicsMaterial2D -text
+*.mixer      -text
+*.playable   -text
+
+# ------------------------------------------------------------------------ code
+*.cs      text eol=lf
+*.shader  text eol=lf
+*.cginc   text eol=lf
+*.hlsl    text eol=lf
+*.asmdef  text eol=lf
+*.json    text eol=lf
+*.md      text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.js      text eol=lf
+*.py      text eol=lf
+
+# PowerShell hosts on Windows refuse CRLF-less scripts often enough to matter.
+*.ps1     text eol=crlf
+
+# ---------------------------------------------------------------------- binary
+# Marked so git never attempts a diff, merge or line-ending conversion.
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.psd     binary
+*.tga     binary
+*.exr     binary
+*.fbx     binary
+*.obj     binary
+*.blend   binary
+*.dae     binary
+*.3ds     binary
+*.wav     binary
+*.mp3     binary
+*.ogg     binary
+*.aiff    binary
+*.ttf     binary
+*.otf     binary
+*.dll     binary
+*.so      binary
+*.dylib   binary
+*.zip     binary
+*.7z      binary
+*.gz      binary

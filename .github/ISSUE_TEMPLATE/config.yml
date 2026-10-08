@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 开发说明与踩坑清单
+    url: https://github.com/codesknight/roompet/blob/main/docs/DEVLOG.md
+    about: 改代码前先看这里：代码地图、环境事实、22 条已知的坑。
+  - name: 需求与实现对照
+    url: https://github.com/codesknight/roompet/blob/main/docs/REQUIREMENTS.md
+    about: 想知道某个功能是怎么实现的、有没有验收证据，看这里。
