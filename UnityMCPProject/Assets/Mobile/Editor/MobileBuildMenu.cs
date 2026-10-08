@@ -156,8 +156,11 @@ namespace DshMobileEditor
             sb.AppendLine($"  isMobilePlatform    : {MobileUi.IsMobile}");
             sb.AppendLine($"  touch controls      : {MobileUi.UseTouchControls} (forced={MobileUi.ForceTouchControls})");
             sb.AppendLine($"  screen              : {Screen.width}x{Screen.height} @ {Screen.dpi:F0} dpi");
+            sb.AppendLine($"  layout dpi          : {MobileUi.EffectiveDpi:F0}" +
+                          (MobileUi.ReferenceDpi > 60f ? " (simulated by the preview menu)" : " (platform)"));
             sb.AppendLine($"  safe area           : {MobileUi.SafeArea}");
             sb.AppendLine($"  ui scale            : {MobileUi.UiScale:F2} (design {Screen.width / MobileUi.UiScale:F0}x{Screen.height / MobileUi.UiScale:F0})");
+            sb.AppendLine($"  viewport shape      : {(MobileUi.IsPortrait ? "portrait" : "landscape")} (aspect {MobileUi.Aspect:F2})");
             sb.AppendLine($"  android target ok   : {BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Android, BuildTarget.Android)}");
             sb.AppendLine($"  package id          : {PlayerSettings.GetApplicationIdentifier(BuildTargetGroup.Android)}");
             sb.AppendLine($"  architectures       : {PlayerSettings.Android.targetArchitectures}");

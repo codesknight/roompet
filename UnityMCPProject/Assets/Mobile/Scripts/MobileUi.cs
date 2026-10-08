@@ -41,6 +41,30 @@ namespace DshMobile
         public static bool ForceTouchControls;
 
         /// <summary>
+        /// DPI the layout should assume. 0 means "ask the platform".
+        ///
+        /// This exists because of a lesson learned the hard way: the editor reports ~96 dpi and
+        /// a phone reports 400-500, the scale carries a dpi correction, and so a preview at
+        /// exactly the right pixel size still produced the WRONG design space — 800px wide in
+        /// the editor against 665px on the device. A layout verified in the editor was
+        /// therefore not the layout the phone ran.
+        ///
+        /// The preview menus set this to a representative phone density; on a device it stays 0
+        /// and the real reported value is used, so the two agree.
+        /// </summary>
+        public static float ReferenceDpi;
+
+        /// <summary>The dpi the scale will actually use, after the override and the sanity check.</summary>
+        public static float EffectiveDpi
+        {
+            get
+            {
+                if (ReferenceDpi > 60f) return ReferenceDpi;
+                return Screen.dpi > 60f ? Screen.dpi : 0f;
+            }
+        }
+
+        /// <summary>
         /// Layout scale for the HUD.
         ///
         /// Driven by the screen's SHORT side — not by height — because the game runs in both
@@ -54,14 +78,7 @@ namespace DshMobile
         /// platform reports it (a 400-dpi phone needs slightly bigger targets than a
         /// 240-dpi tablet at the same pixel height).
         /// </summary>
-        public static float UiScale
-        {
-            get
-            {
-                float dpi = Screen.dpi > 60f ? Screen.dpi : 0f;
-                return ScaleFor(ShortSide, dpi);
-            }
-        }
+        public static float UiScale => ScaleFor(ShortSide, EffectiveDpi);
 
         /// <summary>
         /// The scale calculation on its own, so it can be checked at phone sizes without

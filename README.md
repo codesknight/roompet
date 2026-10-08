@@ -171,8 +171,8 @@ github.com 凭据，脚本里不存任何 token）。
 
 ## 测试与验证
 
-单元测试在 Unity 里跑：**Window → General → Test Runner → EditMode → Run All**，应 **115/115 通过**
-（宠物 69 + 跑酷 15 + 手机端 31）。
+单元测试在 Unity 里跑：**Window → General → Test Runner → EditMode → Run All**，应 **118/118 通过**
+（宠物 69 + 跑酷 15 + 手机端 34）。
 
 工程里还带了两个自检菜单（比手写脚本快）：
 
@@ -189,7 +189,11 @@ github.com 凭据，脚本里不存任何 token）。
 - `Tools/DSH Mobile/Report Mobile Status` —— 打印当前平台、触控开关、缩放、安全区、包名、架构。
 - `Tools/DSH Mobile/Toggle Touch Preview` —— 在编辑器里用手机布局跑（鼠标当手指）。
 - `Tools/DSH Mobile/Preview/…` —— 把 Game 视图切成真机尺寸（竖屏 1080x2400 / 横屏 2400x1080 /
-  长竖屏 1080x2340 / 平板竖屏 1600x2560），另有 `Report Current Viewport` 打印当前视口与缩放。
+  长竖屏 1080x2340 / 平板竖屏 1600x2560），**并一起模拟手机的屏幕密度**——
+  编辑器是 96dpi、手机是 400-500dpi，而缩放里带 dpi 修正，不模拟的话预览出来的设计空间
+  会比真机宽 20%，"在编辑器里验过的布局"就不是真机跑的那套。
+  另有 `Report Current Viewport` 打印当前视口 / 方向 / dpi / 缩放 / 设计尺寸，
+  `Use Platform DPI` 还原成平台值。
 - `Tools/DSH Mobile/Configure Android Player Settings` —— 一键写回横竖屏/包名/IL2CPP+ARM64/INTERNET 等设置。
 - `Tools/DSH Mobile/Build APK` —— 出包到 `UnityMCPProject/Builds/Android/RoomPet.apk`。
 

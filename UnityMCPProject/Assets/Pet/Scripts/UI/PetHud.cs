@@ -136,6 +136,8 @@ namespace DshPet
             Mobile = MobileUi.UseTouchControls;
             Scale = scale;
             SafeOffset = new Vector2(safe.x, safe.y);
+            DesignWidth = designWidth;
+            DesignHeight = designHeight;
 
             var layout = ComputeLayout(designWidth, designHeight, PetSpecies.Count);
 
@@ -184,6 +186,46 @@ namespace DshPet
 
         /// <summary>Pixels the whole HUD is inset by, to clear notches and rounded corners.</summary>
         public static Vector2 SafeOffset { get; private set; }
+
+        /// <summary>
+        /// Viewport size in DESIGN pixels — what the HUD is actually laid out in.
+        ///
+        /// Everything drawn between the <c>GUI.matrix</c> push and pop is in these units, which
+        /// is NOT what <c>Screen.width</c> reports on a phone. Mixing the two is the bug that
+        /// put every modal panel off-centre and half off the bottom of the screen: a rect
+        /// centred against 1080x2400 screen pixels and then drawn through a 1.7x matrix lands
+        /// at 1.7x the intended position.
+        /// </summary>
+        public static float DesignWidth { get; private set; } = 1280f;
+
+        /// <inheritdoc cref="DesignWidth"/>
+        public static float DesignHeight { get; private set; } = 720f;
+
+        /// <summary>Converts real screen pixels (e.g. WorldToScreenPoint) into design pixels.</summary>
+        public static Vector2 ScreenToDesign(Vector2 screen)
+        {
+            float scale = Scale > 0f ? Scale : 1f;
+            return new Vector2((screen.x - SafeOffset.x) / scale, (screen.y - SafeOffset.y) / scale);
+        }
+
+        /// <summary>
+        /// A world point as an IMGUI rect in design space, y measured from the top.
+        ///
+        /// <c>WorldToScreenPoint</c> answers in real screen pixels with the origin at the
+        /// BOTTOM left, so using it directly inside the scaled block puts a label in the wrong
+        /// place twice over. Only valid outside OnGUI's matrix block if Mobile is false, in
+        /// which case the conversion is the identity.
+        /// </summary>
+        public static Rect WorldLabelRect(Camera camera, Vector3 world, float width, float height,
+            float yOffset = -16f)
+        {
+            var screen = camera.WorldToScreenPoint(world);
+            float scale = Scale > 0f ? Scale : 1f;
+            var design = ScreenToDesign(new Vector2(screen.x, Screen.height - screen.y));
+            return new Rect(design.x - width * 0.5f,
+                design.y + yOffset / scale,
+                width, height);
+        }
 
         /// <summary>Chat is collapsed by default on a phone: the thumbs live down there.</summary>
         private bool _chatExpanded;
@@ -260,13 +302,24 @@ namespace DshPet
 
         /// <summary>A floating panel's rect, centred but always fully inside the viewport.</summary>
         public static Rect OverlayRect(float preferredWidth, float preferredHeight)
-            => OverlayRect(preferredWidth, preferredHeight, Screen.width, Screen.height);
+            => OverlayRect(preferredWidth, preferredHeight, DesignWidth, DesignHeight, Mobile ? 24f : 16f);
 
+        /// <summary>
+        /// Centres a panel in the viewport, clamped so it never hangs off an edge.
+        ///
+        /// The sizes are in DESIGN pixels — the space the HUD actually draws in. Using
+        /// <c>Screen.width</c> here is what put every dialog off-centre and half off the bottom
+        /// of a phone screen: a rect centred against 1080x2400 screen pixels, then drawn
+        /// through a 1.6x matrix, lands at 1.6x the intended offset.
+        ///
+        /// The margin grows a little on a phone: a panel that touches the screen edge looks
+        /// like a bug next to rounded corners, and it leaves no room to tap beside it.
+        /// </summary>
         public static Rect OverlayRect(float preferredWidth, float preferredHeight,
-            float screenWidth, float screenHeight)
+            float screenWidth, float screenHeight, float margin = 16f)
         {
-            float w = Mathf.Min(preferredWidth, screenWidth - 32f);
-            float h = Mathf.Min(preferredHeight, screenHeight - 32f);
+            float w = Mathf.Min(preferredWidth, Mathf.Max(200f, screenWidth - margin * 2f));
+            float h = Mathf.Min(preferredHeight, Mathf.Max(160f, screenHeight - margin * 2f));
             return new Rect((screenWidth - w) * 0.5f, (screenHeight - h) * 0.5f, w, h);
         }
 
@@ -286,7 +339,9 @@ namespace DshPet
         private void ModalBackdrop(Rect rect)
         {
             GUI.color = new Color(0f, 0f, 0f, 0.55f);
-            GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), Texture2D.whiteTexture);
+            // Design pixels, not Screen.width: the scrim is drawn through the HUD's matrix, so
+            // a screen-sized rect overshoots the viewport by the scale factor.
+            GUI.DrawTexture(new Rect(0f, 0f, DesignWidth, DesignHeight), Texture2D.whiteTexture);
 
             GUI.color = new Color(0.11f, 0.10f, 0.14f, 1f);
             GUI.DrawTexture(rect, Texture2D.whiteTexture);
@@ -530,14 +585,15 @@ namespace DshPet
                     Vector3 screen = camera.WorldToScreenPoint(player.AimPoint);
                     if (screen.z > 0f)
                     {
-                        var dot = new Rect(screen.x - 9f, Screen.height - screen.y - 9f, 18f, 18f);
+                        var centre = ScreenToDesign(new Vector2(screen.x, Screen.height - screen.y));
+                        var dot = new Rect(centre.x - 9f, centre.y - 9f, 18f, 18f);
                         GUI.color = new Color(1f, 0.9f, 0.5f, 0.85f);
                         GUI.Box(dot, GUIContent.none);
                         GUI.color = Color.white;
                     }
                 }
 
-                var panel = new Rect(Screen.width * 0.5f - 170f, layout.ChatTop - 84f, 340f, 62f);
+                var panel = new Rect(DesignWidth * 0.5f - 170f, layout.ChatTop - 84f, 340f, 62f);
                 GUI.Box(panel, GUIContent.none, _panel);
                 GUILayout.BeginArea(new Rect(panel.x + 12f, panel.y + 8f, panel.width - 24f, panel.height - 16f));
 
@@ -559,7 +615,7 @@ namespace DshPet
             // Standing next to a ball that is just lying there: tell the player what to do.
             if (ball.IsAtRest && player != null && player.IsNear(ball.transform.position))
             {
-                var hint = new Rect(Screen.width * 0.5f - 190f, layout.ChatTop - 52f, 380f, 30f);
+                var hint = new Rect(DesignWidth * 0.5f - 190f, layout.ChatTop - 52f, 380f, 30f);
                 GUI.Box(hint, GUIContent.none, _panel);
                 GUI.Label(new Rect(hint.x + 12f, hint.y + 6f, hint.width - 24f, 22f),
                     "按 E 拿起小球，蓄力扔出去让它捡", _label);
@@ -968,12 +1024,14 @@ namespace DshPet
 
                 var style = new GUIStyle(_label) { alignment = TextAnchor.MiddleCenter };
                 GUI.color = new Color(1f, 0.95f, 0.8f, 0.95f);
-                GUI.Label(new Rect(Screen.width * 0.5f - 200f, promptBottom, 400f, 24f), label, style);
+                GUI.Label(new Rect(DesignWidth * 0.5f - 200f, promptBottom, 400f, 24f), label, style);
                 GUI.color = Color.white;
             }
 
             if (!string.IsNullOrEmpty(_cursorHint))
             {
+                // Event.current.mousePosition is already in the current GUI space, so it needs
+                // no conversion — unlike WorldToScreenPoint just below.
                 var pos = Event.current.mousePosition;
                 GUI.Label(new Rect(pos.x + 16f, pos.y + 8f, 320f, 24f), _cursorHint, _small);
             }
@@ -981,13 +1039,9 @@ namespace DshPet
             var cam = Camera.main;
             if (cam != null && gm.Avatar != null)
             {
-                Vector3 screen = cam.WorldToScreenPoint(gm.Avatar.transform.position + Vector3.up * 1.1f);
-                if (screen.z > 0f)
-                {
-                    var rect = new Rect(screen.x - 60f, Screen.height - screen.y - 16f, 120f, 22f);
-                    var centered = new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter };
-                    GUI.Label(rect, PetUtil.MoodLabel(gm.Needs.Mood), centered);
-                }
+                var moodLabel = new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter };
+                GUI.Label(WorldLabelRect(cam, gm.Avatar.transform.position + Vector3.up * 1.1f, 120f, 22f),
+                    PetUtil.MoodLabel(gm.Needs.Mood), moodLabel);
             }
         }
 

@@ -295,7 +295,12 @@ namespace DshMobile.Tests
             new Vector2(720f, 1600f),   // 1080x2400 at scale 1.5
             new Vector2(640f, 1387f),   // 1080x2340 at scale 1.69
             new Vector2(600f, 1200f),   // 1080x2160 at 1.8 — tall and narrow
-            new Vector2(889f, 1422f)    // 1600x2560 tablet at 1.8
+            new Vector2(889f, 1422f),   // 1600x2560 tablet at 1.8
+
+            // What a real 420-dpi phone actually produces: 1080/(1.5 * 1.08) — narrower than a
+            // naive 1080/720 would suggest, which is exactly why the preview simulates the dpi.
+            new Vector2(665f, 1477f),
+            new Vector2(1477f, 665f)
         };
 
         /// <summary>Just the upright viewports, for the checks that differ by orientation.</summary>
@@ -548,8 +553,76 @@ namespace DshMobile.Tests
             }
         }
 
-        // ------------------------------------------------------------------- haptics
+        // ------------------------------------------------------------ modal panels
 
+        /// <summary>The overlay sizes the pet HUD actually asks for.</summary>
+        private static readonly Vector2[] OverlayRequests =
+        {
+            new Vector2(520f, 430f),   // settings
+            new Vector2(520f, 300f),   // prompt preview
+            new Vector2(700f, 540f),   // notebook / calendar
+            new Vector2(720f, 560f)    // door prompt
+        };
+
+        [Test]
+        public void OverlayPanels_AreCentredInTheDesignSpace()
+        {
+            // The bug this pins down: centring against Screen.width (1080 real pixels) and then
+            // drawing through a 1.6x matrix put every dialog off-centre by 1.6x, and in portrait
+            // pushed the footer buttons off the bottom of the screen entirely. The centre of an
+            // overlay must be the centre of the space it is drawn in.
+            foreach (var design in PhoneDesigns)
+            {
+                foreach (var request in OverlayRequests)
+                {
+                    var rect = DshPet.PetHud.OverlayRect(request.x, request.y, design.x, design.y, 24f);
+                    string where = $"{request.x}x{request.y} at {design.x}x{design.y}";
+
+                    Assert.AreEqual(design.x * 0.5f, rect.center.x, 0.5f, $"not horizontally centred: {where}");
+                    Assert.AreEqual(design.y * 0.5f, rect.center.y, 0.5f, $"not vertically centred: {where}");
+                }
+            }
+        }
+
+        [Test]
+        public void OverlayPanels_AlwaysFitInsideTheViewport()
+        {
+            foreach (var design in PhoneDesigns)
+            {
+                foreach (var request in OverlayRequests)
+                {
+                    var rect = DshPet.PetHud.OverlayRect(request.x, request.y, design.x, design.y, 24f);
+                    string where = $"{request.x}x{request.y} at {design.x}x{design.y}";
+
+                    Assert.GreaterOrEqual(rect.x, 23.5f, $"hangs off the left edge: {where}");
+                    Assert.GreaterOrEqual(rect.y, 23.5f, $"hangs off the top edge: {where}");
+                    Assert.LessOrEqual(rect.xMax, design.x - 23.5f, $"hangs off the right edge: {where}");
+                    Assert.LessOrEqual(rect.yMax, design.y - 23.5f, $"hangs off the bottom edge: {where}");
+
+                    // And the footer inside it must still be reachable, i.e. the panel is not so
+                    // short that a 52px footer eats the whole thing.
+                    Assert.Greater(rect.height, 100f, $"panel too short for its own footer: {where}");
+                }
+            }
+        }
+
+        [Test]
+        public void OverlayPanels_LeaveRoomForThumbs()
+        {
+            // Panels fill most of a narrow portrait screen. That is fine for reading, but the
+            // margin is what tells the player "this is a dialog, the world is still there" — and
+            // on a device with rounded corners a panel touching the edge reads as a layout bug.
+            // A panel wider than the viewport is clamped to the margin, not to the edge.
+            var wide = DshPet.PetHud.OverlayRect(1600f, 430f, 1600f, 720f, 16f);
+            Assert.AreEqual(16f, wide.x, 0.5f, "a desktop-sized viewport keeps the plain margin");
+            Assert.AreEqual(1600f - 16f, wide.xMax, 0.5f);
+
+            var portrait = DshPet.PetHud.OverlayRect(900f, 430f, 665f, 1477f, 24f);
+            Assert.AreEqual(24f, portrait.x, 0.5f, "a phone keeps at least the phone margin");
+            Assert.Less(portrait.xMax, 665f - 23f);
+        }
+
+        // ------------------------------------------------------------------- haptics
         [Test]
         public void Haptics_GateDropsRepeatsAndObeysTheSwitch()
         {

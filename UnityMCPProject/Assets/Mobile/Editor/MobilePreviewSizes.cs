@@ -21,20 +21,41 @@ namespace DshMobileEditor
     /// </summary>
     public static class MobilePreviewSizes
     {
+        /// <summary>
+        /// Where the simulated density is remembered.
+        ///
+        /// It has to be persisted rather than just set: every play-mode entry reloads the script
+        /// domain, which resets <see cref="MobileUi.ReferenceDpi"/> to 0 — so a preview that
+        /// looked right in edit mode would silently fall back to the editor's 96 dpi the moment
+        /// you pressed Play, and the layout you checked would not be the one you were looking at.
+        /// </summary>
+        private const string PreviewDpiKey = "DshMobile.PreviewDpi";
+
+        /// <summary>Re-applies the remembered density after every domain reload.</summary>
+        [InitializeOnLoadMethod]
+        private static void RestorePreviewDensity()
+        {
+            float dpi = EditorPrefs.GetFloat(PreviewDpiKey, 0f);
+            if (dpi > 60f) MobileUi.ReferenceDpi = dpi;
+        }
+
         /// <summary>A size the game is expected to look right at.</summary>
         private struct Preset
         {
             public string Label;
             public int Width;
             public int Height;
+
+            /// <summary>Density to assume, so the preview lays out the same design space as the device.</summary>
+            public float Dpi;
         }
 
         private static readonly Preset[] Presets =
         {
-            new Preset { Label = "DSH Phone Portrait 1080x2400", Width = 1080, Height = 2400 },
-            new Preset { Label = "DSH Phone Landscape 2400x1080", Width = 2400, Height = 1080 },
-            new Preset { Label = "DSH Tall Portrait 1080x2340", Width = 1080, Height = 2340 },
-            new Preset { Label = "DSH Tablet Portrait 1600x2560", Width = 1600, Height = 2560 }
+            new Preset { Label = "DSH Phone Portrait 1080x2400", Width = 1080, Height = 2400, Dpi = 420f },
+            new Preset { Label = "DSH Phone Landscape 2400x1080", Width = 2400, Height = 1080, Dpi = 420f },
+            new Preset { Label = "DSH Tall Portrait 1080x2340", Width = 1080, Height = 2340, Dpi = 400f },
+            new Preset { Label = "DSH Tablet Portrait 1600x2560", Width = 1600, Height = 2560, Dpi = 320f }
         };
 
         [MenuItem("Tools/DSH Mobile/Preview/Phone Portrait 1080x2400 %#1")]
@@ -49,6 +70,20 @@ namespace DshMobileEditor
         [MenuItem("Tools/DSH Mobile/Preview/Tablet Portrait 1600x2560 %#4")]
         public static void PreviewTabletPortrait() => Apply(Presets[3]);
 
+        /// <summary>
+        /// Drops the simulated density, so the scale goes back to whatever the platform reports
+        /// (96 in the editor). Only useful to see how a layout behaves on a low-density screen.
+        /// </summary>
+        [MenuItem("Tools/DSH Mobile/Preview/Use Platform DPI")]
+        public static void UsePlatformDpi()
+        {
+            MobileUi.ReferenceDpi = 0f;
+            EditorPrefs.SetFloat(PreviewDpiKey, 0f);
+            Debug.Log($"[DshMobile] Back to the platform's {MobileUi.EffectiveDpi:F0} dpi " +
+                      $"(scale {MobileUi.UiScale:F2}, design " +
+                      $"{Screen.width / MobileUi.UiScale:F0}x{Screen.height / MobileUi.UiScale:F0}).");
+        }
+
         /// <summary>Reports what the Game view is currently set to, and the layout it implies.</summary>
         [MenuItem("Tools/DSH Mobile/Preview/Report Current Viewport")]
         public static void ReportCurrentViewport()
@@ -60,7 +95,9 @@ namespace DshMobileEditor
             Debug.Log($"[DshMobile] Game view: {Screen.width}x{Screen.height} " +
                       $"[{label}] index={index} | " +
                       $"orientation={(MobileUi.IsPortrait ? "portrait" : "landscape")} " +
-                      $"aspect={MobileUi.Aspect:F2} scale={MobileUi.UiScale:F2} " +
+                      $"aspect={MobileUi.Aspect:F2} dpi={MobileUi.EffectiveDpi:F0}" +
+                      $"{(MobileUi.ReferenceDpi > 60f ? " (simulated)" : " (platform)")} " +
+                      $"scale={MobileUi.UiScale:F2} " +
                       $"design={Screen.width / MobileUi.UiScale:F0}x{Screen.height / MobileUi.UiScale:F0}");
         }
 
@@ -103,9 +140,17 @@ namespace DshMobileEditor
             property.SetValue(view, index);
             if (view is EditorWindow window) window.Repaint();
 
+            // Simulate the density too. Without this the preview is laid out for a 96-dpi
+            // screen and the phone for a 420-dpi one, so the two design spaces differ by ~20%
+            // and anything verified here can still be wrong there.
+            MobileUi.ReferenceDpi = preset.Dpi;
+            EditorPrefs.SetFloat(PreviewDpiKey, preset.Dpi);
+
             Debug.Log($"[DshMobile] Game view set to {preset.Label} " +
-                      $"({preset.Width}x{preset.Height}, index {index}). Turn on " +
-                      "Tools/DSH Mobile/Toggle Touch Preview to see the phone HUD.");
+                      $"({preset.Width}x{preset.Height}, index {index}), dpi simulated at {preset.Dpi:F0} " +
+                      $"→ scale {MobileUi.UiScale:F2}, design " +
+                      $"{Screen.width / MobileUi.UiScale:F0}x{Screen.height / MobileUi.UiScale:F0}. " +
+                      "Turn on Tools/DSH Mobile/Toggle Touch Preview to see the phone HUD.");
         }
 
         /// <summary>
