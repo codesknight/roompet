@@ -1,7 +1,9 @@
 {
     "name": "DshRunner",
     "rootNamespace": "DshRunner",
-    "references": [],
+    "references": [
+        "DshMobile"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

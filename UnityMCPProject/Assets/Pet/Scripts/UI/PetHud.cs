@@ -1,4 +1,5 @@
 ﻿using System;
+using DshMobile;
 using UnityEngine;
 
 namespace DshPet
@@ -111,7 +112,41 @@ namespace DshPet
 
             EnsureStyles();
 
-            var layout = ComputeLayout();
+            // ------------------------------------------------------------- scaling
+            // Everything below is laid out in "design pixels" and then scaled as a whole
+            // with GUI.matrix, which scales fonts, spacing and IMGUI's own hit-testing
+            // together. That is the only way a hand-written pixel layout survives on a
+            // 2400x1080 phone: without it a 300px panel eats a third of the screen and a
+            // 26px button is too small to hit.
+            //
+            // The layout is also inset by the safe area so nothing hides under a notch or a
+            // rounded corner.
+            var safe = MobileUi.SafeArea;
+            float scale = MobileUi.UseTouchControls ? MobileUi.UiScale : 1f;
+            float designWidth = Mathf.Max(320f, safe.width / scale);
+            float designHeight = Mathf.Max(240f, safe.height / scale);
+
+            var previousMatrix = GUI.matrix;
+            if (scale != 1f || safe.x != 0f || safe.y != 0f)
+            {
+                GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x, safe.y, 0f), Quaternion.identity,
+                    new Vector3(scale, scale, 1f));
+            }
+
+            Mobile = MobileUi.UseTouchControls;
+            Scale = scale;
+            SafeOffset = new Vector2(safe.x, safe.y);
+
+            var layout = ComputeLayout(designWidth, designHeight, PetSpecies.Count);
+
+            // The touch layer has to know whether the play area is interactive at all.
+            if (Mobile)
+            {
+                MobileTouch.PlayInputEnabled = !ModalOpen;
+                MobileTouch.StickEnabled = !ModalOpen && !_chatExpanded;
+                MobileTouch.StickZone = ToScreen(new Rect(
+                    0f, designHeight * 0.40f, designWidth * 0.46f, designHeight * 0.60f));
+            }
 
             // While a modal panel is up, the panels behind it must not react. GUI.enabled is
             // how IMGUI is told a control is inert, and it is order-independent — unlike the
@@ -120,17 +155,50 @@ namespace DshPet
             bool modal = ModalOpen;
             if (modal) GUI.enabled = false;
             DrawStatusPanel(gm, layout);
-            DrawChat(gm, layout);
+            if (Mobile) DrawMobileChat(gm, layout);
+            else DrawChat(gm, layout);
             DrawSpeciesSwitcher(gm, layout);
             DrawViewSwitcher(gm, layout);
-            DrawThrowMeter(gm, layout);
+            if (!Mobile) DrawThrowMeter(gm, layout);
             DrawOverlays(gm, layout);
             GUI.enabled = true;
+
+            // Controls sit above the room but below any modal panel.
+            if (Mobile) DrawMobileControls(gm, layout);
 
             if (gm.DoorPromptOpen) DrawDoorPrompt(gm);
             if (_showSettings) DrawSettings(gm);
             if (_showPromptPreview) DrawPromptPreview(gm);
             if (_showJournal) DrawJournal(gm);
+
+            GUI.matrix = previousMatrix;
+        }
+
+        // ------------------------------------------------------------------- mobile
+
+        /// <summary>True while the touch layout is in use (see <see cref="MobileUi"/>).</summary>
+        public static bool Mobile { get; private set; }
+
+        /// <summary>Design→screen scale factor applied through GUI.matrix.</summary>
+        public static float Scale { get; private set; } = 1f;
+
+        /// <summary>Pixels the whole HUD is inset by, to clear notches and rounded corners.</summary>
+        public static Vector2 SafeOffset { get; private set; }
+
+        /// <summary>Chat is collapsed by default on a phone: the thumbs live down there.</summary>
+        private bool _chatExpanded;
+
+        /// <summary>Whether the status panel shows the tuning lines (phone layout).</summary>
+        private bool _statusDetail;
+
+        /// <summary>Converts a design-space rect into real screen pixels for touch hit-testing.</summary>
+        private static Rect ToScreen(Rect design)
+        {
+            return new Rect(
+                SafeOffset.x + design.x * Scale,
+                SafeOffset.y + design.y * Scale,
+                design.width * Scale,
+                design.height * Scale);
         }
 
         // -------------------------------------------------------------------- layout
@@ -382,19 +450,24 @@ namespace DshPet
             GUILayout.Space(4f);
             GUILayout.Label(string.IsNullOrEmpty(gm.Needs.DominantNeed) ? "状态不错" : "想要：" + gm.Needs.DominantNeed, _small);
 
-            string mode = gm.Controller != null ? gm.Controller.CurrentMode.ToString() : "-";
-            string action = string.IsNullOrEmpty(gm.LastActionLabel) ? "休息中" : gm.LastActionLabel;
-            GUILayout.Label($"行为：{mode}　动作：{action}", _small);
-            if (!string.IsNullOrEmpty(gm.LastBehaviorLabel)) GUILayout.Label($"刚才：{gm.LastBehaviorLabel}", _small);
-            if (!string.IsNullOrEmpty(gm.LastNudgeReason)) GUILayout.Label($"主动开口：{gm.LastNudgeReason}", _small);
-
-            GUILayout.Space(2f);
-            GUILayout.Label("大脑：" + gm.BrainConfig.Describe(), _small);
-            if (!gm.BrainConfig.CanUseNetwork)
+            // On a phone the panel is small and the debug lines are the first thing to go:
+            // they are for tuning, not for playing. The toggle in the footer brings them back.
+            if (!Mobile || _statusDetail)
             {
-                GUI.color = new Color(1f, 0.8f, 0.5f);
-                GUILayout.Label("　" + gm.BrainConfig.StatusDetail(), _small);
-                GUI.color = Color.white;
+                string mode = gm.Controller != null ? gm.Controller.CurrentMode.ToString() : "-";
+                string action = string.IsNullOrEmpty(gm.LastActionLabel) ? "休息中" : gm.LastActionLabel;
+                GUILayout.Label($"行为：{mode}　动作：{action}", _small);
+                if (!string.IsNullOrEmpty(gm.LastBehaviorLabel)) GUILayout.Label($"刚才：{gm.LastBehaviorLabel}", _small);
+                if (!string.IsNullOrEmpty(gm.LastNudgeReason)) GUILayout.Label($"主动开口：{gm.LastNudgeReason}", _small);
+
+                GUILayout.Space(2f);
+                GUILayout.Label("大脑：" + gm.BrainConfig.Describe(), _small);
+                if (!gm.BrainConfig.CanUseNetwork)
+                {
+                    GUI.color = new Color(1f, 0.8f, 0.5f);
+                    GUILayout.Label("　" + gm.BrainConfig.StatusDetail(), _small);
+                    GUI.color = Color.white;
+                }
             }
 
             GUILayout.Space(2f);
@@ -423,6 +496,11 @@ namespace DshPet
             if (GUILayout.Button("📖 记事本", _buttonSmall)) _showJournal = !_showJournal;
             if (GUILayout.Button("⚙ 设置", _buttonSmall)) OpenSettings(gm);
             if (GUILayout.Button("提示词", _buttonSmall)) OpenPromptPreview(gm);
+
+            if (Mobile && GUILayout.Button(_statusDetail ? "简略" : "详情", _buttonSmall))
+            {
+                _statusDetail = !_statusDetail;
+            }
 
             if (GUILayout.Button("重置", _buttonSmall)) gm.ResetPet();
             GUILayout.EndHorizontal();
@@ -549,7 +627,183 @@ namespace DshPet
             }
         }
 
-        // ----------------------------------------------------------------------- chat
+        /// <summary>
+        /// Chat on a phone: a one-line bar by default, expanding into the real transcript
+        /// (which also brings up the keyboard).
+        ///
+        /// The desktop panel owns the bottom third of the screen, which is exactly where
+        /// both thumbs live — leaving it open would put the movement stick and the action
+        /// buttons underneath a text box.
+        /// </summary>
+        private void DrawMobileChat(PetGameManager gm, HudLayout layout)
+        {
+            float height = _chatExpanded ? layout.Chat.height : MobileChatBarHeight;
+            var rect = new Rect(layout.Chat.x, layout.Chat.yMax - height, layout.Chat.width, height);
+
+            GUI.Box(rect, GUIContent.none, _panel);
+
+            if (!_chatExpanded)
+            {
+                // Drawn with absolute rects, NOT inside a GUILayout.BeginArea. The widgets are
+                // hand-drawn and register themselves in design space, and GUI coordinates
+                // inside an area are relative to that area — nesting the two offset every
+                // rect by another bar height and pushed the whole bar off the bottom of the
+                // screen, which is why the collapsed bar rendered as an empty strip.
+                var inner = new Rect(rect.x + 12f, rect.y + 8f, rect.width - 24f, rect.height - 16f);
+                float buttonWidth = MobileUi.Touchable(120f);
+
+                if (MobileWidgets.Button(MobileButtonIds.PetChat,
+                        new Rect(inner.x, inner.y, buttonWidth, inner.height),
+                        "说点什么", new Color(0.35f, 0.62f, 0.85f)))
+                {
+                    _chatExpanded = true;
+                    FillEditConfig(gm);
+                }
+
+                var lineRect = new Rect(inner.x + buttonWidth + 12f, inner.y,
+                    Mathf.Max(0f, inner.xMax - inner.x - buttonWidth - 12f), inner.height);
+                GUI.Label(lineRect, LastLine(gm), _petLine);
+                return;
+            }
+
+            // Expanded: reuse the desktop transcript, with a close button in its corner.
+            DrawChat(gm, layout);
+
+            var close = new Rect(rect.xMax - MobileUi.Touchable(96f) - 10f, rect.y + 8f,
+                MobileUi.Touchable(96f), MobileUi.Touchable(36f));
+            if (MobileWidgets.Button("pet.chatclose", close, "收起", new Color(0.75f, 0.35f, 0.35f)))
+            {
+                _chatExpanded = false;
+                GUI.FocusControl(null);
+            }
+        }
+
+        private static string LastLine(PetGameManager gm)
+        {
+            var recent = gm.Memory.Recent;
+            if (recent.Count == 0) return "（还没聊过）";
+
+            var last = recent[recent.Count - 1];
+            string text = (last.IsUser ? "你：" : gm.PetName + "：") + last.Text;
+            return text.Length > 40 ? text.Substring(0, 40) + "…" : text;
+        }
+
+        /// <summary>Where the touch controls sit, in design pixels. Pure, so it is testable.</summary>
+        public struct MobileControls
+        {
+            public Rect StickZone;
+            public Rect Action;
+            public Rect Throw;
+            public Rect Chat;
+        }
+
+        /// <summary>Height of the collapsed chat bar on a phone.</summary>
+        public const float MobileChatBarHeight = 54f;
+
+        /// <summary>
+        /// Geometry for the touch controls.
+        ///
+        /// The rules encoded here: everything is at least <see cref="MobileUi.MinTouchTarget"/>
+        /// across, the action buttons are bottom-right where a right thumb rests, the stick
+        /// zone is the bottom-left, and none of them overlap the collapsed chat bar or each
+        /// other — overlapping touch targets is how a UI ends up feeling broken on a phone.
+        /// (An earlier version put the buttons at the panel's very bottom edge and landed them
+        /// right on top of the chat bar; the layout test caught it.)
+        /// </summary>
+        public static MobileControls ComputeMobileControls(HudLayout layout)
+        {
+            float size = MobileUi.Touchable(96f);
+            float gap = 14f;
+            float right = layout.Chat.xMax - 16f;
+
+            // Sit above the collapsed chat bar, not on it.
+            float bottom = layout.Chat.yMax - MobileChatBarHeight - 14f;
+
+            var action = new Rect(right - size, bottom - size, size, size);
+            var throwRect = new Rect(action.x - size - gap, bottom - size, size, size);
+            var chat = new Rect(right - MobileUi.Touchable(120f),
+                action.y - gap - MobileUi.Touchable(52f),
+                MobileUi.Touchable(120f), MobileUi.Touchable(52f));
+
+            // The stick owns the lower-left quadrant, stopping just above the chat bar so a
+            // thumb resting near the middle does not grab it by accident.
+            float stickTop = layout.Chat.yMax - MobileChatBarHeight - 14f - size * 2f;
+            var stick = new Rect(layout.Chat.x, stickTop,
+                layout.Chat.width * 0.46f, layout.Chat.yMax - MobileChatBarHeight - 14f - stickTop);
+
+            return new MobileControls
+            {
+                StickZone = stick,
+                Action = action,
+                Throw = throwRect,
+                Chat = chat
+            };
+        }
+
+        /// <summary>
+        /// The touch controls: a floating movement stick on the left, action buttons on the
+        /// right. Drawn through <see cref="MobileWidgets"/>, which registers each rect with
+        /// the touch layer so several fingers can be used at once.
+        /// </summary>
+        private void DrawMobileControls(PetGameManager gm, HudLayout layout)
+        {
+            if (ModalOpen || _chatExpanded) return;
+
+            var controls = ComputeMobileControls(layout);
+
+            // Publish the HUD's design→screen transform so the widgets draw in design space
+            // and register their hit areas in screen space.
+            MobileWidgets.BeginFrame(Scale, SafeOffset);
+
+            MobileWidgets.StickHint(controls.StickZone);
+            MobileWidgets.Joystick();
+
+            var player = gm.Player;
+            bool holdingBall = player != null && player.Ball != null && player.Ball.State == BallState.Held;
+
+            MobileWidgets.Button(MobileButtonIds.PetAction, controls.Action,
+                ActionLabel(gm), new Color(0.35f, 0.70f, 0.45f));
+
+            if (holdingBall)
+            {
+                bool charging = MobileTouch.Held(MobileButtonIds.PetThrow);
+                MobileWidgets.Button(MobileButtonIds.PetThrow, controls.Throw,
+                    charging ? "松手扔出" : "按住蓄力",
+                    charging ? new Color(0.95f, 0.55f, 0.25f) : new Color(0.85f, 0.45f, 0.25f));
+            }
+
+            if (MobileWidgets.Button(MobileButtonIds.PetChat, controls.Chat,
+                    "聊天", new Color(0.35f, 0.62f, 0.85f)))
+            {
+                _chatExpanded = true;
+                FillEditConfig(gm);
+            }
+        }
+
+        /// <summary>Label for the context action button, so the player knows what it will do.</summary>
+        private static string ActionLabel(PetGameManager gm)
+        {
+            var player = gm.Player;
+            if (player == null) return "互动";
+
+            if (player.Ball != null && player.Ball.IsAtRest && player.IsNear(player.Ball.transform.position))
+            {
+                return "拿球";
+            }
+
+            if (player.Nearby != null)
+            {
+                switch (player.Nearby.Kind)
+                {
+                    case InteractableKind.Door: return "开门";
+                    case InteractableKind.Bed: return "睡觉";
+                    default: return "互动";
+                }
+            }
+
+            return "互动";
+        }
+
 
         private void DrawChat(PetGameManager gm, HudLayout layout)
         {
@@ -703,12 +957,18 @@ namespace DshPet
             if (gm.Player != null && gm.Player.Nearby != null && !gm.DoorPromptOpen)
             {
                 string label = gm.Player.Nearby.Kind == InteractableKind.Door
-                    ? gm.Player.Nearby.Label + "　按 E 出去"
-                    : gm.Player.Nearby.Label + "　按 E 让宠物过来";
+                    ? gm.Player.Nearby.Label + (Mobile ? "　点互动出去" : "　按 E 出去")
+                    : gm.Player.Nearby.Label + (Mobile ? "　点互动让宠物过来" : "　按 E 让宠物过来");
+
+                // On a phone the collapsed chat bar only occupies the bottom strip, so the
+                // prompt hangs just above it instead of floating in the middle of the room.
+                float promptBottom = Mobile
+                    ? layout.Chat.yMax - MobileChatBarHeight - 26f
+                    : layout.ChatTop - 32f;
 
                 var style = new GUIStyle(_label) { alignment = TextAnchor.MiddleCenter };
                 GUI.color = new Color(1f, 0.95f, 0.8f, 0.95f);
-                GUI.Label(new Rect(Screen.width * 0.5f - 200f, layout.ChatTop - 32f, 400f, 24f), label, style);
+                GUI.Label(new Rect(Screen.width * 0.5f - 200f, promptBottom, 400f, 24f), label, style);
                 GUI.color = Color.white;
             }
 

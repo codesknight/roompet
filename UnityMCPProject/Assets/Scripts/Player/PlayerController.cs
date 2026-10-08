@@ -151,12 +151,55 @@ namespace DshRunner
 
         private float _jumpOffset;
 
+        /// <summary>
+        /// Keyboard and touch, side by side.
+        ///
+        /// Touch uses swipes as the primary gesture because that is what players expect from
+        /// a mobile runner — swipe sideways to change lane, up to jump, down to slide, tap to
+        /// jump. The on-screen buttons are an alternative for people who prefer holding a
+        /// control, and both work at once (the button layer is multi-touch; IMGUI alone is
+        /// not).
+        /// </summary>
         private void ReadInput()
         {
             if (Input.GetKeyDown(KeyCode.A) || Input.GetKeyDown(KeyCode.LeftArrow)) MoveLane(-1);
             if (Input.GetKeyDown(KeyCode.D) || Input.GetKeyDown(KeyCode.RightArrow)) MoveLane(1);
             if (Input.GetKeyDown(KeyCode.W) || Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.Space)) Jump();
             if (Input.GetKeyDown(KeyCode.S) || Input.GetKeyDown(KeyCode.DownArrow)) Slide();
+
+            if (!DshMobile.MobileUi.UseTouchControls) return;
+
+            var gesture = DshMobile.MobileTouch.Gesture;
+
+            switch (gesture.Swipe)
+            {
+                case DshMobile.SwipeDirection.Left: MoveLane(-1); break;
+                case DshMobile.SwipeDirection.Right: MoveLane(1); break;
+                case DshMobile.SwipeDirection.Up: Jump(); break;
+                case DshMobile.SwipeDirection.Down: Slide(); break;
+            }
+            if (gesture.Swipe != DshMobile.SwipeDirection.None) gesture.ConsumeSwipe();
+
+            if (gesture.Tapped)
+            {
+                Jump();
+                gesture.ConsumeTap();
+            }
+
+            if (DshMobile.MobileTouch.Pressed(DshMobile.MobileButtonIds.RunnerLeft)) MoveLane(-1);
+            if (DshMobile.MobileTouch.Pressed(DshMobile.MobileButtonIds.RunnerRight)) MoveLane(1);
+            if (DshMobile.MobileTouch.Pressed(DshMobile.MobileButtonIds.RunnerJump)) Jump();
+            if (DshMobile.MobileTouch.Pressed(DshMobile.MobileButtonIds.RunnerSlide)) Slide();
+        }
+
+        /// <summary>True while the player is asking for a jump — keyboard or on-screen button.</summary>
+        private static bool JumpHeld()
+        {
+            bool keyboard = Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.Space);
+            if (keyboard) return true;
+
+            return DshMobile.MobileUi.UseTouchControls &&
+                   DshMobile.MobileTouch.Held(DshMobile.MobileButtonIds.RunnerJump);
         }
 
         public void MoveLane(int direction)
@@ -214,7 +257,7 @@ namespace DshRunner
                 return;
             }
 
-            bool holding = Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.Space);
+            bool holding = JumpHeld();
             float gravity = _jumpGravity * (holding && _verticalVelocity > 0f ? 1f : 1.7f);
 
             _verticalVelocity -= gravity * dt;

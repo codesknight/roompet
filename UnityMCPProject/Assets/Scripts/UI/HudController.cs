@@ -45,6 +45,14 @@ namespace DshRunner
             _center.normal.textColor = Color.white;
         }
 
+        /// <summary>
+        /// Viewport in design pixels. The runner layout is written against a ~1280x720
+        /// viewport and then scaled as a whole with GUI.matrix, so the draw methods must use
+        /// these — reading Screen.width under a scaling matrix would scale everything twice.
+        /// </summary>
+        private static float W = 1280f;
+        private static float H = 720f;
+
         private void OnGUI()
         {
             var gm = GameManager.Instance;
@@ -52,14 +60,75 @@ namespace DshRunner
 
             EnsureStyles();
 
+            // Same scaling rule as the pet HUD: lay out in design pixels, apply one matrix.
+            var safe = DshMobile.MobileUi.SafeArea;
+            float scale = DshMobile.MobileUi.UseTouchControls ? DshMobile.MobileUi.UiScale : 1f;
+            W = Mathf.Max(320f, safe.width / scale);
+            H = Mathf.Max(240f, safe.height / scale);
+
+            var previousMatrix = GUI.matrix;
+            if (scale != 1f || safe.x != 0f || safe.y != 0f)
+            {
+                GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x, safe.y, 0f), Quaternion.identity,
+                    new Vector3(scale, scale, 1f));
+            }
+
+            DshMobile.MobileTouch.PlayInputEnabled = gm.State == GameState.Playing;
+
             switch (gm.State)
             {
                 case GameState.Menu: DrawMenu(gm); break;
                 case GameState.LevelSelect: DrawLevelSelect(gm); break;
-                case GameState.Playing: DrawHud(gm); break;
-                case GameState.Paused: DrawHud(gm); DrawPaused(gm); break;
+                case GameState.Playing: DrawHud(gm); DrawTouchControls(gm, scale, safe); break;
+                case GameState.Paused: DrawHud(gm); DrawTouchControls(gm, scale, safe); DrawPaused(gm); break;
                 case GameState.GameOver: DrawGameOver(gm); break;
                 case GameState.LevelComplete: DrawLevelComplete(gm); break;
+            }
+
+            GUI.matrix = previousMatrix;
+        }
+
+        /// <summary>
+        /// On-screen runner controls.
+        ///
+        /// Swiping is the primary gesture (swipe left/right to change lane, up to jump, down
+        /// to slide, tap to jump — see <see cref="DshRunner.PlayerController"/>); these
+        /// buttons are for players who prefer holding a control, and they work simultaneously
+        /// with a swipe because they go through the multi-touch layer rather than IMGUI.
+        /// </summary>
+        private void DrawTouchControls(GameManager gm, float scale, Rect safe)
+        {
+            if (!DshMobile.MobileUi.UseTouchControls) return;
+
+            // The widgets draw in the HUD's design space and register screen-space hit areas;
+            // this tells them how the two relate. See DshMobile.MobileWidgets.
+            DshMobile.MobileWidgets.BeginFrame(scale, new Vector2(safe.x, safe.y));
+
+            float size = TouchButtonSize;
+            float gap = 12f;
+            float bottom = TouchButtonRowTop;
+
+            var left = new Rect(20f, bottom, size, size);
+            var right = new Rect(left.xMax + gap, bottom, size, size);
+            var jump = new Rect(W - 20f - size, bottom, size, size);
+            var slide = new Rect(jump.x - gap - size, bottom, size, size);
+
+            DshMobile.MobileWidgets.Button(DshMobile.MobileButtonIds.RunnerLeft,
+                left, "◀", new Color(0.35f, 0.55f, 0.85f));
+            DshMobile.MobileWidgets.Button(DshMobile.MobileButtonIds.RunnerRight,
+                right, "▶", new Color(0.35f, 0.55f, 0.85f));
+            DshMobile.MobileWidgets.Button(DshMobile.MobileButtonIds.RunnerJump,
+                jump, "跳", new Color(0.35f, 0.72f, 0.45f));
+            DshMobile.MobileWidgets.Button(DshMobile.MobileButtonIds.RunnerSlide,
+                slide, "滑", new Color(0.85f, 0.62f, 0.30f));
+
+            // Pause sits top-right, out of both thumbs' way.
+            var pause = new Rect(W - 20f - DshMobile.MobileUi.Touchable(64f), 16f,
+                DshMobile.MobileUi.Touchable(64f), DshMobile.MobileUi.Touchable(44f));
+            if (DshMobile.MobileWidgets.Button(DshMobile.MobileButtonIds.RunnerPause,
+                    pause, "暂停", new Color(0.45f, 0.45f, 0.5f)))
+            {
+                gm.TogglePause();
             }
         }
 
@@ -80,7 +149,7 @@ namespace DshRunner
             if (gm.Level != null && !gm.Level.Endless)
             {
                 float progress = Difficulty.Progress(gm.Level, score.Distance);
-                var bar = new Rect(Screen.width * 0.5f - 160f, 22f, 320f, 16f);
+                var bar = new Rect(W * 0.5f - 160f, 22f, 320f, 16f);
                 GUI.color = new Color(1f, 1f, 1f, 0.25f);
                 GUI.Box(bar, GUIContent.none);
                 GUI.color = new Color(0.4f, 0.95f, 1f, 0.95f);
@@ -93,11 +162,27 @@ namespace DshRunner
 
             DrawPowerUps(gm);
 
-            GUI.Label(new Rect(20f, Screen.height - 34f, Screen.width - 40f, 24f),
-                "A/D 或 ←/→ 换道    W/↑/空格 跳跃    S/↓ 滑铲    P/Esc 暂停", _hudSmall);
+            // The hint line is the only place the controls are explained, so it has to match
+            // the platform the player is holding. On a phone it also has to move: at the
+            // viewport's bottom edge it sat underneath the touch button row, which covered
+            // the half of it describing the on-screen buttons.
+            bool touch = DshMobile.MobileUi.UseTouchControls;
+            string hint = touch
+                ? "滑动换道 · 上滑/点击跳跃 · 下滑滑铲 · 也可用按钮"
+                : "A/D 或 ←/→ 换道    W/↑/空格 跳跃    S/↓ 滑铲    P/Esc 暂停";
+
+            float hintY = touch ? TouchButtonRowTop - 26f : H - 30f;
+            float hintWidth = touch ? W * 0.46f : W - 40f;
+            GUI.Label(new Rect(20f, hintY, hintWidth, 24f), hint, _hudSmall);
 
             DrawReturnToRoom();
         }
+
+        /// <summary>Edge length of a touch button, in design pixels.</summary>
+        private static float TouchButtonSize => DshMobile.MobileUi.Touchable(90f);
+
+        /// <summary>Top edge of the touch button row, in design pixels.</summary>
+        private static float TouchButtonRowTop => H - 18f - TouchButtonSize;
 
         /// <summary>
         /// When the run was started from the pet room, offer the way home. The two gameplay
@@ -108,7 +193,11 @@ namespace DshRunner
         {
             if (PlayerPrefs.GetInt(AwayFlagKey, 0) != 1) return;
 
-            if (GUI.Button(new Rect(Screen.width - 168f, Screen.height - 44f, 148f, 30f), "返回宠物小屋"))
+            // Above the touch button row on a phone; at the bottom edge it landed on the jump
+            // button, which is exactly the button a player is holding when they would want it.
+            float y = DshMobile.MobileUi.UseTouchControls ? TouchButtonRowTop - 40f : H - 44f;
+
+            if (GUI.Button(new Rect(W - 168f, y, 148f, 30f), "返回宠物小屋"))
             {
                 PlayerPrefs.SetInt(AwayFlagKey, 0);
                 PlayerPrefs.Save();
@@ -124,7 +213,12 @@ namespace DshRunner
             var powerUps = gm.PowerUps;
             if (powerUps == null) return;
 
-            float x = Screen.width - 240f;
+            float x = W - 240f;
+
+            // On a phone the pause button lives in the top-right corner, which is where the
+            // power-up pills would otherwise end: shift them clear of it.
+            if (DshMobile.MobileUi.UseTouchControls) x -= DshMobile.MobileUi.Touchable(64f) + 14f;
+
             float y = 16f;
             var kinds = new[]
             {
@@ -168,7 +262,7 @@ namespace DshRunner
         {
             float w = 460f;
             float h = 420f;
-            var rect = new Rect(Screen.width * 0.5f - w * 0.5f, Screen.height * 0.5f - h * 0.5f, w, h);
+            var rect = new Rect(W * 0.5f - w * 0.5f, H * 0.5f - h * 0.5f, w, h);
 
             GUI.Box(rect, GUIContent.none, _panel);
             GUILayout.BeginArea(new Rect(rect.x + 24f, rect.y + 20f, w - 48f, h - 40f));
@@ -218,7 +312,7 @@ namespace DshRunner
         {
             float w = 720f;
             float h = 560f;
-            var rect = new Rect(Screen.width * 0.5f - w * 0.5f, Screen.height * 0.5f - h * 0.5f, w, h);
+            var rect = new Rect(W * 0.5f - w * 0.5f, H * 0.5f - h * 0.5f, w, h);
 
             GUI.Box(rect, GUIContent.none, _panel);
             GUILayout.BeginArea(new Rect(rect.x + 24f, rect.y + 18f, w - 48f, h - 36f));
@@ -343,6 +437,6 @@ namespace DshRunner
         }
 
         private static Rect CenterBox(float w, float h)
-            => new Rect(Screen.width * 0.5f - w * 0.5f, Screen.height * 0.5f - h * 0.5f, w, h);
+            => new Rect(W * 0.5f - w * 0.5f, H * 0.5f - h * 0.5f, w, h);
     }
 }

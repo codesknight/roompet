@@ -1,3 +1,4 @@
+using DshMobile;
 using UnityEngine;
 
 namespace DshPet
@@ -65,7 +66,8 @@ namespace DshPet
             // Typing in the chat box must not also walk the character around, and neither
             // should WASD while a panel (notebook, settings, door) is open over the room.
             bool typing = PetHud.IsTextInputFocused || PetHud.ModalOpen;
-            Vector3 input = typing ? Vector3.zero : ReadInput();
+            Vector3 input = typing ? Vector3.zero : ReadInput() + ReadTouchInput();
+            input = Vector3.ClampMagnitude(input, 1f);
 
             Vector3 wish = ToCameraSpace(input) * WalkSpeed;
 
@@ -86,13 +88,29 @@ namespace DshPet
             TickFootsteps(speed01);
             UpdateNearby();
 
-            // E does one thing per press: picking the ball up wins over the generic
-            // "send the pet over" interaction when the ball is the nearest object.
-            bool consumed = TickBall(typing);
-            if (!typing && !consumed && Input.GetKeyDown(InteractKey) && Nearby != null)
+            // One "use" verb for both platforms: E on the keyboard, the on-screen action
+            // button on a phone. Picking the ball up wins over the generic "send the pet
+            // over" interaction when the ball is the nearest object.
+            bool interact = !typing &&
+                            (Input.GetKeyDown(InteractKey) || MobileTouch.Pressed(MobileButtonIds.PetAction));
+
+            bool consumed = TickBall(typing, interact);
+            if (!typing && !consumed && interact && Nearby != null)
             {
                 Nearby.Interact();
             }
+        }
+
+        /// <summary>
+        /// Virtual stick input, shaped like WASD so it can go through exactly the same
+        /// camera-relative path: x = strafe, z = forward.
+        /// </summary>
+        private static Vector3 ReadTouchInput()
+        {
+            if (!MobileTouch.PlayInputEnabled) return Vector3.zero;
+
+            Vector2 stick = MobileTouch.Stick.Value;
+            return new Vector3(stick.x, 0f, stick.y);
         }
 
         // --------------------------------------------------------------------- ball
@@ -103,8 +121,8 @@ namespace DshPet
         /// <summary>Where the player is aiming, on the floor plane.</summary>
         public Vector3 AimPoint { get; private set; }
 
-        /// <summary>Returns true when the E press was used to pick the ball up.</summary>
-        private bool TickBall(bool typing)
+        /// <summary>Returns true when the press was used to pick the ball up.</summary>
+        private bool TickBall(bool typing, bool interact)
         {
             if (Ball == null)
             {
@@ -112,21 +130,43 @@ namespace DshPet
                 if (Ball == null) return false;
             }
 
-            AimPoint = MouseGroundPoint();
-
             if (Ball.State == BallState.Held)
             {
-                // Holding: aim with the mouse, charge with the left button, release to throw.
+                // Aiming and charging differ per platform: the mouse can point anywhere,
+                // a thumb cannot. On touch the stick aims (falling back to where the
+                // character is facing) and the throw button charges while held.
+                Vector3 aim;
+                bool charging;
+                bool released;
+
+                if (MobileUi.UseTouchControls)
+                {
+                    Vector2 stick = MobileTouch.Stick.Value;
+                    aim = stick.sqrMagnitude > 0.04f
+                        ? transform.position + new Vector3(stick.x, 0f, stick.y) * 5f
+                        : transform.position + transform.forward * 5f;
+                    charging = MobileTouch.Held(MobileButtonIds.PetThrow);
+                    released = MobileTouch.Released(MobileButtonIds.PetThrow);
+                }
+                else
+                {
+                    aim = MouseGroundPoint();
+                    charging = Input.GetMouseButton(0);
+                    released = Input.GetMouseButtonUp(0);
+                }
+
+                AimPoint = aim;
+
                 transform.rotation = Quaternion.Slerp(transform.rotation,
-                    Quaternion.LookRotation(Flat(AimPoint - transform.position), Vector3.up),
+                    Quaternion.LookRotation(Flat(aim - transform.position), Vector3.up),
                     1f - Mathf.Exp(-14f * Time.deltaTime));
 
-                if (Input.GetMouseButton(0)) Ball.BeginCharge(Time.deltaTime);
-                else if (Input.GetMouseButtonUp(0)) Ball.Throw(AimPoint - transform.position);
+                if (charging) Ball.BeginCharge(Time.deltaTime);
+                else if (released) Ball.Throw(aim - transform.position);
                 return false;
             }
 
-            if (!typing && Input.GetKeyDown(InteractKey) && Ball.IsAtRest && IsNear(Ball.transform.position))
+            if (!typing && interact && Ball.IsAtRest && IsNear(Ball.transform.position))
             {
                 Ball.PickUp(transform);
                 return true;

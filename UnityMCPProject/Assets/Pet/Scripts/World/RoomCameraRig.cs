@@ -488,13 +488,34 @@ namespace DshPet
         // ------------------------------------------------------------------- free camera
 
         /// <summary>
-        /// Orbit, zoom and pan. Right-drag and the wheel are used on purpose: the left button
+        /// Orbit, zoom and pan.
+        ///
+        /// Desktop: right-drag orbits, wheel zooms, middle-drag pans — the left button
         /// belongs to throwing the ball and WASD belongs to the character.
+        ///
+        /// Touch: one finger on the play area orbits (it is the same free finger the
+        /// gesture recogniser owns), two fingers pinch to zoom. The thumb on the movement
+        /// stick never reaches here because that finger is owned by the UI.
         /// </summary>
         private void TickFreeInput()
         {
             if (View != CameraViewMode.Free) return;
 
+            bool touchDriven = DshMobile.MobileUi.UseTouchControls && DshMobile.MobileTouch.UsingTouch;
+            if (touchDriven) TickFreeTouch();
+            else TickFreeMouse();
+
+            // Keep the orbit centre over the room so the camera cannot be panned into the void.
+            var room = PetGameManager.Instance != null ? PetGameManager.Instance.Room : null;
+            float limit = (room != null ? room.Size : 14f) * 0.5f;
+            _freeFocus = new Vector3(
+                Mathf.Clamp(_freeFocus.x, -limit, limit),
+                0f,
+                Mathf.Clamp(_freeFocus.z, -limit, limit));
+        }
+
+        private void TickFreeMouse()
+        {
             if (Input.GetMouseButton(1))
             {
                 _freeYaw += Input.GetAxis("Mouse X") * FreeOrbitSpeed;
@@ -515,15 +536,52 @@ namespace DshPet
                 _freeDistance = Mathf.Clamp(_freeDistance - scroll * FreeZoomSpeed * _freeDistance,
                     FreeMinDistance, FreeMaxDistance);
             }
-
-            // Keep the orbit centre over the room so the camera cannot be panned into the void.
-            var room = PetGameManager.Instance != null ? PetGameManager.Instance.Room : null;
-            float limit = (room != null ? room.Size : 14f) * 0.5f;
-            _freeFocus = new Vector3(
-                Mathf.Clamp(_freeFocus.x, -limit, limit),
-                0f,
-                Mathf.Clamp(_freeFocus.z, -limit, limit));
         }
+
+        /// <summary>One finger orbits, two fingers pinch. UI fingers are ignored.</summary>
+        private void TickFreeTouch()
+        {
+            int count = Input.touchCount;
+
+            if (count >= 2)
+            {
+                for (int i = 0; i < 2; i++)
+                {
+                    if (DshMobile.MobileTouch.IsUiFinger(Input.GetTouch(i).fingerId)) return;
+                }
+
+                Vector2 a = Input.GetTouch(0).position;
+                Vector2 b = Input.GetTouch(1).position;
+                float distance = Vector2.Distance(a, b);
+
+                if (_lastPinchDistance > 1f)
+                {
+                    // Pinch out (fingers apart) pulls the camera in, like a map.
+                    float ratio = distance / _lastPinchDistance;
+                    _freeDistance = Mathf.Clamp(_freeDistance / Mathf.Max(0.5f, ratio),
+                        FreeMinDistance, FreeMaxDistance);
+                }
+                _lastPinchDistance = distance;
+                return;
+            }
+
+            _lastPinchDistance = 0f;
+
+            // A single free finger: the gesture recogniser is tracking it, and its frame
+            // delta is exactly the drag we want.
+            var gesture = DshMobile.MobileTouch.Gesture;
+            if (!gesture.IsActive) return;
+
+            Vector2 delta = gesture.FrameDelta;
+            if (delta.sqrMagnitude < 0.0001f) return;
+
+            // Screen Y grows downwards, so dragging down tilts the camera up.
+            float sensitivity = FreeOrbitSpeed * 0.35f;
+            _freeYaw += delta.x * sensitivity;
+            _freePitch = Mathf.Clamp(_freePitch + delta.y * sensitivity, FreeMinPitch, FreeMaxPitch);
+        }
+
+        private float _lastPinchDistance;
 
         private void LateUpdate()
         {

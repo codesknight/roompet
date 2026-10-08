@@ -21,13 +21,25 @@
 - [ ] **更多房间互动**：新的 `InteractableKind` + 行为表一行，即可让宠物自己使用。
 - [ ] **虚拟小镇的雏形**：把"一个房间"扩成"几个房间 + 走动"，为《虚拟小镇》铺路。
 
+## 手机端（第 6 轮起）
+
+- [x] **安卓手机适配端**（分支 `feature/android-mobile`）：多点触控层、自适应缩放 HUD、
+      安全区避让、两套场景的触屏布局、APK 打包链路。
+- [ ] **真机实测**：目前只在编辑器里用合成手指验证过；需要在真实手机上装一次，
+      确认帧率、刘海安全区、输入法与返回键行为。
+- [ ] **发布版签名与商店化**：现在出的是开发版包（未签名、`debuggable`、允许明文 http）；
+      要发布得生成 keystore、切 `InsecureHttpOption`、并把大脑端点换成 https。
+- [ ] **横屏之外的方向**：目前强制横屏；要不要支持竖屏（单手玩）需要先想清楚界面怎么排。
+- [ ] **振动反馈（Haptic）**：按钮与宠物回应加轻振动，成本低、手感提升明显。
+
 ## 长期（工程化）
 
 - [ ] **云存档**：日记与记忆现在是本地文件（PlayerPrefs + `persistentDataPath` 下的 JSON）。
 - [ ] **CI 跑测试**：`.github/workflows/unity-tests.yml` 已经写好骨架
       （需要 `UNITY_LICENSE` 等 secrets，目前只在手动触发时运行，未配置会优雅跳过）。
 - [ ] **选定开源许可**：见 [THIRD_PARTY.md](../THIRD_PARTY.md)。
-- [ ] **打包发布**：Windows/macOS 构建产物 + 版本号跟着 `CHANGELOG.md` 走。
+- [ ] **打包发布**：Windows/macOS 构建产物 + 版本号跟着 `CHANGELOG.md` 走
+      （安卓侧已经有 `Tools/DSH Mobile/Build APK`）。
 
 ## 明确不做
 

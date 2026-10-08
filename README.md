@@ -9,6 +9,12 @@
 |---|---|
 | ![房间](docs/evidence/hud_fixed.png) | ![跑酷](docs/evidence/forest.png) |
 
+**手机端（横屏）**：两套界面都有专门的触屏布局，操作按钮、摇杆、聊天条都按拇指位置重排过。
+
+| 宠物房间 · 手机 | 跑酷 · 手机 |
+|---|---|
+| ![手机宠物](docs/evidence/mobile_pet_hud.png) | ![手机跑酷](docs/evidence/mobile_runner_hud.png) |
+
 ---
 
 ## 这是什么
@@ -31,7 +37,9 @@
 - **声音零资源**：16 个音效 + 按心情变调的"说话"音全部由波形合成，不需要下载也不需要 API key。
 - **大脑可换**：默认指向 DeepSeek 官方接口，任何 OpenAI 兼容端点都能填；
   网络不可用时自动落到离线大脑并**把错误显示出来**，不会让你对着空白发呆。
-- **84 条单元测试**覆盖逻辑（行为打分、日记裁剪、赛道可通过性、界面几何、相机取景）。
+- **手机能玩**：安卓端有独立的触屏层（多点触控、浮动摇杆、滑动手势）、按屏幕高度自适应缩放的 HUD、
+  以及安全区避让；桌面端保持键鼠原样，两边同一份代码。
+- **107 条单元测试**覆盖逻辑（行为打分、日记裁剪、赛道可通过性、界面几何、触控与相机取景）。
 
 ---
 
@@ -67,9 +75,25 @@
 | 跑酷 | `A` `D` / `←` `→` | 左右换道 |
 | 跑酷 | `空格` / `W` / `↑` | 跳跃 |
 
+**手机上（横屏）**：
+
+| 场景 | 操作 | 作用 |
+|---|---|---|
+| 宠物房间 | 左下拖动 | 浮动摇杆走动（手指按在哪，摇杆就在哪） |
+| 宠物房间 | 右下按钮 | **互动**（拿球/开门/让宠物过来）· 拿着球时多一个**按住蓄力/松手扔出** · **聊天** |
+| 宠物房间 | 底部横条 | 收起状态的聊天：点「说点什么」展开输入框，聊完点「收起」 |
+| 宠物房间 | 右半屏拖动 / 双指捏 | 「自由」视角下转视角 / 缩放 |
+| 跑酷 | 左右滑动 | 换道 |
+| 跑酷 | 上滑 / 点击 | 跳跃（按住更高）；下滑：滑铲 |
+| 跑酷 | 屏幕按钮 | ◀ ▶ 跳 滑 + 右上角**暂停**（与滑动同时可用） |
+
+多指是分开处理的：左手推摇杆的同时右手可以点按钮、拖视角。
+真机上的手机布局也能在编辑器里预览：`Tools/DSH Mobile/Toggle Touch Preview`（`Ctrl+Shift+T`），鼠标会当成一根手指。
+
 界面都在屏幕上：左上角是宠物状态与**名字输入框**，右上角是**换动物**和**视角切换**，
 底部是聊天框（打字和它说话）。左下角四个按钮：**记事本**（日历形式的记忆）、
 **设置**（大模型接口）、**提示词**（看/追加它实际收到的提示词）、**重置**。
+手机端聊天默认收成一条，状态面板默认只显示要点，其余进「详情」。
 
 ---
 
@@ -96,9 +120,11 @@ roompet/
 │  ├─ Assets/
 │  │  ├─ Scripts/            跑酷：核心/玩家/赛道/道具/相机/界面
 │  │  ├─ Pet/Scripts/        虚拟宠物：核心/大脑/记忆/行为/世界/界面/音频
+│  │  ├─ Mobile/             手机端：多点触控层 / 摇杆 / 手势 / HUD 缩放 / 安卓打包菜单
 │  │  ├─ Shaders/            ShellFur / RainbowFur / DreamySkybox / Neon
 │  │  ├─ Scenes/Main.unity   跑酷场景
 │  │  └─ Pet/Scenes/PetRoom.unity  宠物房间
+│  ├─ Builds/Android/        打包产物（被 git 忽略）
 │  ├─ Packages/              包依赖（含可选的 MCP 开发工具那一行）
 │  └─ ProjectSettings/       工程设置
 ├─ docs/                     文档与证据截图（见上表）
@@ -134,7 +160,8 @@ github.com 凭据，脚本里不存任何 token）。
 
 ## 测试与验证
 
-单元测试在 Unity 里跑：**Window → General → Test Runner → EditMode → Run All**，应 **84/84 通过**。
+单元测试在 Unity 里跑：**Window → General → Test Runner → EditMode → Run All**，应 **107/107 通过**
+（宠物 69 + 跑酷 15 + 手机端 23）。
 
 工程里还带了两个自检菜单（比手写脚本快）：
 
@@ -145,6 +172,56 @@ github.com 凭据，脚本里不存任何 token）。
 
 - `Tools/DSH Pet/Build Pet Scene` —— 房间是代码生成的，改了摆放逻辑后跑它重建场景。
 - `Tools/DSH Pet/Fix Script Encodings` —— 补 UTF-8 BOM / 报告被损坏的中文（见 DEVLOG 坑 1）。
+
+手机端另有一组：
+
+- `Tools/DSH Mobile/Report Mobile Status` —— 打印当前平台、触控开关、缩放、安全区、包名、架构。
+- `Tools/DSH Mobile/Toggle Touch Preview` —— 在编辑器里用手机布局跑（鼠标当手指）。
+- `Tools/DSH Mobile/Configure Android Player Settings` —— 一键写回横屏/包名/IL2CPP+ARM64/INTERNET 等设置。
+- `Tools/DSH Mobile/Build APK` —— 出包到 `UnityMCPProject/Builds/Android/RoomPet.apk`。
+
+---
+
+## 打包安卓端
+
+**前置**：Unity Hub 里给 `2022.3.62f3c1` 装上 **Android Build Support**（含 OpenJDK / SDK / NDK）。
+装模块必须在编辑器**启动之前**完成——运行中的编辑器不会加载新装的构建扩展，
+出包会直接报 `Build target 'Android' not supported`（见 DEVLOG 坑 23）。装好后重启编辑器即可。
+
+然后在编辑器里：
+
+1. `Tools/DSH Mobile/Configure Android Player Settings`（已写进工程设置，一般不用再点）；
+2. `Tools/DSH Mobile/Build APK`。
+
+命令行等价写法：
+
+```powershell
+& "C:\Program Files\Unity\Hub\Editor\2022.3.62f3c1\Editor\Unity.exe" `
+  -batchmode -quit -projectPath .\UnityMCPProject -buildTarget Android `
+  -executeMethod DshMobileEditor.MobileBuildMenu.BuildApk -logFile -
+```
+
+产出的包信息：
+
+| 项 | 值 |
+|---|---|
+| 输出 | `UnityMCPProject/Builds/Android/RoomPet.apk`（约 16 MB） |
+| 应用名 / 包名 | `RoomPet` / `com.codesknight.roompet` |
+| 架构 / 后端 | ARM64（仅此一种）/ IL2CPP |
+| 最低 / 目标 SDK | 24 / 自动（当前 35） |
+| 屏幕方向 | 强制横屏（`userLandscape`），适配刘海安全区 |
+| 权限 | `INTERNET`（大模型接口用） |
+
+> 应用名是**打进生成的 Gradle 资源**的，不是改 `PlayerSettings.productName`——
+> 那个字段在桌面端同时决定 `persistentDataPath` 与 PlayerPrefs 的位置，改它等于搬走存档
+> （宠物会忘了你）。见 [docs/DEVLOG.md](docs/DEVLOG.md) 坑 30。
+
+**关于 http**：宠物的大脑默认指向可配置的 OpenAI 兼容端点，如果填的是**局域网 http 网关**，
+安卓 9+ 默认会拦掉明文请求。工程设置里是 `Insecure Http Option = Development Only`，
+并且 `Assets/Mobile/Editor/MobileAndroidPackaging.cs` 会在**开发版**的清单里补上
+`android:usesCleartextTraffic="true"`（发布版保持安卓的安全默认）。
+所以要用明文网关，就出开发版包：`-buildTarget Android` 加上 `BuildOptions.Development`，
+或者把设置改成 `Always Allowed` 并自行承担风险。
 
 ---
 

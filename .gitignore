@@ -60,6 +60,11 @@ sysinfo.txt
 # Scratch captures. Evidence worth keeping goes to docs/evidence/ instead.
 /logs/
 UnityMCPProject/Assets/Screenshots/
+UnityMCPProject/Assets/Screenshots.meta
+
+# Player builds. Tools/DSH Mobile/Build APK writes here; an APK is an artifact,
+# not source — the copy people install belongs in a GitHub Release.
+UnityMCPProject/Builds/
 
 # Unity's asset-store importer scratch
 UnityMCPProject/Assets/AssetStoreTools*

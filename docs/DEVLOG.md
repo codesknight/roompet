@@ -16,10 +16,12 @@
 |---|---|
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物），两个都已在 Build Settings |
-| 测试 | **84/84 通过**（虚拟宠物 69 + 跑酷 15），EditMode |
+| 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
+| 测试 | **107/107 通过**（虚拟宠物 69 + 跑酷 15 + 手机端 23），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
+| 安卓包 | `UnityMCPProject/Builds/Android/RoomPet.apk`（约 16 MB，开发版；被 git 忽略） |
 | 回归证据图 | `docs/evidence/*.png`（随文档一起提交，便于复盘） |
 
 **两个场景一句话说明**
@@ -78,12 +80,29 @@
 | `World/Interactable.cs` | 可点击物件（碗/床/球/梳子/门） |
 | `World/RoomCameraRig.cs` | **三种视角**（全景/自由/跟随主角）+ 屏幕取景闭环 |
 | `World/PropTint.cs` | 给素材道具自己的颜色（材质属性块不能序列化，所以做成组件） |
-| `UI/PetHud.cs` | 全部 IMGUI 界面（状态面板/聊天/换物种/视角/浮层面板/日历） |
+| `UI/PetHud.cs` | 全部 IMGUI 界面（状态面板/聊天/换物种/视角/浮层面板/日历），含手机布局与设计像素缩放 |
 | `Audio/ProceduralAudio.cs` | 波形合成工具（正弦/噪声/包络/混音/琶音） |
 | `Audio/PetAudioDirector.cs` | 16 个音效 + 按心情变调的"说话" + 环境音 |
 | `MiniGame/MiniGameLibrary.cs` | 小游戏注册表（门 → 出去玩的场景往返） |
 | `Editor/PetSceneMenu.cs` | 菜单：`Tools/DSH Pet/{Build Pet Scene, Validate Wiring, Fix Script Encodings, Add Scenes To Build Settings, Clear Pet Save}` |
-| `Tests/Editor/*.cs` | 84 条测试（纯逻辑为主，不依赖场景） |
+| `Tests/Editor/*.cs` | 69 条宠物测试（纯逻辑为主，不依赖场景） |
+
+### 手机端（`Assets/Mobile/`，程序集 `DshMobile`）
+
+**这一层不引用宠物或跑酷**（两者各自引用它），所以谁都能用、也不会造成循环依赖。
+
+| 文件 | 职责 |
+|---|---|
+| `Scripts/MobileUi.cs` | 平台判断（`IsMobile` / `UseTouchControls` / 编辑器预览开关 `ForceTouchControls`）、HUD 缩放 `UiScale`/`ScaleFor`、安全区换算、`MinTouchTarget=44` |
+| `Scripts/MobileTouch.cs` | **多点触控核心**：每帧读 `Input.touches`，自己做命中与手指归属（`btn:<id>`/`stick`/`gesture`/`ui`）；自动安装驱动器（`[DefaultExecutionOrder(-200)]`）；编辑器里用鼠标合成一根手指 |
+| `Scripts/TouchGesture.cs` | 点击/滑动识别（阈值按屏幕短边，`ReferenceSize` 可注入所以能测） |
+| `Scripts/VirtualJoystick.cs` | 浮动摇杆（按下的地方就是圆心，带死区与重映射） |
+| `Scripts/MobileWidgets.cs` | 触控控件绘制 + **设计像素↔屏幕像素**换算（`BeginFrame`/`ToScreen`/`ToDesign`） |
+| `Scripts/MobileButtonIds.cs` | 按钮 id 常量（宠物 5 个 + 跑酷 5 个） |
+| `Scripts/MobileBootstrap.cs` | 移动端运行时设置：60fps、关垂直同步、常亮、阴影距离 ≤26、AA=2 |
+| `Editor/MobileBuildMenu.cs` | 菜单：`Tools/DSH Mobile/{Report Mobile Status, Toggle Touch Preview, Configure Android Player Settings, Build APK}` |
+| `Editor/MobileAndroidPackaging.cs` | 改生成的 Gradle 工程：安卓桌面图标名 + 开发版的 `usesCleartextTraffic`（见坑 27、30） |
+| `Tests/Editor/MobileInputTests.cs` | 23 条测试（手势 / 摇杆 / 缩放 / 手机布局 / 坐标变换） |
 
 ### Shader（`Assets/Shaders/`）
 
@@ -242,6 +261,44 @@
     （这条是测试抓到的。）
 22. **协程里抛异常会静默结束整个协程**，状态会卡住（`IsThinking` 卡住）→ 加了看门狗 + 兜底。
 
+### 安卓 / 触控（第 6 轮新增）
+
+23. **Android 模块必须在编辑器启动之前装好。** 编辑器跑着的时候装模块不会报错，但
+    `BuildPipeline.BuildPlayer` 会直接抛 `Build target 'Android' not supported`——
+    因为构建扩展程序集是启动时加载的，运行中不会补。更坑的是
+    `BuildPipeline.IsBuildTargetSupported(Android)` 此刻**返回 True**，看它会被骗。
+    **规矩：装完模块重启编辑器**（重启后同样的调用立刻成功）。
+24. **IMGUI 只有一个指针。** `GUI.Button` 拿不到第二根手指，所以"左手推摇杆、右手点跳"
+    在 IMGUI 里天然做不到。于是有了 `MobileTouch`：**自己读 `Input.touches` + 自己做矩形命中**，
+    再把控件画成不接收输入的图案（`MobileWidgets`）。凡是要"同时按"的控件，都必须走这一层。
+25. **设计像素和屏幕像素只能换算一次**（本轮最贵的一个 bug）。HUD 用
+    `GUI.matrix` 整体缩放绘制，于是"绘制坐标"是设计像素，而"触控命中"是真实屏幕像素。
+    一开始把 `ToScreen(designRect)` 的结果交给**在矩阵里绘制**的控件，等于缩放了两次：
+    编辑器 0.9 倍下只偏 10%（肉眼像"差不多对"），真机 1.8 倍下是 3.24 倍，控件直接飞出屏幕。
+    **现在的规矩：控件接口一律收设计矩形，内部绘制用原值、注册命中区时才 `ToScreen`；
+    反方向（摇杆的触点）用 `ToDesign`。有 4 条单测钉住这个变换。**
+26. **`GUILayout.BeginArea` 里的 `GUI.*` 坐标是相对这个区域的。** 收起的聊天条把绝对矩形
+    塞进 `BeginArea` 里画，于是整条被又偏移了一次、画到屏幕外，看着就是"底部只有一条黑边、
+    里面什么都没有"。**要么全用绝对坐标，要么全用 GUILayout，别混。**
+27. **安卓 9+ 默认拦明文 http，而 Unity 的 `InsecureHttpOption.DevelopmentOnly` 只管
+    `UnityWebRequest`。** 实测生成的 Gradle 工程里 `AndroidManifest.xml` **完全没有**
+    `usesCleartextTraffic`。连局域网 http 网关要用 `Assets/Mobile/Editor/MobileAndroidManifest.cs`
+    在开发版里补上（发布版保持安卓的安全默认）。
+28. **编辑器 Game 视图的分辨率改不动。** `Screen.SetResolution` 在编辑器里无效，
+    `GameViewSizes`/`selectedSizeIndex` 反射也拿不到（`instance` 为 null）。
+    验证手机布局的办法是：`Tools/DSH Mobile/Toggle Touch Preview` 强制手机布局 + 单测按
+    真实手机尺寸算几何 + 真机/出包实测。**别为了改分辨率在编辑器里折腾。**
+29. **边玩边重编译会留下"半死"的播放状态**：编辑器重启脚本域时会保留场景对象但不会重跑
+    `Awake`，于是 `GameManager.Instance` 是 null 而 `GameRoot` 还在。
+    判据：`Application.isPlaying == true` 但单例为 null → **退出 Play 重新进**。
+30. **改 `PlayerSettings` 的公司名/产品名 = 换存档目录（桌面端也一样）。**
+    `Application.persistentDataPath` 和 Windows 上的 PlayerPrefs 都挂在
+    `LocalLow\<公司>\<产品>` / `HKCU\Software\<公司>\<产品>` 上。
+    本轮为了让手机桌面图标叫「RoomPet」改了一次这两个名字，结果日记文件当场"搬家"
+    （`dsh-default` 下 24KB 的狐狸日记在新目录里变成空白）——**宠物会把主人忘了**。
+    正确做法：**名字不动，只把安卓的 `app_name` 打进生成的 Gradle 资源**（见
+    `MobileAndroidPackaging`）。改名前先问自己"这会不会搬走存档"。
+
 ---
 
 ## 七、下一步候选（按我建议的优先级）
@@ -282,9 +339,12 @@ Tools/DSH Pet/Build Pet Scene       # 重建场景里的房间（改了 PetRoom 
 Tools/DSH Pet/Fix Script Encodings  # 补 UTF-8 BOM（中文乱码时先跑这个）
 Tools/DSH Pet/Clear Pet Save        # 清存档（含日记文件）
 Tools/DSH Runner/Validate Wiring    # 跑酷侧自检
+Tools/DSH Mobile/Report Mobile Status          # 平台/触控/缩放/安全区/包名/架构
+Tools/DSH Mobile/Toggle Touch Preview          # 编辑器里用手机布局（鼠标当手指），Ctrl+Shift+T
+Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
-EditMode，期望 84/84
+EditMode，期望 107/107
 
 # 存档
 %USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\

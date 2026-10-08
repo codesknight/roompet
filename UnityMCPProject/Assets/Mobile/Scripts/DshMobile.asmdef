@@ -1,9 +1,7 @@
 {
-    "name": "DshPet",
-    "rootNamespace": "DshPet",
-    "references": [
-        "DshMobile"
-    ],
+    "name": "DshMobile",
+    "rootNamespace": "DshMobile",
+    "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

@@ -1,10 +1,12 @@
 {
-    "name": "DshPet",
-    "rootNamespace": "DshPet",
+    "name": "DshMobile.Editor",
+    "rootNamespace": "DshMobileEditor",
     "references": [
         "DshMobile"
     ],
-    "includePlatforms": [],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,

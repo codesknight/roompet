@@ -86,6 +86,19 @@
 
 ---
 
+## 阶段 6：安卓手机端（分支 `feature/android-mobile`）
+
+| 编号 | 需求 | 实现 | 验收证据 |
+|---|---|---|---|
+| R6.1 | 新建分支做一版安卓手机适配端 | 分支 `feature/android-mobile`；新增独立程序集 `Assets/Mobile/`（`DshMobile`），被宠物与跑酷两个程序集引用，两者仍互不引用 | 分支与 asmdef 图；`DshMobile` 单测 23 条 ✅ |
+| R6.2 | 所有 UI 设计都要手机端友好 | ① HUD 改为"设计像素 + `GUI.matrix` 整体缩放"（`MobileUi.UiScale` 按屏高与 DPI 计算，夹在 0.9~1.8），字号、间距、命中区一起放大；② 按 `Screen.safeArea` 内缩，避开刘海与圆角；③ 触摸目标不小于 44 设计像素；④ 宠物端聊天默认收成 54px 一条，状态面板默认只显示要点（可切「详情」），把底部三分之一让给拇指；⑤ 跑酷端提示行、道具条、「返回宠物小屋」全部让开按钮行 | 5 种手机设计尺寸下的布局单测（控件可点、不出屏、互不重叠、不压聊天条）；截图 `docs/evidence/mobile_pet_hud.png` / `mobile_runner_hud.png` ✅ |
+| R6.3 | 小游戏（跑酷）也要手机端友好 | **滑动为主**：左右滑换道、上滑/点击跳（按住更高）、下滑滑铲；**按钮为辅**：◀ ▶ 跳 滑 + 暂停。两者可同时用，因为输入走自己的多点触控层而不是 IMGUI | 手势识别单测（阈值按屏短边、快甩即使距离短也算、慢拖不算）；截图 `docs/evidence/mobile_runner_hud.png` ✅ |
+| R6.4 | 多指同时操作 | IMGUI 只认一个指针，所以自建 `MobileTouch`：直接读 `Input.touches`，自己做矩形命中与手指归属（`btn:<id>` / `stick` / `gesture` / `ui`）；`MobileWidgets` 只负责画，命中区单独注册 | 归属逻辑单测；编辑器里用鼠标当手指的合成通道（`ForceTouchControls`）实测 ✅ |
+| R6.5 | 打包出 APK | `Tools/DSH Mobile/Build APK`：包名 `com.codesknight.roompet`、强制横屏、IL2CPP + ARM64、minSdk 24、`INTERNET` 权限、`renderOutsideSafeArea=false`；产出 `UnityMCPProject/Builds/Android/RoomPet.apk` | APK 实测 16.0 MB，内含 `lib/arm64-v8a/{libil2cpp,libunity}.so`、`global-metadata.dat`；合并后的清单含 `INTERNET`、`userLandscape`、`usesCleartextTraffic`；`resources.arsc` 里 `app_name` = `RoomPet` ✅ |
+| R6.6 | 桌面端不能被改坏 | 所有触控分支都在 `MobileUi.UseTouchControls` 之下；键鼠代码一条没删；`ForceTouchControls` 只用于编辑器预览与测试 | 桌面路径实测（编辑器未开预览时行为与上一轮一致）；107/107 单测含原有宠物/跑酷用例 ✅ |
+
+---
+
 ## 非功能需求 / 设计约束
 
 | 约束 | 落地方式 |
@@ -119,6 +132,12 @@
 - 日历：6 行月历 + 当天条目列表都能放进被夹紧的面板里
 - 相机：全景装得下整个可行走房间；跟随主角时玩家在全屋任意位置都在 HUD 面板之上；HUD 高度 35%~80% 都成立
 
+**手机端**
+- 5 种手机设计尺寸下：动作/扔球/聊天按钮都够大（≥ 44 设计像素）、都在屏内、互不重叠、都不压住收起的聊天条
+- 摇杆区始终归左手（中心在屏幕左半边）
+- 手势阈值跟着屏幕短边走（不读全局 `Screen`，可注入 `ReferenceSize` 才能测）
+- **设计像素 ↔ 屏幕像素只换算一次**：控件在带 `GUI.matrix` 的绘制里用设计矩形，注册命中区时才乘缩放；摇杆从屏幕坐标回到设计坐标后必须落在按住它的那根手指下
+
 ---
 
 ## 复现步骤（从零到这个状态）
@@ -142,7 +161,11 @@ Tools/DSH Runner/Build Scene
 # 5) 自检
 Tools/DSH Pet/Validate Wiring      # 应全绿：房间/角色/相机/小游戏/行为表/球/HUD 几何/大脑
 Tools/DSH Pet/Fix Script Encodings # 若中文显示成乱码，先跑这个
-EditMode 测试                      # 应 84/84 通过
+EditMode 测试                      # 应 107/107 通过
+
+# 6) 安卓端（可选；Unity Hub 里要先装 Android Build Support，且装完重启编辑器）
+Tools/DSH Mobile/Configure Android Player Settings
+Tools/DSH Mobile/Build APK         # → UnityMCPProject/Builds/Android/RoomPet.apk
 ```
 
 ---
