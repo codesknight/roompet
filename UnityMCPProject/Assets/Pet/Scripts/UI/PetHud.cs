@@ -1053,6 +1053,21 @@ namespace DshPet
             _editAnonymous = GUILayout.Toggle(_editAnonymous, " 允许无鉴权（本地网关）", _small);
             _editOffline = GUILayout.Toggle(_editOffline, " 强制离线模式", _small);
 
+            // The haptics switch lives here rather than in its own panel: it is one bit, and a
+            // player who wants it off looks in the settings they already know about. Applied
+            // immediately, because a feedback setting you have to "save" is a feedback setting
+            // you cannot feel your way to.
+            if (Mobile)
+            {
+                GUILayout.Space(6f);
+                bool vibrationOn = GUILayout.Toggle(MobileHaptics.Enabled, " 振动反馈（轻/中/重）", _small);
+                if (vibrationOn != MobileHaptics.Enabled)
+                {
+                    MobileHaptics.Enabled = vibrationOn;
+                    if (vibrationOn) MobileHaptics.Light();   // confirm it can be felt
+                }
+            }
+
             GUILayout.Space(8f);
             GUILayout.Label("当前：" + gm.BrainConfig.Describe(), _small);
             GUILayout.Label("状态：" + gm.BrainConfig.StatusDetail(), _small);

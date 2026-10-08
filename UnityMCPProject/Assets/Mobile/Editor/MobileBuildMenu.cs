@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using DshMobile;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
@@ -33,12 +33,18 @@ namespace DshMobileEditor
             // into the generated Gradle resources instead (see MobileAndroidPackaging).
 
             // ------------------------------------------------------------ orientation
-            // The room is wider than it is tall and the HUD is laid out sideways, so the game
-            // is landscape only — portrait would letterbox everything into a strip.
+            // Both orientations are supported: the HUD lays itself out from the real viewport,
+            // the touch controls re-arrange for a narrow screen, and both cameras pull back
+            // until their subject fits the viewport's width (see MobileUi.WidthFitScale).
+            //
+            // Unity turns AutoRotation into Android's "fullUser", which also permits an
+            // upside-down hold — harmless, since the game is rendered relative to the device
+            // and its layout is orientation-driven rather than fixed. The box below is still
+            // left unticked because it is the honest description of what is supported.
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.AutoRotation;
             PlayerSettings.allowedAutorotateToLandscapeLeft = true;
             PlayerSettings.allowedAutorotateToLandscapeRight = true;
-            PlayerSettings.allowedAutorotateToPortrait = false;
+            PlayerSettings.allowedAutorotateToPortrait = true;
             PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
 
             // Hide the status bar and keep the navigation bar from resizing the view: both
@@ -71,7 +77,7 @@ namespace DshMobileEditor
             PlayerSettings.SplashScreen.backgroundColor = new Color(0.10f, 0.09f, 0.13f);
 
             AssetDatabase.SaveAssets();
-            Debug.Log($"[DshMobile] Android settings applied: {PackageId}, landscape, ARM64/IL2CPP, " +
+            Debug.Log($"[DshMobile] Android settings applied: {PackageId}, landscape+portrait, ARM64/IL2CPP, " +
                       $"min SDK {PlayerSettings.Android.minSdkVersion}, INTERNET permission on.");
         }
 

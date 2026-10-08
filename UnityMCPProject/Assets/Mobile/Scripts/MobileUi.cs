@@ -43,38 +43,43 @@ namespace DshMobile
         /// <summary>
         /// Layout scale for the HUD.
         ///
-        /// Driven by screen height so a taller phone gets proportionally bigger controls,
-        /// but clamped at both ends: below ~0.9 the text is unreadable, and above ~1.8 a
-        /// single panel would swallow the play area. DPI is used as a gentle correction
-        /// when the platform reports it (a 400-dpi phone needs slightly bigger targets
-        /// than a 240-dpi tablet at the same pixel height).
+        /// Driven by the screen's SHORT side — not by height — because the game runs in both
+        /// orientations: on a 1080x2400 portrait phone the height is 2400, and scaling by it
+        /// would slam the clamp at 1.8, leaving a 600px-wide design space to lay a whole HUD
+        /// out in. The short side is the honest "how big is this screen", and in landscape it
+        /// is exactly the number it always was, so no landscape layout moves.
+        ///
+        /// Clamped at both ends: below ~0.9 the text is unreadable, and above ~1.8 a single
+        /// panel would swallow the play area. DPI is used as a gentle correction when the
+        /// platform reports it (a 400-dpi phone needs slightly bigger targets than a
+        /// 240-dpi tablet at the same pixel height).
         /// </summary>
         public static float UiScale
         {
             get
             {
                 float dpi = Screen.dpi > 60f ? Screen.dpi : 0f;
-                return ScaleFor(Screen.height, dpi);
+                return ScaleFor(ShortSide, dpi);
             }
         }
 
         /// <summary>
         /// The scale calculation on its own, so it can be checked at phone sizes without
-        /// resizing the editor's Game view.
+        /// resizing the editor's Game view. Pass the screen's short side.
         /// </summary>
-        public static float ScaleFor(float screenHeight, float dpi)
+        public static float ScaleFor(float shortSide, float dpi)
         {
-            float byHeight = screenHeight / ReferenceHeight;
+            float byShortSide = shortSide / ReferenceHeight;
 
             // Screen.dpi is 0 on plenty of devices and in the editor; only trust it when it
             // looks plausible.
             if (dpi > 60f)
             {
                 float dpiCorrection = Mathf.Lerp(0.9f, 1.15f, Mathf.InverseLerp(200f, 500f, dpi));
-                byHeight *= dpiCorrection;
+                byShortSide *= dpiCorrection;
             }
 
-            return Mathf.Clamp(byHeight, 0.9f, 1.8f);
+            return Mathf.Clamp(byShortSide, 0.9f, 1.8f);
         }
 
         /// <summary>Shortest side of the screen, in pixels — the honest "how big is this".</summary>
@@ -82,6 +87,67 @@ namespace DshMobile
 
         /// <summary>True when the device is held sideways (width ≥ height).</summary>
         public static bool IsLandscape => Screen.width >= Screen.height;
+
+        /// <summary>True when the device is held upright. Both orientations are supported.</summary>
+        public static bool IsPortrait => Screen.width < Screen.height;
+
+        /// <summary>
+        /// Width/height. Portrait phones land near 0.45, landscape near 2.2, and the cameras
+        /// need to know which one they are looking into: a camera that fits a scene vertically
+        /// can still slice the sides off horizontally.
+        /// </summary>
+        public static float Aspect => Screen.height > 0 ? (float)Screen.width / Screen.height : 1f;
+
+        /// <summary>
+        /// How far the "fit this in view" correction may pull a camera back, as a multiplier on
+        /// its base distance. Generous, because portrait is genuinely narrow, but capped so a
+        /// bad measurement cannot turn the room into a postage stamp.
+        /// </summary>
+        public const float MaxWidthFitPullback = 4f;
+
+        /// <summary>The aspect a layout or a camera is designed against.</summary>
+        public const float ReferenceAspect = 16f / 9f;
+
+        /// <summary>
+        /// How far away a camera must sit for something <paramref name="halfWidth"/> metres to
+        /// the side of what it is looking at to stay inside the frame.
+        ///
+        /// This is the piece that makes one camera serve both orientations. A camera is defined
+        /// by its VERTICAL field of view, so as the viewport narrows the horizontal field
+        /// collapses with it: a 3-lane track that fills a 16:9 phone is cut off at both edges in
+        /// portrait. Pulling the camera back restores the horizontal coverage, and this is the
+        /// honest distance to pull back to rather than a magic multiplier.
+        ///
+        /// Pure on purpose — the desktop case (16:9 and wider) must come out at "no change",
+        /// and that is worth a test.
+        /// </summary>
+        public static float RequiredDistanceForWidth(float halfWidth, float verticalFovDegrees,
+            float aspect, float sideMargin = 0.06f)
+        {
+            if (halfWidth <= 0f) return 0f;
+
+            float halfTan = Mathf.Tan(Mathf.Deg2Rad * Mathf.Clamp(verticalFovDegrees, 1f, 170f) * 0.5f)
+                            * Mathf.Max(0.05f, aspect);
+            float usable = halfTan * Mathf.Max(0.1f, 1f - sideMargin);
+            return usable <= 0.0001f ? float.MaxValue : halfWidth / usable;
+        }
+
+        /// <summary>
+        /// The multiplier to apply to a camera's base distance so its subject fits the viewport's
+        /// width. Exactly 1 whenever the base distance is already far enough — which is the case
+        /// on every desktop window and on a landscape phone — so this only ever widens the shot
+        /// on a narrow screen.
+        /// </summary>
+        public static float WidthFitScale(float baseDistance, float halfWidth, float verticalFovDegrees,
+            float aspect, float sideMargin = 0.06f, float max = MaxWidthFitPullback)
+        {
+            if (baseDistance <= 0.01f) return 1f;
+
+            float required = RequiredDistanceForWidth(halfWidth, verticalFovDegrees, aspect, sideMargin);
+            if (required == float.MaxValue) return max;
+
+            return Mathf.Clamp(required / baseDistance, 1f, max);
+        }
 
         /// <summary>
         /// Screen.safeArea converted to IMGUI coordinates (origin top-left).

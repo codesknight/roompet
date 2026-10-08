@@ -210,6 +210,7 @@ namespace DshRunner
             _laneFromX = _laneX;
             _laneT = 0f;
             _tilt = -direction * TiltDegrees;
+            DshMobile.MobileHaptics.Light();
         }
 
         public void Jump()
@@ -219,6 +220,7 @@ namespace DshRunner
             CancelSlide();
             _verticalVelocity = _jumpImpulse;
             _squash = 0.82f;
+            DshMobile.MobileHaptics.Light();
         }
 
         public void Slide()
@@ -227,6 +229,7 @@ namespace DshRunner
             IsSliding = true;
             _slideTimer = GameConfig.SlideDuration;
             _squash = 1.25f;
+            DshMobile.MobileHaptics.Light();
         }
 
         private void CancelSlide()

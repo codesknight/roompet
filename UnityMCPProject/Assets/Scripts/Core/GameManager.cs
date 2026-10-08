@@ -126,11 +126,13 @@ namespace DshRunner
             if (PowerUps != null && PowerUps.ConsumeShield())
             {
                 LastFailReason = "";
+                DshMobile.MobileHaptics.Medium();   // saved, but you felt the hit
                 return;
             }
 
             LastFailReason = reason;
             RecordRun();
+            DshMobile.MobileHaptics.Heavy();
             SetState(GameState.GameOver);
         }
 
@@ -141,6 +143,7 @@ namespace DshRunner
             // goes on to press "next level".
             UnlockNextLevel();
             RecordRun();
+            DshMobile.MobileHaptics.Medium();
             SetState(GameState.LevelComplete);
         }
 

@@ -159,6 +159,9 @@ namespace DshPet
         /// <summary>The points the fit keeps inside the band; reused to avoid per-frame garbage.</summary>
         private readonly Vector3[] _subjects = new Vector3[4];
 
+        /// <summary>How many entries of <see cref="_subjects"/> the last collect filled in.</summary>
+        private int _subjectCount;
+
         private void Awake()
         {
             _camera = GetComponent<Camera>();
@@ -340,22 +343,139 @@ namespace DshPet
                     float band = HudBandHeight();
                     float bandFraction = band > 40f ? band / Mathf.Max(1f, Screen.height) : 0.64f;
                     float scale = Mathf.Clamp(0.64f / Mathf.Max(0.2f, bandFraction), 1f, 1.7f);
+
+                    // ...and pull back further on a narrow viewport. The room is 14 m wide, and
+                    // a camera defined by a VERTICAL field of view loses horizontal coverage
+                    // exactly as the viewport narrows, so in portrait the side walls get cut
+                    // off no matter how the pitch is tuned. Height and back scale together so
+                    // the viewing angle — and the doll-house look — is unchanged; only the
+                    // distance grows. _widthFit is seeded from the geometry and then refined by
+                    // measurement, because the near corners subtend more than the room centre.
+                    scale *= Mathf.Max(1f, _widthFit);
                     return new Vector3(0f, PanoramaHeight * scale, -PanoramaBack * scale);
                 }
             }
+        }
+
+        /// <summary>
+        /// Pull-back last computed by <see cref="CameraOffset"/>, used to relax the boundary.
+        ///
+        /// <see cref="RoomLimit"/> exists to stop the player panning the FREE camera off into the
+        /// void. A screen-fit mode is not the player's doing — it is the framing solving for
+        /// itself — and in portrait that solution wants to sit further back than the limit. Left
+        /// clamped, the room's near corner ended up 22px off the left edge of a 1080px screen.
+        /// </summary>
+        private float _widthFit = 1f;
+
+        /// <summary>Half the room's floor width, i.e. how far a corner sits from the centre.</summary>
+        private float RoomHalfWidth()
+        {
+            var room = PetGameManager.Instance != null ? PetGameManager.Instance.Room : null;
+            float size = room != null ? room.Size : 14f;
+            // A little under half, because the corners are what is being kept in frame and
+            // the margin in WidthFitScale is a fraction of the visible width, not a distance.
+            return size * 0.5f - 0.6f;
         }
 
         public void Snap()
         {
             Resolve();
             UpdateHudPitch();
+            _widthFit = SeedWidthFit();
             Vector3 focus = FocusPoint();
             transform.position = Clamp(focus + CameraOffset());
             _lookPoint = focus + LookOffset;
             FitSubjectsToBand();          // leaves the camera aimed with the fitted pitch
+            FitSubjectsToWidth();         // ...and far enough back for a narrow viewport
             ApplyPitch();
             CullRoomFaces();
         }
+
+        /// <summary>
+        /// Starting guess for the horizontal fit, from the room's own size.
+        ///
+        /// The measurement loop below is what actually holds the invariant; this exists so the
+        /// first frame after a snap is already close, instead of the camera visibly flying
+        /// backwards over the first few frames.
+        /// </summary>
+        private float SeedWidthFit()
+        {
+            if (View != CameraViewMode.Panorama) return 1f;
+
+            return DshMobile.MobileUi.WidthFitScale(
+                Mathf.Sqrt(PanoramaBack * PanoramaBack + PanoramaHeight * PanoramaHeight),
+                RoomHalfWidth(), Cam.fieldOfView, Cam.aspect);
+        }
+
+        /// <summary>
+        /// Slides the camera back until everything it must show also fits the viewport WIDTH.
+        ///
+        /// Portrait is the case that needs it: the room is 14 m wide and the viewport is 0.45
+        /// wide-to-tall, so the side walls fall off both edges however well the pitch is tuned.
+        /// Solved by measurement like the vertical fit, because the near corners subtend more
+        /// than the room centre does and an analytic distance lands a few percent short.
+        /// </summary>
+        private void FitSubjectsToWidth()
+        {
+            if (!RespectHudSafeArea || View != CameraViewMode.Panorama)
+            {
+                // The other modes frame characters near the middle of the screen, where a narrow
+                // viewport cannot clip them; the free camera belongs to the player.
+                _widthFit = 1f;
+                return;
+            }
+
+            int count = _subjectCount;
+            if (count == 0) return;
+
+            float width = ProjectionWidth;
+            if (width < 40f) return;
+
+            float available = width * (1f - 2f * WidthMargin);
+
+            for (int pass = 0; pass < 4; pass++)
+            {
+                float left = float.MaxValue, right = float.MinValue;
+                for (int i = 0; i < count; i++)
+                {
+                    float x = ScreenXOf(_subjects[i]);
+                    if (x < left) left = x;
+                    if (x > right) right = x;
+                }
+
+                float used = right - left;
+                if (used <= 1f) return;
+
+                if (used > available)
+                {
+                    _widthFit = Mathf.Clamp(_widthFit * (used / available) * 1.02f, 1f,
+                        DshMobile.MobileUi.MaxWidthFitPullback);
+                }
+                else if (used < available * 0.82f)
+                {
+                    // Come back in when there is room to spare, so turning the phone back to
+                    // landscape (or a wider window) restores the original framing rather than
+                    // staying zoomed out forever.
+                    _widthFit = Mathf.Clamp(_widthFit * Mathf.Max(0.7f, used / available), 1f,
+                        DshMobile.MobileUi.MaxWidthFitPullback);
+                }
+                else
+                {
+                    return;
+                }
+
+                transform.position = Clamp(FocusPoint() + CameraOffset());
+            }
+        }
+
+        /// <summary>Fraction of the viewport width kept clear at each side of the subject.</summary>
+        public float WidthMargin = 0.05f;
+
+        private float ScreenXOf(Vector3 worldPoint) => Cam.WorldToScreenPoint(worldPoint).x;
+
+        /// <summary>Viewport width in the camera's own pixels (see BandInProjectionPixels).</summary>
+        private float ProjectionWidth
+            => _camera != null && _camera.pixelWidth > 0 ? _camera.pixelWidth : Screen.width;
 
         /// <summary>
         /// Slides the frame until the subjects sit inside the band the HUD leaves free.
@@ -372,6 +492,7 @@ namespace DshPet
             if (band < 40f) return;
 
             int count = CollectSubjects();
+            _subjectCount = count;
             if (count == 0) return;
 
             float lowerLimit = band * BandTopMargin;    // nearest subject must stay above this
@@ -479,10 +600,11 @@ namespace DshPet
 
         private Vector3 Clamp(Vector3 position)
         {
+            float limit = RoomLimit * Mathf.Max(1f, _widthFit);
             return new Vector3(
-                Mathf.Clamp(position.x, -RoomLimit, RoomLimit),
+                Mathf.Clamp(position.x, -limit, limit),
                 Mathf.Max(1.5f, position.y),
-                Mathf.Clamp(position.z, -RoomLimit, RoomLimit));
+                Mathf.Clamp(position.z, -limit, limit));
         }
 
         // ------------------------------------------------------------------- free camera
@@ -611,6 +733,7 @@ namespace DshPet
 
             // Smoothing can leave the subjects adrift mid-move, so re-fit every frame.
             FitSubjectsToBand();
+            FitSubjectsToWidth();
             ApplyPitch();
             CullRoomFaces();
         }

@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text;
 using UnityEditor;
 using UnityEditor.Android;
@@ -50,7 +50,7 @@ namespace DshMobileEditor
         public void OnPostGenerateGradleAndroidProject(string path)
         {
             ApplyAppLabel(path);
-            ApplyCleartextPolicy(path);
+            ApplyManifestExtensions(path);
         }
 
         // ------------------------------------------------------------------- label
@@ -88,12 +88,15 @@ namespace DshMobileEditor
             Debug.Log($"[DshMobile] Launcher label set to \"{MobileBuildMenu.AppLabel}\".");
         }
 
-        // --------------------------------------------------------------- cleartext
+        // --------------------------------------------------------------- manifest
 
-        private void ApplyCleartextPolicy(string path)
+        /// <summary>
+        /// Adds what the game needs from the manifest and Unity cannot express: the VIBRATE
+        /// permission for haptics, and — where the insecure-http policy allows it — cleartext
+        /// for a local gateway.
+        /// </summary>
+        private void ApplyManifestExtensions(string path)
         {
-            if (!AllowsCleartext()) return;
-
             string manifestPath = FindManifest(path);
             if (manifestPath == null)
             {
@@ -103,30 +106,45 @@ namespace DshMobileEditor
             }
 
             string manifest = File.ReadAllText(manifestPath);
-            if (manifest.Contains("usesCleartextTraffic"))
+            string patched = manifest;
+
+            // Vibration needs a normal permission, and Unity has no player setting for it
+            // (only INTERNET has one). Without it every pulse is silently dropped.
+            if (!patched.Contains("android.permission.VIBRATE"))
             {
-                Debug.Log("[DshMobile] Manifest already declares usesCleartextTraffic; left alone.");
-                return;
+                patched = patched.Insert(ApplicationAnchor(patched),
+                    "<uses-permission android:name=\"android.permission.VIBRATE\" />\n  ");
             }
 
-            const string anchor = "<application ";
-            int at = manifest.IndexOf(anchor, System.StringComparison.Ordinal);
-            if (at < 0)
+            if (AllowsCleartext() && !patched.Contains("usesCleartextTraffic"))
             {
-                Debug.LogWarning("[DshMobile] Manifest has no <application> element; cleartext not enabled.");
-                return;
+                patched = patched.Insert(ApplicationAnchor(patched) + "<application ".Length,
+                    "android:usesCleartextTraffic=\"true\" ");
             }
 
-            string patched = manifest.Insert(at + anchor.Length,
-                "android:usesCleartextTraffic=\"true\" ");
+            if (patched == manifest)
+            {
+                Debug.Log("[DshMobile] Manifest already declares the permissions this build needs.");
+                return;
+            }
 
             // Written without a BOM: this file is consumed by Gradle, and a byte-order mark
             // ahead of the XML declaration trips some parsers.
             File.WriteAllText(manifestPath, patched, new UTF8Encoding(false));
 
-            Debug.Log($"[DshMobile] Cleartext http enabled for this {(_developmentBuild ? "development" : "release")} build " +
-                      $"(InsecureHttpOption.{PlayerSettings.insecureHttpOption}).");
+            Debug.Log($"[DshMobile] Manifest patched: VIBRATE" +
+                      (AllowsCleartext()
+                          ? $", cleartext http ({(IsDevelopmentBuild() ? "development" : "release")} build, " +
+                            $"InsecureHttpOption.{PlayerSettings.insecureHttpOption})"
+                          : ", no cleartext (secure default)") +
+                      ".");
         }
+
+        /// <summary>Offset of the <c>&lt;application&gt;</c> element, or -1.</summary>
+        private static int ApplicationAnchor(string manifest)
+            => manifest.IndexOf("<application ", System.StringComparison.Ordinal);
+
+        private static bool IsDevelopmentBuild() => _developmentBuild;
 
         /// <summary>True when the player settings and the build kind together allow plain http.</summary>
         private static bool AllowsCleartext()

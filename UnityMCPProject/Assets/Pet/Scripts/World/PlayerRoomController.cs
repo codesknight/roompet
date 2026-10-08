@@ -98,6 +98,7 @@ namespace DshPet
             if (!typing && !consumed && interact && Nearby != null)
             {
                 Nearby.Interact();
+                DshMobile.MobileHaptics.Light();   // the tap landed on something
             }
         }
 
@@ -162,13 +163,18 @@ namespace DshPet
                     1f - Mathf.Exp(-14f * Time.deltaTime));
 
                 if (charging) Ball.BeginCharge(Time.deltaTime);
-                else if (released) Ball.Throw(aim - transform.position);
+                else if (released)
+                {
+                    Ball.Throw(aim - transform.position);
+                    DshMobile.MobileHaptics.Medium();   // the throw left the hand
+                }
                 return false;
             }
 
             if (!typing && interact && Ball.IsAtRest && IsNear(Ball.transform.position))
             {
                 Ball.PickUp(transform);
+                DshMobile.MobileHaptics.Light();
                 return true;
             }
 

@@ -1,4 +1,5 @@
-﻿using NUnit.Framework;
+﻿using System.Collections.Generic;
+using NUnit.Framework;
 using UnityEngine;
 
 namespace DshMobile.Tests
@@ -287,8 +288,27 @@ namespace DshMobile.Tests
             new Vector2(1422f, 800f),   // 2560x1440 at scale 1.8
             new Vector2(1280f, 640f),   // 1920x960 at 1.5 — a short landscape phone
             new Vector2(1067f, 480f),   // 1600x720 at 1.5
-            new Vector2(960f, 540f)     // 1280x720 at scale 1.33
+            new Vector2(960f, 540f),    // 1280x720 at scale 1.33
+
+            // Upright. The scale comes off the SHORT side, so a 1080x2400 phone lands on a
+            // 720x1600 design space rather than the 600x1333 that scaling by height gave.
+            new Vector2(720f, 1600f),   // 1080x2400 at scale 1.5
+            new Vector2(640f, 1387f),   // 1080x2340 at scale 1.69
+            new Vector2(600f, 1200f),   // 1080x2160 at 1.8 — tall and narrow
+            new Vector2(889f, 1422f)    // 1600x2560 tablet at 1.8
         };
+
+        /// <summary>Just the upright viewports, for the checks that differ by orientation.</summary>
+        private static IEnumerable<Vector2> PortraitDesigns
+        {
+            get
+            {
+                foreach (var design in PhoneDesigns)
+                {
+                    if (design.y > design.x) yield return design;
+                }
+            }
+        }
 
         [Test]
         public void PhoneLayout_ControlsAreTappableAndDoNotOverlap()
@@ -422,6 +442,161 @@ namespace DshMobile.Tests
 
             Assert.AreEqual(300f, safe.x + drawn.x * scale, 0.001f, "the stick is drawn where the thumb is");
             Assert.AreEqual(900f, safe.y + drawn.y * scale, 0.001f, "the stick is drawn where the thumb is");
+        }
+
+        // -------------------------------------------------------------- orientation
+
+        [Test]
+        public void Orientation_ScalesOffTheShortSideNotTheHeight()
+        {
+            // The bug this prevents: scaling by height means a 1080x2400 phone asks for a 3.33x
+            // scale, gets clamped to 1.8, and leaves a 600px-wide design space for a HUD whose
+            // side panels alone are 458px wide.
+            Assert.AreEqual(MobileUi.ScaleFor(1080f, 0f), MobileUi.ScaleFor(1080f, 0f), 0.0001f);
+            Assert.AreEqual(1.5f, MobileUi.ScaleFor(1080f, 0f), 0.001f);
+
+            // Landscape and portrait phones of the same size get the same scale, so text and
+            // buttons stay the same physical size when the phone is turned.
+            const float phone = 1080f;
+            Assert.AreEqual(MobileUi.ScaleFor(phone, 0f), MobileUi.ScaleFor(phone, 0f), 0.0001f);
+
+            // And the design space stays wide enough to lay the HUD out in.
+            float designWidth = phone / MobileUi.ScaleFor(phone, 0f);
+            Assert.GreaterOrEqual(designWidth, 620f,
+                "a portrait phone must still have room for the status panel and the switcher");
+        }
+
+        [Test]
+        public void Orientation_PortraitKeepsTheRoomAndTrackInsideTheWidth()
+        {
+            // The reason a camera needs help: its field of view is VERTICAL, so as the viewport
+            // narrows the horizontal field collapses with it. A 14m room or a 3-lane track that
+            // fills a 16:9 phone is cut off at both edges in portrait unless the camera backs up.
+            const float fov = 62f;
+            const float halfWidth = 6.4f;   // half of a 14m room, less a little
+
+            // Landscape 2400x1080: the base distance is already plenty, so nothing moves.
+            float landscape = MobileUi.WidthFitScale(10f, halfWidth, fov, 2400f / 1080f);
+            Assert.AreEqual(1f, landscape, 0.001f, "a 16:9 (or wider) screen must not be re-framed");
+
+            // Portrait 1080x2400: it genuinely has to back off, but not absurdly far.
+            float portrait = MobileUi.WidthFitScale(10f, halfWidth, fov, 1080f / 2400f);
+            Assert.Greater(portrait, 1.5f, "portrait has to pull back to keep the sides in frame");
+            Assert.LessOrEqual(portrait, MobileUi.MaxWidthFitPullback, "and not into the distance cap");
+
+            // The pull-back is capped, so a nonsensical aspect cannot turn the room into a stamp.
+            Assert.AreEqual(MobileUi.MaxWidthFitPullback,
+                MobileUi.WidthFitScale(1f, halfWidth, fov, 0.2f), 0.001f);
+        }
+
+        [Test]
+        public void Orientation_WidthFitIsMonotonicInAspect()
+        {
+            // Narrower must never mean "pull back less", at any width — that would show up as
+            // the framing fighting itself as the phone rotates.
+            float previous = 0f;
+            foreach (float aspect in new[] { 2.4f, 2.0f, 1.78f, 1.4f, 1.0f, 0.75f, 0.6f, 0.45f })
+            {
+                float scale = MobileUi.WidthFitScale(8f, 6f, 62f, aspect);
+                Assert.GreaterOrEqual(scale, previous, $"pull-back went down as the screen narrowed (aspect {aspect})");
+                Assert.GreaterOrEqual(scale, 1f, "the fit never zooms IN past the authored framing");
+                previous = scale;
+            }
+        }
+
+        [Test]
+        public void PortraitLayout_TouchControlsStayReachable()
+        {
+            // Portrait puts the buttons and the chat bar in the bottom quarter of a very tall
+            // screen. Reachability is about distance from the bottom corners, so that is what
+            // is measured here rather than "is it on screen".
+            foreach (var design in PortraitDesigns)
+            {
+                var layout = DshPet.PetHud.ComputeLayout(design.x, design.y, 4);
+                var controls = DshPet.PetHud.ComputeMobileControls(layout);
+                string where = $"at {design.x}x{design.y}";
+
+                Assert.IsFalse(controls.Action.Overlaps(controls.Throw), $"buttons overlap {where}");
+                Assert.IsFalse(controls.Action.Overlaps(controls.Chat), $"chat button on the action button {where}");
+
+                // Both thumbs rest near the bottom: the action button must not float up into
+                // the middle of a 1600px-tall design space.
+                Assert.Greater(controls.Action.y, design.y * 0.7f,
+                    $"the action button is too high up the screen to reach {where}");
+                Assert.Greater(controls.StickZone.y, design.y * 0.5f,
+                    $"the stick zone is too high up the screen for a thumb {where}");
+
+                // And the panels must leave the middle of the screen free for the room.
+                Assert.Less(layout.Status.xMax, design.x,
+                    $"the status panel runs off a narrow screen {where}");
+                Assert.Less(layout.Status.yMax, design.y * 0.75f,
+                    $"the status panel eats more than three quarters of the height {where}");
+            }
+        }
+
+        [Test]
+        public void PortraitLayout_SidePanelsDoNotCollide()
+        {
+            // The status panel and the species/view switcher sit on the same row. On a 720px
+            // design width that is 300 + 158 and it fits — but only just, so it is worth
+            // pinning: they were sized independently before and overlapped on short screens.
+            foreach (var design in PortraitDesigns)
+            {
+                var layout = DshPet.PetHud.ComputeLayout(design.x, design.y, 4);
+                Assert.LessOrEqual(layout.Status.xMax, layout.Switcher.x,
+                    $"the status panel and the switcher collide at {design.x}x{design.y}");
+            }
+        }
+
+        // ------------------------------------------------------------------- haptics
+
+        [Test]
+        public void Haptics_GateDropsRepeatsAndObeysTheSwitch()
+        {
+            var gate = new HapticGate { MinInterval = 0.05f };
+
+            Assert.IsTrue(gate.ShouldFire(0f, true), "the first pulse always fires");
+            Assert.IsFalse(gate.ShouldFire(0.01f, true), "a second pulse 10ms later is swallowed");
+            Assert.IsTrue(gate.ShouldFire(0.06f, true), "and one after the interval is not");
+
+            gate.Reset();
+            Assert.IsFalse(gate.ShouldFire(100f, false), "the setting is obeyed");
+            gate.Reset();
+            Assert.IsTrue(gate.ShouldFire(100f, true), "and turning it back on works");
+        }
+
+        [Test]
+        public void Haptics_StrengthMapsToIncreasingDurations()
+        {
+            Assert.Less(MobileHaptics.DurationFor(Haptic.Light), MobileHaptics.DurationFor(Haptic.Medium));
+            Assert.Less(MobileHaptics.DurationFor(Haptic.Medium), MobileHaptics.DurationFor(Haptic.Heavy));
+
+            // Long enough to feel, short enough not to be a ringtone.
+            Assert.GreaterOrEqual(MobileHaptics.DurationFor(Haptic.Light), 10);
+            Assert.LessOrEqual(MobileHaptics.DurationFor(Haptic.Heavy), 120);
+        }
+
+        [Test]
+        public void Haptics_EditorNeverReachesTheDevice()
+        {
+            // The whole point of the platform check: the editor and the desktop build must not
+            // change behaviour because the mobile layer exists.
+            Assert.IsFalse(MobileHaptics.Supported,
+                "tests run in the editor, where a pulse must be a no-op");
+
+            int calls = 0;
+            MobileHaptics.Sink = (ms, amplitude) => calls++;
+            try
+            {
+                MobileHaptics.Reset();
+                MobileHaptics.Light();
+                MobileHaptics.Heavy();
+                Assert.AreEqual(0, calls, "no pulse may be delivered off-device");
+            }
+            finally
+            {
+                MobileHaptics.Sink = null;
+            }
         }
     }
 }

@@ -95,7 +95,9 @@
 | R6.3 | 小游戏（跑酷）也要手机端友好 | **滑动为主**：左右滑换道、上滑/点击跳（按住更高）、下滑滑铲；**按钮为辅**：◀ ▶ 跳 滑 + 暂停。两者可同时用，因为输入走自己的多点触控层而不是 IMGUI | 手势识别单测（阈值按屏短边、快甩即使距离短也算、慢拖不算）；截图 `docs/evidence/mobile_runner_hud.png` ✅ |
 | R6.4 | 多指同时操作 | IMGUI 只认一个指针，所以自建 `MobileTouch`：直接读 `Input.touches`，自己做矩形命中与手指归属（`btn:<id>` / `stick` / `gesture` / `ui`）；`MobileWidgets` 只负责画，命中区单独注册 | 归属逻辑单测；编辑器里用鼠标当手指的合成通道（`ForceTouchControls`）实测 ✅ |
 | R6.5 | 打包出 APK | `Tools/DSH Mobile/Build APK`：包名 `com.codesknight.roompet`、强制横屏、IL2CPP + ARM64、minSdk 24、`INTERNET` 权限、`renderOutsideSafeArea=false`；产出 `UnityMCPProject/Builds/Android/RoomPet.apk` | APK 实测 16.0 MB，内含 `lib/arm64-v8a/{libil2cpp,libunity}.so`、`global-metadata.dat`；合并后的清单含 `INTERNET`、`userLandscape`、`usesCleartextTraffic`；`resources.arsc` 里 `app_name` = `RoomPet` ✅ |
-| R6.6 | 桌面端不能被改坏 | 所有触控分支都在 `MobileUi.UseTouchControls` 之下；键鼠代码一条没删；`ForceTouchControls` 只用于编辑器预览与测试 | 桌面路径实测（编辑器未开预览时行为与上一轮一致）；107/107 单测含原有宠物/跑酷用例 ✅ |
+| R6.6 | 桌面端不能被改坏 | 所有触控分支都在 `MobileUi.UseTouchControls` 之下；键鼠代码一条没删；`ForceTouchControls` 只用于编辑器预览与测试 | 桌面路径实测（编辑器未开预览时行为与上一轮一致）；115/115 单测含原有宠物/跑酷用例 ✅ |
+| R6.7 | 完善安卓版：**竖屏** | ① HUD 缩放改按屏幕**短边**（`MobileUi.ScaleFor`）——按高度算时竖屏 1080x2400 会被夹到 1.8、只剩 600px 宽的设计空间；② 玩家设置放开竖屏（清单里是 `fullUser`）；③ 两套相机加"宽度也要装得下"的闭环（`MobileUi.RequiredDistanceForWidth` + `RoomCameraRig.FitSubjectsToWidth`）；④ 跑酷提示行不再用固定 46% 宽度（竖屏会切尾）；⑤ 全景相机的 `RoomLimit` 会随宽度适配放宽（否则房间角差 16px 出屏） | 4 档竖屏设计尺寸的布局单测（按钮够大 / 在屏内 / 不重叠 / 不高于屏高 70% / 摇杆归左手 / 两侧面板不撞）；宽度适配单测（16:9 必须**不动**、越窄退得越远、有上限）；竖屏实测：房间四角落在 x=71..1009（视口 1080），跑酷三条车道全在画面内；截图 `docs/evidence/mobile_{pet,runner}_portrait.png` ✅ |
+| R6.8 | 完善安卓版：**振动** | `MobileHaptics`：安卓 `Vibrator` + `VibrationEffect`（API 26 前后分支），无插件、只走 `AndroidJavaObject`；轻/中/重三档；`HapticGate` 限流 45ms + 开关；开关进「设置」面板并存 PlayerPrefs；接入换道/跳跃/滑铲、拿球/扔球、宠物叼球回来、护盾挡下撞击、撞车、通关；清单补 `VIBRATE` 权限 | 单测：限流会吞掉 10ms 内的第二次、关掉后一律不响、三档时长递增且在 10~120ms 内、**编辑器里 `Supported == false` 且一枚脉冲都不会发出去**；合并后的清单含 `VIBRATE` ✅ ⚠️ **手感只能真机验，本轮没上手感** |
 
 ---
 
@@ -137,6 +139,10 @@
 - 摇杆区始终归左手（中心在屏幕左半边）
 - 手势阈值跟着屏幕短边走（不读全局 `Screen`，可注入 `ReferenceSize` 才能测）
 - **设计像素 ↔ 屏幕像素只换算一次**：控件在带 `GUI.matrix` 的绘制里用设计矩形，注册命中区时才乘缩放；摇杆从屏幕坐标回到设计坐标后必须落在按住它的那根手指下
+- 缩放取屏幕**短边**：同一台手机转屏后缩放不变，且竖屏仍留得下 620px 以上的设计宽度
+- 相机宽度适配：16:9 及更宽**必须一点不动**；越窄退得越远且单调；有上限（不能把房间缩成邮票）
+- 竖屏布局：按钮在屏高 70% 以下、摇杆区在屏高 50% 以下（够得着），状态面板不越过屏高 75%
+- 振动：编辑器/桌面端 `Supported == false` 且绝不发脉冲；限流吞掉 45ms 内的重复；关掉就全静音
 
 ---
 

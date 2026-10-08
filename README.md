@@ -9,11 +9,16 @@
 |---|---|
 | ![房间](docs/evidence/hud_fixed.png) | ![跑酷](docs/evidence/forest.png) |
 
-**手机端（横屏）**：两套界面都有专门的触屏布局，操作按钮、摇杆、聊天条都按拇指位置重排过。
+**手机端（横屏 / 竖屏都支持）**：两套界面都有专门的触屏布局，操作按钮、摇杆、聊天条都按拇指位置重排过；
+竖屏下相机会自动往后退，保证整个房间 / 整条赛道仍在画面里。
 
-| 宠物房间 · 手机 | 跑酷 · 手机 |
+| 宠物房间 · 手机横屏 | 跑酷 · 手机横屏 |
 |---|---|
 | ![手机宠物](docs/evidence/mobile_pet_hud.png) | ![手机跑酷](docs/evidence/mobile_runner_hud.png) |
+
+| 宠物房间 · 手机竖屏 | 跑酷 · 手机竖屏 |
+|---|---|
+| ![竖屏宠物](docs/evidence/mobile_pet_portrait.png) | ![竖屏跑酷](docs/evidence/mobile_runner_portrait.png) |
 
 ---
 
@@ -37,9 +42,10 @@
 - **声音零资源**：16 个音效 + 按心情变调的"说话"音全部由波形合成，不需要下载也不需要 API key。
 - **大脑可换**：默认指向 DeepSeek 官方接口，任何 OpenAI 兼容端点都能填；
   网络不可用时自动落到离线大脑并**把错误显示出来**，不会让你对着空白发呆。
-- **手机能玩**：安卓端有独立的触屏层（多点触控、浮动摇杆、滑动手势）、按屏幕高度自适应缩放的 HUD、
-  以及安全区避让；桌面端保持键鼠原样，两边同一份代码。
-- **107 条单元测试**覆盖逻辑（行为打分、日记裁剪、赛道可通过性、界面几何、触控与相机取景）。
+- **手机能玩**：安卓端有独立的触屏层（多点触控、浮动摇杆、滑动手势）、按屏幕短边自适应缩放的 HUD、
+  安全区避让、横竖屏都支持的相机取景，以及轻/中/重三档**振动反馈**（可在设置里关掉）；
+  桌面端保持键鼠原样，两边同一份代码。
+- **115 条单元测试**覆盖逻辑（行为打分、日记裁剪、赛道可通过性、界面几何、触控与相机取景）。
 
 ---
 
@@ -75,7 +81,7 @@
 | 跑酷 | `A` `D` / `←` `→` | 左右换道 |
 | 跑酷 | `空格` / `W` / `↑` | 跳跃 |
 
-**手机上（横屏）**：
+**手机上（横屏或竖屏都行）**：
 
 | 场景 | 操作 | 作用 |
 |---|---|---|
@@ -87,8 +93,13 @@
 | 跑酷 | 上滑 / 点击 | 跳跃（按住更高）；下滑：滑铲 |
 | 跑酷 | 屏幕按钮 | ◀ ▶ 跳 滑 + 右上角**暂停**（与滑动同时可用） |
 
+**振动反馈**：换道/跳跃/滑铲、拿球/扔球、宠物把球叼回来、撞车、通关都会震一下，
+强度分轻/中/重；不想被震就去「设置」面板关掉（手机端专属开关，选择会记住）。
+编辑器里不会震——没有设备时它是一个空操作，所以桌面端行为一条没变。
+
 多指是分开处理的：左手推摇杆的同时右手可以点按钮、拖视角。
-真机上的手机布局也能在编辑器里预览：`Tools/DSH Mobile/Toggle Touch Preview`（`Ctrl+Shift+T`），鼠标会当成一根手指。
+真机上的手机布局也能在编辑器里预览：`Tools/DSH Mobile/Toggle Touch Preview`（`Ctrl+Shift+T`），鼠标会当成一根手指；
+再配 `Tools/DSH Mobile/Preview/…` 把 Game 视图切成手机尺寸（竖屏/横屏/平板各一档）即可照真机比例看。
 
 界面都在屏幕上：左上角是宠物状态与**名字输入框**，右上角是**换动物**和**视角切换**，
 底部是聊天框（打字和它说话）。左下角四个按钮：**记事本**（日历形式的记忆）、
@@ -160,8 +171,8 @@ github.com 凭据，脚本里不存任何 token）。
 
 ## 测试与验证
 
-单元测试在 Unity 里跑：**Window → General → Test Runner → EditMode → Run All**，应 **107/107 通过**
-（宠物 69 + 跑酷 15 + 手机端 23）。
+单元测试在 Unity 里跑：**Window → General → Test Runner → EditMode → Run All**，应 **115/115 通过**
+（宠物 69 + 跑酷 15 + 手机端 31）。
 
 工程里还带了两个自检菜单（比手写脚本快）：
 
@@ -177,12 +188,17 @@ github.com 凭据，脚本里不存任何 token）。
 
 - `Tools/DSH Mobile/Report Mobile Status` —— 打印当前平台、触控开关、缩放、安全区、包名、架构。
 - `Tools/DSH Mobile/Toggle Touch Preview` —— 在编辑器里用手机布局跑（鼠标当手指）。
-- `Tools/DSH Mobile/Configure Android Player Settings` —— 一键写回横屏/包名/IL2CPP+ARM64/INTERNET 等设置。
+- `Tools/DSH Mobile/Preview/…` —— 把 Game 视图切成真机尺寸（竖屏 1080x2400 / 横屏 2400x1080 /
+  长竖屏 1080x2340 / 平板竖屏 1600x2560），另有 `Report Current Viewport` 打印当前视口与缩放。
+- `Tools/DSH Mobile/Configure Android Player Settings` —— 一键写回横竖屏/包名/IL2CPP+ARM64/INTERNET 等设置。
 - `Tools/DSH Mobile/Build APK` —— 出包到 `UnityMCPProject/Builds/Android/RoomPet.apk`。
 
 ---
 
 ## 打包安卓端
+
+**想直接装手机上玩？** 到 [Releases](https://github.com/codesknight/roompet/releases) 下最新的
+`RoomPet.apk`（预发布，开发版）拷进手机安装即可，不用装 Unity。
 
 **前置**：Unity Hub 里给 `2022.3.62f3c1` 装上 **Android Build Support**（含 OpenJDK / SDK / NDK）。
 装模块必须在编辑器**启动之前**完成——运行中的编辑器不会加载新装的构建扩展，
@@ -205,12 +221,13 @@ github.com 凭据，脚本里不存任何 token）。
 
 | 项 | 值 |
 |---|---|
-| 输出 | `UnityMCPProject/Builds/Android/RoomPet.apk`（约 16 MB） |
+| 输出 | `UnityMCPProject/Builds/Android/RoomPet.apk`（约 15 MB） |
 | 应用名 / 包名 | `RoomPet` / `com.codesknight.roompet` |
 | 架构 / 后端 | ARM64（仅此一种）/ IL2CPP |
 | 最低 / 目标 SDK | 24 / 自动（当前 35） |
-| 屏幕方向 | 强制横屏（`userLandscape`），适配刘海安全区 |
-| 权限 | `INTERNET`（大模型接口用） |
+| 屏幕方向 | 横竖屏都支持（清单里是 `fullUser`），适配刘海安全区 |
+| 权限 | `INTERNET`（大模型接口用）、`VIBRATE`（振动反馈用） |
+| 版本 | `0.2.0`（`versionCode 1`） |
 
 > 应用名是**打进生成的 Gradle 资源**的，不是改 `PlayerSettings.productName`——
 > 那个字段在桌面端同时决定 `persistentDataPath` 与 PlayerPrefs 的位置，改它等于搬走存档

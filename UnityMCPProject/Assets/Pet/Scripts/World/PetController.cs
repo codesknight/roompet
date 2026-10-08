@@ -308,6 +308,11 @@ namespace DshPet
             CurrentBehavior = PetBehaviorLibrary.Get("fetch");
             CurrentMode = Mode.React;
             _reactTimer = 1.8f;
+
+            // The pet just put the ball at your feet: on a phone this is the one moment worth
+            // a real buzz, because you are watching the screen rather than the cursor.
+            DshMobile.MobileHaptics.Medium();
+
             Fetched?.Invoke(dropped);
         }
 

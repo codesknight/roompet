@@ -17,11 +17,11 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物），两个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **107/107 通过**（虚拟宠物 69 + 跑酷 15 + 手机端 23），EditMode |
+| 测试 | **115/115 通过**（虚拟宠物 69 + 跑酷 15 + 手机端 31），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
-| 安卓包 | `UnityMCPProject/Builds/Android/RoomPet.apk`（约 16 MB，开发版；被 git 忽略） |
+| 安卓包 | `UnityMCPProject/Builds/Android/RoomPet.apk`（约 15 MB，开发版；被 git 忽略） |
 | 回归证据图 | `docs/evidence/*.png`（随文档一起提交，便于复盘） |
 
 **两个场景一句话说明**
@@ -101,7 +101,9 @@
 | `Scripts/MobileButtonIds.cs` | 按钮 id 常量（宠物 5 个 + 跑酷 5 个） |
 | `Scripts/MobileBootstrap.cs` | 移动端运行时设置：60fps、关垂直同步、常亮、阴影距离 ≤26、AA=2 |
 | `Editor/MobileBuildMenu.cs` | 菜单：`Tools/DSH Mobile/{Report Mobile Status, Toggle Touch Preview, Configure Android Player Settings, Build APK}` |
-| `Editor/MobileAndroidPackaging.cs` | 改生成的 Gradle 工程：安卓桌面图标名 + 开发版的 `usesCleartextTraffic`（见坑 27、30） |
+| `Editor/MobileAndroidPackaging.cs` | 改生成的 Gradle 工程：安卓桌面图标名 + 开发版的 `usesCleartextTraffic` + `VIBRATE` 权限（见坑 27、30） |
+| `Editor/MobilePreviewSizes.cs` | 反射改 Game 视图尺寸（真机竖屏/横屏/平板），用于照着真机比例看布局（见坑 31） |
+| `Scripts/MobileHaptics.cs` | 振动反馈：`HapticGate`（限流 + 开关，可测）+ 安卓 `Vibrator`/`VibrationEffect` |
 | `Tests/Editor/MobileInputTests.cs` | 23 条测试（手势 / 摇杆 / 缩放 / 手机布局 / 坐标变换） |
 
 ### Shader（`Assets/Shaders/`）
@@ -298,6 +300,31 @@
     （`dsh-default` 下 24KB 的狐狸日记在新目录里变成空白）——**宠物会把主人忘了**。
     正确做法：**名字不动，只把安卓的 `app_name` 打进生成的 Gradle 资源**（见
     `MobileAndroidPackaging`）。改名前先问自己"这会不会搬走存档"。
+31. **编辑器里改 Game 视图尺寸只能靠反射，而且 `GameViewSizes.instance` 在基类上。**
+    `Screen.SetResolution` 在编辑器里是空操作；`GameViewSizes` 派生自
+    `ScriptableSingleton<T>`，`instance` 属性声明在那个基类上，所以
+    `sizesType.GetProperty("instance")` 返回 **null**（要加 `FlattenHierarchy`）——
+    失败是静默的，代码不会抛异常，只是什么都没发生。
+    另外 `GameViewSizeGroup.IndexOf(size)` 不能用来拿刚加进去的索引（它给的是 0 = Free Aspect），
+    要加完之后**重新按宽高扫一遍**。实现见 `MobilePreviewSizes`（坑 28 那个"改不动分辨率"的结论到此作废）。
+32. **`PlayerSettings` 改了没生效，先怀疑"改完没编译就点了菜单"。**
+    我改完 `allowedAutorotateToPortrait = true` 立刻点 `Configure Android Player Settings`，
+    Unity 还没重编译，跑的是旧程序集——日志里那句 "landscape" 就是旧代码打的。
+    出包后清单里仍是 `userLandscape` 才发现。**改完脚本先 refresh 再点菜单**，
+    并且**出包后一定要回读清单**，别信日志。
+33. **增量打包会让 APK 虚胖。** 同一次改动的产物：增量出包 **26.0 MB**，
+    加 `clean_build` 重出 **15.3 MB**——ZIP 条目之间留下了一堆空档
+    （压过的内容两边都是 15.98 MB，用 `CompressedLength` 求和一对比就看出来了）。
+    **要发给别人的包，用干净构建。**
+34. **相机是按垂直 FOV 定义的，屏幕一窄水平视野就塌。**
+    16:9 上刚好装下 3 条车道的相机，到竖屏（0.45）只剩三分之一的水平覆盖，
+    两边车道直接切掉；14m 的房间同理。修法不是拍脑袋乘一个系数，而是
+    **量出来**：`MobileUi.RequiredDistanceForWidth` 给出"要多远才装得下"，
+    房间那边更进一步——把"要么退到够远"做成和俯仰同一个闭环（`FitSubjectsToWidth`），
+    因为近处的角比房间中心张角更大，解析值会差几个百分点。
+35. **缩放要按屏幕"短边"算，不是高度。** 竖屏 1080x2400 按高度算是 3.33 → 夹到 1.8，
+    只剩 600px 宽的设计空间，而宠物界面左右两个面板本身就要 458px。
+    按短边算，横竖屏在同一个手机上得到同一个缩放，字和按钮转屏时不会忽大忽小。
 
 ---
 
@@ -341,10 +368,12 @@ Tools/DSH Pet/Clear Pet Save        # 清存档（含日记文件）
 Tools/DSH Runner/Validate Wiring    # 跑酷侧自检
 Tools/DSH Mobile/Report Mobile Status          # 平台/触控/缩放/安全区/包名/架构
 Tools/DSH Mobile/Toggle Touch Preview          # 编辑器里用手机布局（鼠标当手指），Ctrl+Shift+T
+Tools/DSH Mobile/Preview/Phone Portrait 1080x2400   # 把 Game 视图切成真机尺寸，Ctrl+Shift+1..4
+Tools/DSH Mobile/Preview/Report Current Viewport    # 打印当前视口 / 方向 / 缩放 / 设计尺寸
 Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
-EditMode，期望 107/107
+EditMode，期望 115/115
 
 # 存档
 %USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\

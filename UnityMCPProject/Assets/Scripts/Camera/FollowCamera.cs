@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace DshRunner
 {
@@ -20,6 +20,19 @@ namespace DshRunner
         public float MaxFov = 84f;
         public float SpeedForMaxFov = 34f;
 
+        [Header("Lane framing")]
+        [Tooltip("Half-width of the drivable track in metres, measured from the centre lane. " +
+                 "The camera pulls back until this fits the viewport's WIDTH: a camera is " +
+                 "defined by a vertical field of view, so on a narrow (portrait) screen the " +
+                 "outer lanes fall off both edges however good the height is. " +
+                 "0 means 'ask the level config', which is the normal case.")]
+        public float TrackHalfWidth;
+
+        [Tooltip("Fraction of the screen width kept clear on each side of the track.")]
+        public float SideMargin = 0.08f;
+
+        private float _distanceScale = 1f;
+
         [Header("Shake")]
         public float ShakeAmplitude = 0.05f;
 
@@ -35,7 +48,37 @@ namespace DshRunner
         private void Start()
         {
             ResolveTarget();
+            ResolveTrackWidth();
             SnapToTarget();
+        }
+
+        /// <summary>
+        /// Takes the track's half-width from the level config unless it was set by hand, so the
+        /// framing follows the lanes rather than a number that has to be kept in sync.
+        /// </summary>
+        private void ResolveTrackWidth()
+        {
+            if (TrackHalfWidth > 0.01f) return;
+
+            // The outermost lane's centre plus most of a character's width, since it is the
+            // character standing in that lane that must not be clipped.
+            TrackHalfWidth = Mathf.Abs(GameConfig.LaneX(GameConfig.LaneCount - 1)) + 0.7f;
+        }
+
+        /// <summary>
+        /// The multiplier that keeps the outer lanes inside the frame.
+        ///
+        /// Solved against the BASE field of view, not the live one: the speed widening would
+        /// otherwise feed back into the framing, and the camera would creep forward as the run
+        /// got faster — visible as the track slowly closing in.
+        /// </summary>
+        private void UpdateDistanceScale()
+        {
+            if (_camera == null) return;
+
+            ResolveTrackWidth();
+            _distanceScale = DshMobile.MobileUi.WidthFitScale(
+                -Offset.z, TrackHalfWidth, BaseFov, _camera.aspect, SideMargin);
         }
 
         private void ResolveTarget()
@@ -55,7 +98,8 @@ namespace DshRunner
             ResolveTarget();
             if (Target == null) return;
 
-            transform.position = Target.position + Offset;
+            UpdateDistanceScale();
+            transform.position = Target.position + Offset * _distanceScale;
             _lookPoint = Target.position + LookAhead;
             transform.rotation = Quaternion.LookRotation(_lookPoint - transform.position, Vector3.up);
         }
@@ -72,7 +116,10 @@ namespace DshRunner
             float follow = 1f - Mathf.Exp(-FollowSmoothing * dt);
             float look = 1f - Mathf.Exp(-LookSmoothing * dt);
 
-            Vector3 desired = Target.position + Offset;
+            // Re-solved every frame so a phone rotated mid-run re-frames instead of cropping.
+            UpdateDistanceScale();
+
+            Vector3 desired = Target.position + Offset * _distanceScale;
             transform.position = Vector3.Lerp(transform.position, desired, follow);
 
             Vector3 targetLook = Target.position + LookAhead;

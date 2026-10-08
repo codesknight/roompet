@@ -172,8 +172,13 @@ namespace DshRunner
                 : "A/D 或 ←/→ 换道    W/↑/空格 跳跃    S/↓ 滑铲    P/Esc 暂停";
 
             float hintY = touch ? TouchButtonRowTop - 26f : H - 30f;
-            float hintWidth = touch ? W * 0.46f : W - 40f;
-            GUI.Label(new Rect(20f, hintY, hintWidth, 24f), hint, _hudSmall);
+
+            // Wide enough not to clip, but never so wide that it runs under the "back to the
+            // room" button, which sits on the same row at the right on a phone. (The landscape
+            // rect used to be a fixed 46% of the viewport, which is narrower than this sentence
+            // on a portrait screen — the tail of the hint was simply cut off.)
+            float hintWidth = W - 40f - (ReturnToRoomVisible ? 176f : 0f);
+            GUI.Label(new Rect(20f, hintY, Mathf.Max(120f, hintWidth), 24f), hint, _hudSmall);
 
             DrawReturnToRoom();
         }
@@ -184,6 +189,9 @@ namespace DshRunner
         /// <summary>Top edge of the touch button row, in design pixels.</summary>
         private static float TouchButtonRowTop => H - 18f - TouchButtonSize;
 
+        /// <summary>True when the run was started from the pet room, so the way home is offered.</summary>
+        private static bool ReturnToRoomVisible => PlayerPrefs.GetInt(AwayFlagKey, 0) == 1;
+
         /// <summary>
         /// When the run was started from the pet room, offer the way home. The two gameplay
         /// assemblies deliberately do not reference each other, so the hand-off is a
@@ -191,7 +199,7 @@ namespace DshRunner
         /// </summary>
         private static void DrawReturnToRoom()
         {
-            if (PlayerPrefs.GetInt(AwayFlagKey, 0) != 1) return;
+            if (!ReturnToRoomVisible) return;
 
             // Above the touch button row on a phone; at the bottom edge it landed on the jump
             // button, which is exactly the button a player is holding when they would want it.
