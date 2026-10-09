@@ -176,6 +176,9 @@ namespace DshMobile
         /// <summary>Destroy the recogniser before the next attempt (a broken one never recovers).</summary>
         private static bool _needsRebuild;
 
+        /// <summary>Whether the platform reported a recognition service at the last attempt.</summary>
+        private static bool _recognitionAvailable;
+
         /// <summary>How many times the recogniser object has been built, for the diagnostics line.</summary>
         private static int _builds;
 
@@ -200,8 +203,11 @@ namespace DshMobile
             var sb = new System.Text.StringBuilder();
             sb.Append("· 平台：").Append(Available ? "安卓" : "非安卓（编辑器/桌面，识别不可用）").Append('\n');
             sb.Append("· 麦克风权限：").Append(HasPermission ? "已授权" : "未授权").Append('\n');
-            sb.Append("· 识别器：").Append(_recognizer == null ? "未创建" : "已创建").Append("（第 ")
-              .Append(_builds).Append(" 次）").Append('\n');
+            sb.Append("· 系统识别服务：")
+              .Append(_builds == 0 ? "还没问过" : (_recognitionAvailable ? "有" : "没有"))
+              .Append('\n');
+            sb.Append("· 识别器：").Append(HasRecognizer ? "已创建" : "未创建")
+              .Append("（第 ").Append(_builds).Append(" 次尝试）").Append('\n');
             sb.Append("· 上次：startListening ").Append(_startCalled ? "已调用" : "未调用")
               .Append("；引擎就绪 ").Append(_sawReady ? "是" : "否");
             if (_errorCode != int.MinValue) sb.Append("；错误码 ").Append(_errorCode);
@@ -273,12 +279,6 @@ namespace DshMobile
                 _needsRebuild = false;
             }
 
-            if (!EnsureRecognizer())
-            {
-                _needsRebuild = true;
-                return false;
-            }
-
             _attemptsThisPress++;
             _heard = "";
             _error = "";
@@ -289,16 +289,30 @@ namespace DshMobile
             _listeningSince = Time.realtimeSinceStartup;
             _startCalled = true;
 
-            // The call into the platform goes through the main thread — see RunOnUiThread. The
-            // result of a *posted* call cannot be read here, so the managed errors it produces are
-            // recorded into _error by the body itself.
-            RunOnUiThread("startListening", () =>
+            // Everything that touches the recogniser happens in ONE block on the UI thread, in
+            // order: build it if it does not exist yet, then start it.
+            //
+            // One block, because the calls are *posted* rather than run inline whenever the caller
+            // is off the UI thread (which is what the platform's main-thread rule says happens on
+            // this device). Two separate posts would still run in order, but each would have to
+            // agree about state it cannot see yet — and a synchronous "did it work?" answer after a
+            // post is simply wrong. One block, one owner, and the result lands in _error.
+            RunOnUiThread("start", () =>
             {
                 try
                 {
+                    if (!CreateIfNeeded())
+                    {
+                        _listening = false;
+                        _startCalled = false;
+                        _needsRebuild = true;
+                        return;
+                    }
+
                     // cancel() before start(): after an error some engines are still tearing the last
                     // session down, and a start that arrives mid-teardown is ignored.
                     try { _recognizer.Call("cancel"); } catch { /* nothing to cancel */ }
+
                     _recognizer.Call("startListening", _intent);
                 }
                 catch (System.Exception e)
@@ -306,13 +320,137 @@ namespace DshMobile
                     _listening = false;
                     _startCalled = false;
                     _needsRebuild = true;
-                    _error = "startListening 失败：" + e.Message;
-                    Debug.LogWarning("[DshMobile] speech start failed: " + e.Message);
+                    _error = "开始识别失败：" + e.Message;
+                    Debug.LogWarning("[DshMobile] " + _error);
                 }
             });
 
             return true;
         }
+
+        /// <summary>
+        /// Builds the recogniser and its intent, on the calling thread (which is the UI thread —
+        /// see <see cref="RunOnUiThread"/>). Returns false with <see cref="_error"/> set.
+        ///
+        /// Every JNI wrapper this needs is created and disposed *here*, inside the posted block.
+        /// The first version captured an <c>AndroidJavaClass</c> from a <c>using</c> block in the
+        /// caller, and because the block is posted rather than run inline on this device, the class
+        /// it captured had already been disposed by the time it ran: the failure surfaced as
+        /// "创建识别器失败：Object reference not set to an instance of an object", which says
+        /// nothing about the actual mistake. Capturing a disposed handle is the Managed-to-Java
+        /// version of using a pointer after free.
+        /// </summary>
+        private static bool CreateIfNeeded()
+        {
+            if (HasRecognizer) return true;
+
+            try
+            {
+                using (var activity = CurrentActivity())
+                using (var recognizerClass = new AndroidJavaClass("android.speech.SpeechRecognizer"))
+                {
+                    if (activity == null)
+                    {
+                        _error = "拿不到当前的 Activity，无法创建识别器。";
+                        return false;
+                    }
+
+                    _recognitionAvailable = recognizerClass.CallStatic<bool>(
+                        "isRecognitionAvailable", activity);
+                    if (!_recognitionAvailable)
+                    {
+                        _error = "这台手机没有语音识别服务（系统里可能没装）。";
+                        return false;
+                    }
+
+                    _listener = new Listener();
+                    _recognizer = recognizerClass.CallStatic<AndroidJavaObject>(
+                        "createSpeechRecognizer", activity);
+                    _builds++;
+
+                    if (!HasRecognizer)
+                    {
+                        // The platform answers null on a device whose recognition service is declared
+                        // but not actually there. Calling into that null is what produced a bare
+                        // NullReferenceException before this check existed.
+                        _recognizer = null;
+                        _error = "系统没有给出识别器（isRecognitionAvailable 却说有）：这台手机的语音识别没有装好。";
+                        return false;
+                    }
+
+                    _recognizer.Call("setRecognitionListener", _listener);
+                    _intent = BuildIntent();
+                    return true;
+                }
+            }
+            catch (System.Exception e)
+            {
+                _error = "创建识别器失败：" + e.Message;
+                Debug.LogWarning("[DshMobile] " + _error);
+                _recognizer = null;
+                return false;
+            }
+        }
+
+        /// <summary>The intent the recogniser is started with. Built on the UI thread with the rest.</summary>
+        private static AndroidJavaObject BuildIntent()
+        {
+            using (var intentClass = new AndroidJavaClass("android.speech.RecognizerIntent"))
+            using (var activity = CurrentActivity())
+            {
+                string action = intentClass.GetStatic<string>("ACTION_RECOGNIZE_SPEECH");
+                var intent = new AndroidJavaObject("android.content.Intent", action);
+
+                intent.Call<AndroidJavaObject>("putExtra",
+                    intentClass.GetStatic<string>("EXTRA_LANGUAGE_MODEL"),
+                    intentClass.GetStatic<string>("LANGUAGE_MODEL_FREE_FORM"));
+
+                // The locale is a *try*, not a fact: asking for zh-CN explicitly is what makes a
+                // Chinese phone recognise Chinese rather than answering in English, and it is also
+                // what some ROMs choke on (they answer ERROR_CLIENT and never become ready). So it
+                // goes on the first attempt and comes off the retry — one of the two shapes is what
+                // this device wants, and the diagnostics line says which.
+                if (_useLanguageExtra)
+                {
+                    intent.Call<AndroidJavaObject>("putExtra",
+                        intentClass.GetStatic<string>("EXTRA_LANGUAGE"), "zh-CN");
+                }
+
+                // Partial results make the wait feel shorter, and they are all the input the player
+                // needs to see before they stop talking.
+                intent.Call<AndroidJavaObject>("putExtra",
+                    intentClass.GetStatic<string>("EXTRA_PARTIAL_RESULTS"), true);
+
+                // Several recognisers — the Chinese ROMs especially — ignore an intent that does not
+                // name the package that is asking, and answer with ERROR_CLIENT instead of listening.
+                try
+                {
+                    string package = activity == null ? null : activity.Call<string>("getPackageName");
+                    if (!string.IsNullOrEmpty(package))
+                    {
+                        intent.Call<AndroidJavaObject>("putExtra",
+                            intentClass.GetStatic<string>("EXTRA_CALLING_PACKAGE"), package);
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    // Not fatal: the older recognisers do not need it at all.
+                    Debug.Log("[DshMobile] calling_package extra skipped: " + e.Message);
+                }
+
+                return intent;
+            }
+        }
+
+        /// <summary>
+        /// Whether there is a recogniser behind the wrapper.
+        ///
+        /// A Java object that came back null still produces a managed wrapper, and calling a method
+        /// on that wrapper is a NullReferenceException — which is how "creation failed" turned into
+        /// a message about an object reference. The raw pointer is the only honest test.
+        /// </summary>
+        private static bool HasRecognizer =>
+            _recognizer != null && _recognizer.GetRawObject() != System.IntPtr.Zero;
 
         private static void DestroyRecognizer()
         {
@@ -428,6 +566,25 @@ namespace DshMobile
         }
 
         /// <summary>
+        /// The most recent failure, once, for the UI to put in the conversation.
+        ///
+        /// Recognition now runs in a block posted to the UI thread, so a failure can happen *after*
+        /// the tap that caused it has returned — there is no return value left to check. Without a
+        /// hand-off like this, those failures would live only in <see cref="LastError"/> (a status
+        /// line) and in the log, which is precisely the "the microphone does nothing and says
+        /// nothing" experience this class has already been rewritten twice to avoid.
+        /// </summary>
+        public static string TakeErrorReport()
+        {
+            if (string.IsNullOrEmpty(_error) || _error == _reportedError) return "";
+
+            _reportedError = _error;
+            return _error;
+        }
+
+        private static string _reportedError = "";
+
+        /// <summary>
         /// A sentence for the settings panel: what the recogniser is doing, in words. Pure, so the
         /// mapping from Android's error codes to "what do I tell the player" is a test.
         /// </summary>
@@ -448,104 +605,6 @@ namespace DshMobile
             if (errorCode > 0) return $"识别失败（错误码 {errorCode}）。";
             if (!string.IsNullOrEmpty(error)) return error;
             return "语音输入就绪：点麦克风说话，识别到的文字会填进输入框。";
-        }
-
-        private static bool EnsureRecognizer()
-        {
-            if (_recognizer != null) return true;
-
-            try
-            {
-                using (var recognizerClass = new AndroidJavaClass("android.speech.SpeechRecognizer"))
-                {
-                    if (!recognizerClass.CallStatic<bool>("isRecognitionAvailable",
-                            CurrentActivity()))
-                    {
-                        _error = "这台手机没有语音识别服务（系统里可能没装）";
-                        return false;
-                    }
-
-                    // Creation and listener registration are the two calls the platform is strictest
-                    // about: a recogniser built off the main thread binds its internal Handler to the
-                    // wrong Looper and then throws on *every* later call. Marshalled like the rest.
-                    var created = false;
-                    RunOnUiThread("createSpeechRecognizer", () =>
-                    {
-                        try
-                        {
-                            _listener = new Listener();
-                            _recognizer = recognizerClass.CallStatic<AndroidJavaObject>(
-                                "createSpeechRecognizer", CurrentActivity());
-                            _recognizer.Call("setRecognitionListener", _listener);
-                            created = _recognizer != null;
-                        }
-                        catch (System.Exception e)
-                        {
-                            _error = "创建识别器失败：" + e.Message;
-                            Debug.LogWarning("[DshMobile] " + _error);
-                        }
-                    });
-
-                    if (!created) return false;
-                }
-
-                using (var intentClass = new AndroidJavaClass("android.speech.RecognizerIntent"))
-                {
-                    string action = intentClass.GetStatic<string>("ACTION_RECOGNIZE_SPEECH");
-                    _intent = new AndroidJavaObject("android.content.Intent", action);
-
-                    _intent.Call<AndroidJavaObject>("putExtra",
-                        intentClass.GetStatic<string>("EXTRA_LANGUAGE_MODEL"),
-                        intentClass.GetStatic<string>("LANGUAGE_MODEL_FREE_FORM"));
-
-                    // The locale is a *try*, not a fact: asking for zh-CN explicitly is what makes a
-                    // Chinese phone recognise Chinese rather than answering in English, and it is
-                    // also what some ROMs choke on (they answer ERROR_CLIENT and never become
-                    // ready). So it goes on the first attempt and comes off the retry — one of the
-                    // two shapes is what this device wants, and the diagnostics line says which.
-                    if (_useLanguageExtra)
-                    {
-                        _intent.Call<AndroidJavaObject>("putExtra",
-                            intentClass.GetStatic<string>("EXTRA_LANGUAGE"), "zh-CN");
-                    }
-
-                    // Partial results make the wait feel shorter, and they are all the input the
-                    // player needs to see before they stop talking.
-                    _intent.Call<AndroidJavaObject>("putExtra",
-                        intentClass.GetStatic<string>("EXTRA_PARTIAL_RESULTS"), true);
-
-                    // Several recognisers — the Chinese ROMs especially — ignore an intent that does
-                    // not name the package that is asking, and answer with ERROR_CLIENT instead of
-                    // listening. It costs one extra and turns "the engine is broken" into "the
-                    // engine was asked properly", which is the whole difference on a Xiaomi.
-                    try
-                    {
-                        using (var activity = CurrentActivity())
-                        {
-                            string package = activity.Call<string>("getPackageName");
-                            if (!string.IsNullOrEmpty(package))
-                            {
-                                _intent.Call<AndroidJavaObject>("putExtra",
-                                    intentClass.GetStatic<string>("EXTRA_CALLING_PACKAGE"), package);
-                            }
-                        }
-                    }
-                    catch (System.Exception e)
-                    {
-                        // Not fatal: the older recognisers do not need it at all.
-                        Debug.Log("[DshMobile] calling_package extra skipped: " + e.Message);
-                    }
-                }
-
-                _builds++;
-                return true;
-            }
-            catch (System.Exception e)
-            {
-                _error = e.Message;
-                Debug.LogWarning("[DshMobile] No speech recogniser: " + e.Message);
-                return false;
-            }
         }
 
         private static AndroidJavaObject CurrentActivity()

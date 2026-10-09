@@ -1,4 +1,4 @@
-# 开发日志与交接文档
+﻿# 开发日志与交接文档
 
 > **这份文档是"新对话接入"的第一份读物。** 目标：读完它就能继续改这个项目，不需要翻历史对话。
 >
@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/FlyBird.unity`（小鸟飞行）、`Assets/MiniGames/Scenes/JumpQuest.unity`（跳一跳）、`Assets/MiniGames/Scenes/CatchFruit.unity`（接果子），五个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **250/250 通过**（虚拟宠物 152 + 跑酷 15 + 手机端 45 + 小游戏 38），EditMode |
+| 测试 | **251/251 通过**（虚拟宠物 153 + 跑酷 15 + 手机端 45 + 小游戏 38），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -698,6 +698,21 @@
     玩家看到的就是"点了麦克风没反应"。现在所有调用都走 `activity.runOnUiThread(...)`：
     已在主线程就地执行（行为不变），否则投递。**代价是投递之后抛的异常调用方的 `try` 看不见**，
     所以每个 Runnable 必须自己 `try/catch` 并把错误写进状态，否则这个异常就只剩日志。
+103. **投递出去的闭包不能捕获 `using` 里的 JNI 句柄。** 第 17 轮我把"创建识别器"放进
+    排到 UI 线程的闭包里，而那个闭包捕获了外层 `using (var recognizerClass = ...)` 的对象；
+    在这个设备上任务是**投递**执行的，等它跑起来时外层早已释放 —— 对着已释放的句柄调用方法，
+    报出来的是**一句毫无信息量的 NullReferenceException**（"创建识别器失败：Object reference
+    not set to an instance of an object."）。**托管侧的 use-after-free 就是这个样子**：
+    规则是"JNI 包装在闭包内部创建、在闭包内部释放，闭包不捕获任何外层 `using` 的东西"。
+104. **投递之后不要再同步问"成功了吗"。** 同一个 bug 的第二层：`EnsureRecognizer()` 里
+    写了 `if (!created) return false;`，而 `created` 是由那个**投递**出去的闭包赋值的——
+    检查发生在赋值之前，于是"创建成功"也会被判成失败。投递的任务要么把结果写进共享状态
+    （由下一帧去看），要么把**整个序列**放进同一个块里按顺序执行；这里是后者：
+    创建 + 设监听 + 开始识别合并成一个 UI 线程块，成败由块自己记录。
+105. **平台返回 null 时，托管包装不是 null。** `createSpeechRecognizer` 在服务缺失时返回
+    Java null，而 Unity 仍然给你一个 `AndroidJavaObject` 包装；`!= null` 为真，
+    调用它的方法才会抛 NullReference。**判断"拿到了没有"要看 `GetRawObject() != IntPtr.Zero`**，
+    否则错误信息会指向托管代码，而真正的问题在平台那一侧。
 
 ---
 
@@ -735,7 +750,7 @@ Tools/DSH Mobile/Preview/Report Current Viewport    # 打印当前视口 / 方�
 Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
-EditMode，期望 250/250
+EditMode，期望 251/251
 
 # 存档
 %USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\

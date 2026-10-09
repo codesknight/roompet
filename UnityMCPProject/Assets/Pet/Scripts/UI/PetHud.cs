@@ -1923,6 +1923,7 @@ namespace DshPet
         {
             MobileWidgets.BeginFrame(Scale, SafeOffset);
             DshMobile.MobileStt.Tick();
+            ReportVoiceFailure(gm);
 
             // ---------------------------------------------------------------- row 1: talk
             float rowHeight = 46f;
@@ -2028,18 +2029,31 @@ namespace DshPet
         /// The error goes into the transcript as a system note, not into a label that a repaint can
         /// wipe: a player who tapped the microphone and got nothing has to be able to read *why*,
         /// and to still be able to read it after the next frame.
+        ///
+        /// Since recognition runs in a block posted to Android's UI thread, a failure can also
+        /// arrive *after* this returns; those are picked up by <see cref="ReportVoiceFailure"/>.
         /// </summary>
         private void StartListeningAndSay(PetGameManager gm)
         {
             if (DshMobile.MobileStt.StartListening()) return;
+            ReportVoiceFailure(gm);
+        }
 
-            string why = DshMobile.MobileStt.LastError;
-            if (string.IsNullOrEmpty(why)) why = "语音输入现在用不了。";
+        /// <summary>
+        /// Writes a late voice failure into the conversation, once per distinct message.
+        ///
+        /// "Once" matters: this runs every frame, and a failure that repeats itself would fill the
+        /// transcript with the same sentence until the player gives up on reading it.
+        /// </summary>
+        private static void ReportVoiceFailure(PetGameManager gm)
+        {
+            string why = DshMobile.MobileStt.TakeErrorReport();
+            if (string.IsNullOrEmpty(why) || gm == null) return;
 
             // The reason already reads as a sentence ("这台手机没有语音识别服务"), so it goes in
             // brackets rather than behind another prefix — "语音输入：语音输入…" is what a naive
             // concatenation produces, and it makes a diagnostic look like a bug.
-            gm.Memory.AddSystem("（" + why + "）");
+            gm.Memory.AddSystem("（语音输入：" + why + "）");
             gm.AnnounceChat();
         }
 
@@ -2086,6 +2100,8 @@ namespace DshPet
         /// <summary>Input field, send button and the quick actions.</summary>
         private void DrawChatFooter(PetGameManager gm, Rect rect)
         {
+            ReportVoiceFailure(gm);
+
             if (!string.IsNullOrEmpty(gm.LastError))
             {
                 GUI.color = new Color(1f, 0.62f, 0.56f);

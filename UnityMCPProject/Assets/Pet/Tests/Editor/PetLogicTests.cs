@@ -1994,6 +1994,32 @@ namespace DshPet.Tests
             }
         }
 
+        [Test]
+        public void Stt_FailuresAreReportedOnceAndNotRepeated()
+        {
+            // Recognition runs in a block posted to Android's UI thread, so a failure can arrive
+            // *after* the tap that caused it returned — there is no return value left to check. The
+            // hand-off that carries it into the conversation must hand it over exactly once: it is
+            // read every frame, and a failure that repeated itself would fill the transcript with
+            // the same sentence until the player stopped reading it.
+            DshMobile.MobileStt.ResetRecognizer();
+
+            // The editor has no Android recogniser, so this fails with a reason — which is the path
+            // under test, not the platform.
+            Assert.IsFalse(DshMobile.MobileStt.Available, "the editor is not a phone");
+            Assert.IsFalse(DshMobile.MobileStt.StartListening());
+
+            string first = DshMobile.MobileStt.TakeErrorReport();
+            Assert.IsFalse(string.IsNullOrEmpty(first), "a failure has to be reportable");
+            Assert.IsFalse(string.IsNullOrEmpty(DshMobile.MobileStt.LastError),
+                "and it stays readable as a status line");
+
+            Assert.IsEmpty(DshMobile.MobileStt.TakeErrorReport(),
+                "the same failure must not be reported twice");
+
+            DshMobile.MobileStt.ResetRecognizer();
+        }
+
         // ------------------------------------------------------------------- puzzle
 
         [Test]

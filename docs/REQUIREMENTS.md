@@ -251,7 +251,20 @@
 | R17.2 | 「再玩一次森林奔跑也不能动」 | 跑酷的暂停把 `Time.timeScale` 设为 0，而它是**全局且跨场景存活**的：暂停后回房间，世界仍然是停的（宠物不动、人不动、无报错）。新增 `DshMobile.SceneClock.Restore()`（只在 `timeScale <= 0` 时恢复，不干扰将来的慢动作），由场景加载统一调用，并在四个游戏的 `ReturnToRoom`、跑酷的 `HudController.ReturnToRoom`、以及宠物小屋的 `Awake` 各兜一次 | 单测：`timeScale = 0` → `Restore` 后为 1；`timeScale = 0.35` → `Restore` 后仍是 0.35 ✅ 实测：森林奔跑里暂停到 `timeScale=0` → 点「返回宠物小屋」→ 房间 `timeScale=1`、跑酷按钮已清空、摇杆拿得到点击 ✅ |
 | R17.3 | 语音识别的主线程异常 | `SpeechRecognizer` 的每个入口都会校验调用线程，非主线程直接抛 `RuntimeException`。`MobileStt` 现在把 create / setRecognitionListener / startListening / stopListening / cancel / destroy **全部**经 `activity.runOnUiThread(...)` 调用：已在主线程时就地执行（行为不变），否则投递；每个 Runnable 自带 `try/catch` 把错误记进状态（投递后抛的异常调用方看不见）。诊断新增「调用线程 / 排到主线程的次数」 | 单测：编辑器里 `Available == false` 时全部调用是无害空操作、状态文案覆盖各种情形 ✅ ⏳ **真机确认：点麦克风不应再出现该异常** |
 
+---
+
+## 阶段 18：语音识别的创建失败（投递的闭包捕获了已释放的 JNI 句柄）
+
+| 编号 | 需求 | 实现 | 验收证据 |
+|---|---|---|---|
+| R18.1 | `创建识别器失败：Object reference not set to an instance of an object` | 第 17 轮把创建放进"排到 UI 线程"的闭包，而闭包**捕获了外层 `using` 里的 `AndroidJavaClass`**；任务在本设备上是**投递**执行的，跑到时该句柄已释放 → 托管侧的 use-after-free，报出来只有一句 NullReference。现在**所有 JNI 包装都在闭包内部创建、在闭包内部释放**，闭包不捕获任何外层 `using` 的对象 | 单测：编辑器路径下全部调用是无害空操作 ✅ ⏳ 真机确认不再出现该提示 |
+| R18.2 | 投递之后不要同步问"成功了吗" | `EnsureRecognizer()` 里 `if (!created) return false;` 检查的是**投递闭包**赋的值，必然在赋值之前执行——"创建成功"也会被判成失败。现在**创建 + 设监听 + 开始识别合并成同一个 UI 线程块**，按顺序执行，成败由这一块自己写进 `_error`；`StartAttempt` 不再检查同步返回值 | 同上 ✅ |
+| R18.3 | "有没有拿到识别器"的判断 | 平台返回 Java null 时 Unity 仍给出非 null 的托管包装，`!= null` 为真、调用才抛 NullReference。改用 **`GetRawObject() != IntPtr.Zero`**，并把这种情况的消息写成"系统没有给出识别器（isRecognitionAvailable 却说有）：这台手机的语音识别没有装好" | 同上 ✅ |
+| R18.4 | 异步失败也要进对话 | 新增 `MobileStt.TakeErrorReport()`：每帧取一次、**同一条只上报一次**（否则聊天被同一句刷屏），由 `PetHud.ReportVoiceFailure` 写成系统提示；手机与桌面两条底栏都接 | 单测：失败可上报、同一条不会重复上报、状态行仍然可读 ✅ |
+| R18.5 | 诊断更完整 | 「语音诊断」新增：系统识别服务的**真实回答**（`isRecognitionAvailable`）、识别器是"已创建/未创建"、尝试了几次 | 实测：诊断字符串逐项可读 ✅ |
+
 ## 非功能需求 / 设计约束
+
 
 
 
