@@ -21,6 +21,27 @@ namespace DshMiniGames
     {
         public enum Phase { Ready, Playing, LevelDone, Dead }
 
+        /// <summary>
+        /// One sample of the swipe, kept for a fraction of a second so the blade has a tail.
+        ///
+        /// The blade used to be drawn from a *single* frame's segment, which is the bug the player
+        /// reported: at 60 fps a fast swipe is a handful of pixels, the previous frame's end and this
+        /// frame's start do not touch, and the trail vanished entirely on any frame where the finger
+        /// held still for a moment. What reads as "in my hand" is a short history of where the finger
+        /// has just been, tapered and fading — so that is what is kept, and the HUD draws it.
+        /// </summary>
+        public struct BladeSample
+        {
+            public Vector2 Position;
+            public float Age;
+        }
+
+        /// <summary>How long the tail is. Long enough to read, short enough to feel immediate.</summary>
+        public const float TrailSeconds = 0.18f;
+
+        /// <summary>Cap on the sample count, so a 240 Hz digitiser cannot grow the list without bound.</summary>
+        public const int MaxTrailPoints = 24;
+
         private class Piece
         {
             public Transform Transform;
@@ -72,11 +93,24 @@ namespace DshMiniGames
         private float _deathAt;
         private bool _levelPassed;
 
-        /// <summary>The swipe, in world units, for the HUD to draw and the rules to test.</summary>
+        /// <summary>The swipe, in world units, for the rules to test.</summary>
         public Vector2 BladeFrom { get; private set; }
         public Vector2 BladeTo { get; private set; }
         public bool BladeActive { get; private set; }
-        public float BladeFade { get; private set; }
+
+        /// <summary>
+        /// The trail the HUD draws: the recent swipe, newest last.
+        ///
+        /// Kept in the game rather than in the HUD because the *hit test* and the *picture* have to be
+        /// the same data — a trail drawn from a second copy of the input is a trail that can be
+        /// pointing somewhere the sword is not.
+        /// </summary>
+        public IList<BladeSample> BladeTrail => _trail;
+
+        private readonly List<BladeSample> _trail = new List<BladeSample>(MaxTrailPoints);
+
+        /// <summary>True while the player is holding the game.</summary>
+        public bool Paused { get; private set; }
 
         private Vector2 _pointerWorld;
         private bool _pointerDown;
@@ -166,6 +200,8 @@ namespace DshMiniGames
             _levelPassed = false;
             _nextWave = 0.9f;
             State = Phase.Ready;
+            Paused = false;
+            _trail.Clear();
             _plan = SliceRules.LevelPlan(Level, _settings);
             DshMobile.MobileHaptics.Light();
         }
@@ -180,6 +216,8 @@ namespace DshMiniGames
             _levelPassed = false;
             _nextWave = 0.9f;
             State = Phase.Ready;
+            Paused = false;
+            _trail.Clear();
             _plan = SliceRules.LevelPlan(Level, _settings);
         }
 
@@ -213,7 +251,13 @@ namespace DshMiniGames
         {
             if (_camera != null && !Mathf.Approximately(_lastAspect, _camera.aspect)) FitCamera();
 
+            // Held: nothing advances at all — not the fruit, not the shards, not the trail. The global
+            // clock is deliberately left alone (see DEVLOG 坑 101: a mini-game pausing the world is how
+            // the pet room came back frozen).
+            if (Paused) return;
+
             ReadBlade();
+            AgeTrail(Time.deltaTime);
 
             if (State == Phase.Dead)
             {
@@ -237,7 +281,18 @@ namespace DshMiniGames
             }
 
             StepShards(Time.deltaTime);
-            ApplyBladeLook();
+        }
+
+        /// <summary>Pause from the HUD. The swipe is dropped, so resuming does not fire a stale cut.</summary>
+        public void SetPaused(bool paused)
+        {
+            Paused = paused;
+            if (!paused) return;
+
+            BladeActive = false;
+            _pointerDown = false;
+            _hasPointer = false;
+            _trail.Clear();
         }
 
         public void StartRun()
@@ -403,12 +458,10 @@ namespace DshMiniGames
         /// Two sources, because the game ships to a phone and is developed in the editor: the shared
         /// touch layer's gesture (a finger, or the mouse when the phone layout is forced on) and the
         /// raw mouse for a desktop build that is not using touch controls at all. Both end up as the
-        /// same world-space segment.
+        /// same world-space segment, and both feed the same trail.
         /// </summary>
         private void ReadBlade()
         {
-            BladeFade = Mathf.Max(0f, BladeFade - Time.deltaTime * 3.2f);
-
             Vector2? topDown = null;
             bool down = false;
 
@@ -439,7 +492,6 @@ namespace DshMiniGames
                 BladeFrom = _pointerWorld;
                 BladeTo = world;
                 BladeActive = Vector2.Distance(BladeFrom, BladeTo) > 0.001f;
-                if (BladeActive) BladeFade = 1f;
             }
             else
             {
@@ -448,9 +500,53 @@ namespace DshMiniGames
                 BladeActive = false;
             }
 
+            AddTrailPoint(world);
+
             _pointerWorld = world;
             _pointerDown = true;
             _hasPointer = true;
+        }
+
+        /// <summary>
+        /// The finger's position right now, in world units.
+        ///
+        /// The HUD draws the tip of the blade here, and the trail behind it — so the sword is *under
+        /// the finger* rather than at the end of a line drawn from an older sample.
+        /// </summary>
+        public Vector2 PointerPosition => _pointerWorld;
+
+        /// <summary>True while a finger (or the mouse) is down on the play area.</summary>
+        public bool PointerDown => _pointerDown;
+
+        private void AddTrailPoint(Vector2 world)
+        {
+            // A finger that has not moved adds nothing: the trail is a path, and a hundred samples in
+            // the same place would just push the real ones out of the window.
+            if (_trail.Count > 0)
+            {
+                var last = _trail[_trail.Count - 1];
+                if (Vector2.Distance(last.Position, world) < 0.004f)
+                {
+                    last.Age = 0f;      // but it is still "here", so the tail keeps its end
+                    _trail[_trail.Count - 1] = last;
+                    return;
+                }
+            }
+
+            _trail.Add(new BladeSample { Position = world, Age = 0f });
+            while (_trail.Count > MaxTrailPoints) _trail.RemoveAt(0);
+        }
+
+        private void AgeTrail(float dt)
+        {
+            for (int i = _trail.Count - 1; i >= 0; i--)
+            {
+                var sample = _trail[i];
+                sample.Age += dt;
+                _trail[i] = sample;
+
+                if (sample.Age > TrailSeconds) _trail.RemoveAt(i);
+            }
         }
 
         /// <summary>Screen (top-down, as the touch layer reports it) → world.</summary>
@@ -460,12 +556,6 @@ namespace DshMiniGames
             var world = _camera.ScreenToWorldPoint(
                 new Vector3(topDownScreen.x, Screen.height - topDownScreen.y, -_camera.transform.position.z));
             return new Vector2(world.x, world.y);
-        }
-
-        private void ApplyBladeLook()
-        {
-            // The blade is drawn by the HUD from BladeFrom/BladeTo, so there is nothing to build
-            // here — one less thing that can disagree with the hit test.
         }
 
         // ------------------------------------------------------------------ cutting

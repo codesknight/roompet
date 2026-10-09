@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **303/303 通过**（虚拟宠物 172 + 跑酷 15 + 手机端 44 + 小游戏 72），EditMode |
+| 测试 | **310/310 通过**（虚拟宠物 172 + 跑酷 15 + 手机端 44 + 小游戏 79），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -141,12 +141,12 @@
 | `Scripts/JumpQuest/JumpQuestHud.cs` | IMGUI：分数/最高分/宠物币、蓄力条与提示、结算面板、**整屏按住式**蓄力区（借 `MobileTouch`），样式全部缓存 |
 | `Scripts/CatchFruit/CatchRules.cs` / `CatchFruitGame.cs` / `CatchFruitHud.cs` | 接果子：篮子边界与帧率无关、难度两条曲线封顶、**篮子永远来得及横穿屏幕**、水果轮转与金币评价；滑动屏幕操作 |
 | `Scripts/SliceFruit/SliceRules.cs` / `SliceGame.cs` / `SliceHud.cs` | 切水果：**线段**判定（不是点）、起飞速度**反推**（每个水果空中 ≥1.55 秒）、无尽模式与八关闯关（目标分是"可得分"的 62%~82%，并用"完美玩家逐帧打完整关"的模拟测试证明过得去） |
-| `Scripts/AngryBirds/BirdRules.cs` / `BirdLevels.cs` / `AngryBirdsGame.cs` / `AngryBirdsHud.cs` | 弹弓小鸟：纯模拟（支撑/平衡坍塌、材质伤害、落地弹跳滚动）+ **生成器先用同一段模拟自己打一遍**（过不了就换种子）→ 所以"随机搭"和"保证通关"能同时成立；游戏只**回放**模拟给出的事件表 |
+| `Scripts/AngryBirds/BirdRules.cs` / `BirdLevels.cs` / `AngryBirdsGame.cs` / `AngryBirdsHud.cs` | 弹弓小鸟：**二维刚体求解器**（SAT + 面重叠接触点、顺序冲量含转动项、每刚体一次位置修正、摩擦/静态摩擦、睡眠 + 静止阻尼、重心越界就推一下）+ **生成器先用同一段模拟自己打一遍**（过不了就换种子）→ 所以"随机搭"和"保证通关"能同时成立；游戏只**回放**模拟录下的逐帧状态；**弹弓（双叉 + 橡皮筋）**、**可开关的抛物线提示**、**关卡缓存**（存浮点位模式，读回时重放验证）都在 `AngryBirdsGame` 里 |
 | `Scripts/Shared/FruitArt.cs` | 接果子与切水果共用的水果/炸弹造型（基本体搭的） |
 | `Editor/FlyBirdSceneMenu.cs` | 菜单：`Tools/DSH Mini/{Build FlyBird Scene, Build JumpQuest Scene, Build CatchFruit Scene, Build SliceFruit Scene, Build AngryBirds Scene, Add Mini Game Scenes To Build Settings, Report Mini Games}` |
 | `Tests/Editor/FlyBirdRulesTests.cs` | 14 条测试（抬升与下落、帧率无关、长帧钳位、难度封顶、间隙永远可达、碰撞算宽度、金币单调） |
 | `Tests/Editor/JumpQuestRulesTests.cs` | 18 条测试（蓄力距离与封顶、完美/落地/落空的判定、**"从最差落点也跳得到"逐跳模拟 250 跳**、侧移吃掉的长度预算要还回来、朝方块飞、相机取景在 8 种宽高比下都装得下、金币单调） |
-| `Tests/Editor/CatchRulesTests.cs` / `SliceRulesTests.cs` / `BirdRulesTests.cs` | 接果子 13 条、切水果 12 条（含八关完美玩家模拟）、弹弓小鸟 15 条（含 12 关 × 4 种子复现通关）；小游戏合计 **72** 条 |
+| `Tests/Editor/CatchRulesTests.cs` / `SliceRulesTests.cs` / `BirdRulesTests.cs` | 接果子 13 条、切水果 12 条（含八关完美玩家模拟）、弹弓小鸟 **22** 条（含刚体落地/静止塔不倒/拆腿必塌/一发必须扰动结构/回放帧完整/抛物线/候选发必须打得出来/关卡缓存往返）；小游戏合计 **79** 条 |
 
 在屋里玩的**拼图**没有独立场景：`DshPet` 里的 `PetPuzzle`（纯状态机）+ `PuzzleArt`（程序化画图）+ `PetHud.DrawPuzzle`（面板）。
 三个玩法的形状是一样的：**一个纯逻辑规则类（全部可单测）+ 一个只负责画矩形/面板的场景或面板 + 一个 IMGUI HUD**。
@@ -778,6 +778,37 @@
     （现在是 19 条：13 句指令 + 11 句反例，反例里包括「我今天吃了饭」「你吃饭了吗」）。
     另外，指令**不经过模型**：模型被要求"既聊天又真的去做"时，早晚会回一句"好的，我这就去！"
     然后哪儿也不去，而玩家分不出"宠物懒"和"功能坏了"。
+114. **给方块"加物理"，真正的敌人是"静止"。** 手写冲量求解器永远不会把一摞箱子上的重力精确
+    抵消：每步都会剩下几厘米每秒的**切向**残余，几千步下来整座塔会自己走开半米——玩家看到的
+    是"塔在我瞄准的时候自己倒了"。第一版的对策是"速度低于阈值就强力衰减"，塔是站住了，
+    但**一根失去支撑的横梁也站住了**：横梁开始倒的那一瞬间速度本来就在阈值以下，衰减每步吃掉
+    55%，于是它悬在空中。最后是三条各管一件事：低转速时的**角阻尼**（掐噪声转动）、
+    **静态摩擦**（掐切向蠕动，不挡转动）、以及**"重心不在支撑范围内就推它一下"**
+    （把倒下的第一帧推过阻尼阈值）。**加物理时要想清楚：要抑制的是噪声，不是运动本身。**
+115. **每个接触点各修一次位置，等于把箱子顶飞。** 一个站在地上的箱子有四个角接触，四个接触的
+    深度是同一个数；按接触逐个做位置修正，箱子会被抬起**四倍**穿透量，于是它弹起来、落下去、
+    把整摞震散（实测静止塔漂移 2.3 米）。改成**每个刚体每步只采纳一次最大修正**之后，
+    同一座塔变成 0.05 米。**"每帧对同一个物体做同一件事 N 次"是个陷阱。**
+116. **睡眠中的刚体必须是"静态锚点"，不是"隐形人"。** 第一版接触生成在**外层**判断 `Awake`，
+    睡着的立柱直接 `continue`——于是横梁和它的两条腿**根本没有接触**，直接从中间掉了下去。
+    塔一旦安静 0.3 秒就开始散架，这个"延迟倒塌"看起来像幽灵。正确做法：**只要有一方是醒的
+    就生成接触**，睡着的那个 `invMass = 0`（像墙一样撑着），被撞得够狠（速度 > `WakeSpeed`）
+    才醒。**"睡着了"是省计算，不是省碰撞。**
+117. **排查"看起来不动"的 bug，最有用的手法是把机制一个个关掉。** 上面几条都是这样定位的：
+    把 `RestDamping` 设成 1（等于关掉）、把 `SleepSeconds` 设成 100（等于不睡）、
+    把一根横梁单独放在一条腿上、把一个方块丢在半空中。**不要读代码猜，去把那个机制关掉再看。**
+118. **缓存一个"被验证过的关卡"，等于缓存一个关于物理的断言。** 第 21 轮给弹弓小鸟加了关卡缓存
+    （生成一关要几秒，而种子固定、结果一样）。两次翻车都很有代表性：① 缓存键里没有**物理参数
+    的指纹**——换了物理之后，旧关卡里记录下来的解法打不中新的塔；② 坐标用 "F3" 存文本，
+    读回来差了 **6 微米**，而 6 微米足以让一发原本清关的球擦过去（刚体模拟是混沌的）。
+    修法：键里带参数指纹 + 版本前缀，坐标存**浮点数的位模式**（十六进制，精确往返），
+    并且**读回时重放一次记录解法**，不通过就丢掉重新生成。
+    **凡是"存下来 = 某个断言成立"的东西，都要能被重新验证一遍。**
+119. **"最弱的那一发"可能根本不是玩家打得出来的。** 求解器候选集的下限取的是
+    `MinLaunchSpeed`（7.0），而拉弓**拉不到 18% 根本不发射**——玩家真能打出的最慢一发是 8.44。
+    也就是说：一个关卡可能被"一发玩家做不出来的球"验证通过，而"每一关都打得通"这句话就悄悄
+    变成了空话。修法是让候选集从 `SlowestLaunchSpeed` 起算，并单测**每一个候选发都可达**。
+    **"玩家能做到"这件事，和"数值在范围内"不是一回事。**
 
 ---
 
@@ -817,7 +848,7 @@ Tools/DSH Mobile/Preview/Report Current Viewport    # 打印当前视口 / 方�
 Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
-EditMode，期望 303/303
+EditMode，期望 310/310
 
 # 存档
 %USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\
