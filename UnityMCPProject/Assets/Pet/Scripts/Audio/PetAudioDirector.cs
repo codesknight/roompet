@@ -50,6 +50,24 @@ namespace DshPet
 
         public bool Muted { get; private set; }
 
+        /// <summary>
+        /// The mute switch as a plain setting, without needing an audio director to exist.
+        ///
+        /// The director lives in the pet's room, and the front door is a different scene — but the
+        /// setting is the player's, not the scene's, so it is read and written here through the same
+        /// key the director loads at startup.
+        /// </summary>
+        public static bool MutedSetting
+        {
+            get => PlayerPrefs.GetInt(MuteKey, 0) == 1;
+            set
+            {
+                PlayerPrefs.SetInt(MuteKey, value ? 1 : 0);
+                PlayerPrefs.Save();
+                if (Instance != null) Instance.SetMuted(value);
+            }
+        }
+
         /// <summary>Last sound played, shown in the HUD so the system is inspectable.</summary>
         public string LastPlayed { get; private set; } = "";
 

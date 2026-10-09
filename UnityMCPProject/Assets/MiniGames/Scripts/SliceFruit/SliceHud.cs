@@ -69,7 +69,10 @@ namespace DshMiniGames
 
             PointerOverPanel = false;
 
-            DrawBlade(width, height);
+            // The blade is not drawn here any more. It is a world-space ribbon in the game now, because
+            // this interface's coordinate space is not the world's: a world point turned into screen
+            // pixels and then drawn through GUI.matrix comes out scaled twice and pushed by the notch,
+            // which is why the blade kept missing the finger on a phone (see SliceGame.BuildBlade).
             DrawScore(width, height);
             DrawButtons(width);
 
@@ -82,62 +85,6 @@ namespace DshMiniGames
             else if (_game.State == SliceGame.Phase.Dead) DrawDead(width, height);
 
             GUI.matrix = previous;
-        }
-
-        /// <summary>
-        /// The blade: the swipe's recent history, turned back into screen pixels.
-        ///
-        /// This used to draw one frame's segment, which is why it did not follow the finger: on a fast
-        /// swipe the segment is short, and on any frame where the finger paused there was no segment at
-        /// all, so the "blade" blinked out from under the player's hand. It is a polyline of the last
-        /// fraction of a second now — tapered, fading towards its tail, with the tip drawn exactly under
-        /// the finger.
-        /// </summary>
-        private void DrawBlade(float width, float height)
-        {
-            if (_game == null) return;
-            var camera = Camera.main;
-            if (camera == null) return;
-
-            var trail = _game.BladeTrail;
-            if (trail == null || trail.Count < 2) return;
-
-            int count = trail.Count;
-            for (int i = 0; i < count; i++)
-            {
-                var sample = trail[i];
-                float along = i / (float)(count - 1);          // 0 = tail, 1 = newest
-                float fade = Mathf.Clamp01(1f - sample.Age / SliceGame.TrailSeconds);
-
-                var point = WorldToGui(camera, sample.Position);
-                float fat = Mathf.Lerp(0.30f, 1f, along);
-                float size = 30f * fat;
-
-                var rect = new Rect(point.x - size * 0.5f, point.y - size * 0.5f, size, size);
-                var was = GUI.color;
-                GUI.color = new Color(1f, 0.98f, 0.88f, 0.42f * fat * fade);
-                GUI.DrawTexture(rect, _white);
-                GUI.color = was;
-            }
-
-            // The tip: a brighter disc under the finger, so the blade is visibly *in hand* even when
-            // the swipe is slow enough that the tail has almost nothing in it.
-            if (_game.PointerDown)
-            {
-                var tip = WorldToGui(camera, _game.PointerPosition);
-                float size = 34f;
-                var was = GUI.color;
-                GUI.color = new Color(1f, 1f, 0.94f, 0.55f);
-                GUI.DrawTexture(new Rect(tip.x - size * 0.5f, tip.y - size * 0.5f, size, size), _white);
-                GUI.color = was;
-            }
-        }
-
-        /// <summary>World → IMGUI coordinates (which are top-down, like the touch layer's).</summary>
-        private static Vector2 WorldToGui(Camera camera, Vector2 world)
-        {
-            var screen = camera.WorldToScreenPoint(new Vector3(world.x, world.y, 0f));
-            return new Vector2(screen.x, Screen.height - screen.y);
         }
 
         private void DrawScore(float width, float height)

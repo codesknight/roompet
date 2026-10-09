@@ -76,7 +76,9 @@ namespace DshMiniGames
 
             PointerOverPanel = false;
 
-            DrawPreview();
+            // The arc is no longer drawn here: it is a row of world-space dots owned by the game, because
+            // this interface's coordinate space is not the world's (see AngryBirdsGame.BuildArcDots).
+            // Drawing it through GUI.matrix is what put the whole parabola in the wrong place on a phone.
             DrawStatus(width);
             DrawButtons(width);
             DrawHint(width, height);
@@ -103,49 +105,6 @@ namespace DshMiniGames
             }
 
             GUI.matrix = previous;
-        }
-
-        /// <summary>
-        /// The dotted arc, drawn in the HUD rather than as objects in the scene.
-        ///
-        /// Same reasoning as the slicing game's blade: it is a *drawing* of a path the rules already
-        /// computed, so it belongs where the rest of the drawing is. It also means the whole aid can be
-        /// switched off by not drawing it, with nothing left behind in the world to clean up.
-        /// </summary>
-        private void DrawPreview()
-        {
-            var preview = _game.Preview;
-            if (preview == null || preview.Count < 2) return;
-            if (_game.Paused) return;
-            if (_game.State != AngryBirdsGame.Phase.Aiming) return;
-
-            var camera = Camera.main;
-            if (camera == null) return;
-
-            int count = preview.Count;
-            for (int i = 0; i < count; i += 2)
-            {
-                float t = i / (float)Mathf.Max(1, count - 1);
-                var point = WorldToGui(camera, preview[i]);
-
-                // Smaller and fainter the further along it is, so the eye reads it as a direction
-                // rather than as a wall to hit — but not so small that a phone screen loses it: the
-                // first version drew five-pixel dots that were invisible on a real display.
-                float size = Mathf.Lerp(20f, 10f, t);
-                float alpha = Mathf.Lerp(0.8f, 0.32f, t);
-
-                var was = GUI.color;
-                GUI.color = new Color(1f, 0.97f, 0.86f, alpha);
-                GUI.DrawTexture(new Rect(point.x - size * 0.5f, point.y - size * 0.5f, size, size), _white);
-                GUI.color = was;
-            }
-        }
-
-        /// <summary>World → IMGUI coordinates (which are top-down, like the touch layer's).</summary>
-        private static Vector2 WorldToGui(Camera camera, Vector2 world)
-        {
-            var screen = camera.WorldToScreenPoint(new Vector3(world.x, world.y, 0f));
-            return new Vector2(screen.x, Screen.height - screen.y);
         }
 
         /// <summary>

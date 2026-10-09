@@ -150,6 +150,7 @@ namespace DshMiniGames
             _world.SetParent(transform, false);
             BuildGround();
             BuildSling();
+            BuildArcDots();
         }
 
         private void BuildGround()
@@ -260,6 +261,119 @@ namespace DshMiniGames
             _band.SetPosition(0, new Vector3(ForkTip(-1).x, ForkTip(-1).y, -0.1f));
             _band.SetPosition(1, new Vector3(pocket.x, pocket.y, -0.1f));
             _band.SetPosition(2, new Vector3(ForkTip(1).x, ForkTip(1).y, -0.1f));
+        }
+
+        /// <summary>
+        /// The dotted arc, spawned in the world.
+        ///
+        /// It was drawn in the interface for a round, and on a phone it was not merely ugly — it was in
+        /// the wrong place: the HUD turned world points into screen pixels and then drew them through
+        /// <c>GUI.matrix</c>, which scales by the design factor and insets by the notch, so the whole
+        /// parabola came out shifted and stretched. "抛物线完全错位" was exactly that. In the world there
+        /// is no conversion to get wrong: the arc is the path the simulation would take, in the
+        /// coordinates the simulation uses.
+        /// </summary>
+        private void BuildArcDots()
+        {
+            var shader = Shader.Find("Sprites/Default");
+            var material = shader == null ? null : new Material(shader) { name = "Dsh_ArcDot" };
+            if (material != null)
+            {
+                material.mainTexture = DshMobile.SoftShadow.Gradient;
+                material.color = new Color(1f, 0.98f, 0.9f, 0.85f);
+            }
+
+            for (int i = 0; i < ArcDotCount; i++)
+            {
+                var dot = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                dot.name = "ArcDot" + i;
+                dot.transform.SetParent(transform, false);
+                dot.transform.localScale = Vector3.one * 0.24f;
+                Destroy(dot.GetComponent<Collider>());
+
+                var renderer = dot.GetComponent<Renderer>();
+                if (renderer != null)
+                {
+                    if (material != null) renderer.sharedMaterial = material;
+                    renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    renderer.receiveShadows = false;
+                }
+
+                dot.SetActive(false);
+                _arcDots.Add(dot.transform);
+            }
+        }
+
+        /// <summary>Thirty-odd dots is more than an arc needs, and fewer than a pool of them costs.</summary>
+        private const int ArcDotCount = 26;
+
+        private readonly List<Transform> _arcDots = new List<Transform>();
+
+        /// <summary>
+        /// Places the dots along the arc for the current pull.
+        ///
+        /// The preview is computed by the rules — the same integrator the shot uses — so the dots *are*
+        /// the trajectory, not a decoration that resembles one.
+        /// </summary>
+        private void UpdateArcDots()
+        {
+            if (_arcDots.Count == 0) return;
+
+            bool show = _showTrajectory && State == Phase.Aiming && !Paused && _preview.Count >= 2;
+            if (!show)
+            {
+                for (int i = 0; i < _arcDots.Count; i++)
+                {
+                    if (_arcDots[i].gameObject.activeSelf) _arcDots[i].gameObject.SetActive(false);
+                }
+                return;
+            }
+
+            int count = _arcDots.Count;
+
+            // Spaced along the *length* of the arc rather than by sample index. The samples are coarse
+            // (one every 0.05 s), a short shot is only six of them, and stepping by index stacked all
+            // twenty-six dots onto those six points and left the rest of the curve bare.
+            float total = 0f;
+            for (int i = 1; i < _preview.Count; i++) total += Vector2.Distance(_preview[i - 1], _preview[i]);
+
+            for (int i = 0; i < count; i++)
+            {
+                float along = count > 1 ? i / (float)(count - 1) : 0f;
+                var point = AlongPreview(total * along, total);
+
+                var dot = _arcDots[i];
+                if (!dot.gameObject.activeSelf) dot.gameObject.SetActive(true);
+                dot.position = new Vector3(point.x, point.y, -0.9f);
+
+                // Smaller and fainter the further along it is: a direction, not a wall to hit.
+                dot.localScale = Vector3.one * Mathf.Lerp(0.26f, 0.12f, along);
+            }
+        }
+
+        /// <summary>The point this far along the previewed arc, interpolated between its samples.</summary>
+        private Vector2 AlongPreview(float distance, float total)
+        {
+            if (_preview.Count == 0) return Vector2.zero;
+            if (total <= 0.0001f || _preview.Count == 1) return _preview[0];
+
+            float walked = 0f;
+            for (int i = 1; i < _preview.Count; i++)
+            {
+                var from = _preview[i - 1];
+                var to = _preview[i];
+                float segment = Vector2.Distance(from, to);
+
+                if (walked + segment >= distance || i == _preview.Count - 1)
+                {
+                    float t = segment <= 0.0001f ? 0f : Mathf.Clamp01((distance - walked) / segment);
+                    return Vector2.Lerp(from, to, t);
+                }
+
+                walked += segment;
+            }
+
+            return _preview[_preview.Count - 1];
         }
 
         /// <summary>
@@ -680,6 +794,7 @@ namespace DshMiniGames
 
             UpdateBand();
             UpdateCamera();
+            UpdateArcDots();
         }
 
         /// <summary>

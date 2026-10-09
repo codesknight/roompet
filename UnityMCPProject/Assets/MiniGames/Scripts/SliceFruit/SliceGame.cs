@@ -161,6 +161,125 @@ namespace DshMiniGames
 
             _slicedRoot = new GameObject("Sliced").transform;
             _slicedRoot.SetParent(transform, false);
+
+            BuildBlade();
+        }
+
+        /// <summary>
+        /// The blade, drawn in the *world* rather than in the interface.
+        ///
+        /// It was an IMGUI drawing for two rounds, and it never sat under the finger on a phone: the HUD
+        /// converts a world point to screen pixels, but it draws through <c>GUI.matrix</c>, which on a
+        /// device is scaled by the design-space factor and inset by the notch — so the blade came out
+        /// scaled a second time and pushed by the safe area. At scale 1 in the editor it looked perfect,
+        /// which is exactly why it shipped twice with the same complaint. A world-space ribbon cannot
+        /// have that bug: the finger's world position *is* where the blade is, because it is the same
+        /// number.
+        /// </summary>
+        private void BuildBlade()
+        {
+            var go = new GameObject("Blade");
+            go.transform.SetParent(transform, false);
+
+            _blade = go.AddComponent<LineRenderer>();
+            _blade.useWorldSpace = true;
+            _blade.positionCount = 0;
+            _blade.alignment = LineAlignment.View;
+            _blade.numCapVertices = 2;
+            _blade.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            _blade.receiveShadows = false;
+
+            var shader = Shader.Find("Sprites/Default");
+            if (shader == null)
+            {
+                Destroy(go);
+                _blade = null;
+                return;
+            }
+
+            var material = new Material(shader) { name = "Dsh_Blade" };
+            material.color = Color.white;
+            _blade.material = material;
+
+            // Thin and faint at the tail, fat and bright at the finger: a swipe reads as a blade
+            // because of the taper, not because of its length.
+            _blade.widthCurve = new AnimationCurve(
+                new Keyframe(0f, 0.05f), new Keyframe(0.65f, 0.34f), new Keyframe(1f, 0.44f));
+            _blade.colorGradient = BladeGradient();
+
+            // A soft glowing dot exactly under the finger, so the blade is visibly *in hand* even when
+            // the swipe is too slow for the tail to show.
+            var tip = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            tip.name = "BladeTip";
+            tip.transform.SetParent(transform, false);
+            tip.transform.localScale = Vector3.one * 1.1f;
+            Destroy(tip.GetComponent<Collider>());
+
+            var renderer = tip.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                var tipMaterial = new Material(shader) { name = "Dsh_BladeTip" };
+                tipMaterial.mainTexture = DshMobile.SoftShadow.Gradient;
+                tipMaterial.color = new Color(1f, 1f, 0.95f, 0.9f);
+                renderer.sharedMaterial = tipMaterial;
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+            }
+
+            _bladeTip = tip.transform;
+            _bladeTip.gameObject.SetActive(false);
+        }
+
+        private static Gradient BladeGradient()
+        {
+            var gradient = new Gradient();
+            gradient.SetKeys(
+                new[]
+                {
+                    new GradientColorKey(new Color(1f, 0.99f, 0.9f), 0f),
+                    new GradientColorKey(Color.white, 1f)
+                },
+                new[]
+                {
+                    new GradientAlphaKey(0.03f, 0f),
+                    new GradientAlphaKey(0.40f, 0.55f),
+                    new GradientAlphaKey(0.95f, 1f)
+                });
+            return gradient;
+        }
+
+        private LineRenderer _blade;
+        private Transform _bladeTip;
+
+        /// <summary>Pushes the swipe's recent history into the world-space blade.</summary>
+        private void UpdateBlade()
+        {
+            if (_blade == null)
+            {
+                if (_bladeTip != null) _bladeTip.gameObject.SetActive(false);
+                return;
+            }
+
+            int count = _trail.Count;
+            if (count < 2 || Paused)
+            {
+                _blade.positionCount = 0;
+                if (_bladeTip != null) _bladeTip.gameObject.SetActive(false);
+                return;
+            }
+
+            _blade.positionCount = count;
+            for (int i = 0; i < count; i++)
+            {
+                var sample = _trail[i];
+                _blade.SetPosition(i, new Vector3(sample.Position.x, sample.Position.y, -0.5f));
+            }
+
+            if (_bladeTip == null) return;
+
+            bool showTip = _pointerDown;
+            _bladeTip.gameObject.SetActive(showTip);
+            if (showTip) _bladeTip.position = new Vector3(_pointerWorld.x, _pointerWorld.y, -0.6f);
         }
 
         /// <summary>
@@ -254,10 +373,15 @@ namespace DshMiniGames
             // Held: nothing advances at all — not the fruit, not the shards, not the trail. The global
             // clock is deliberately left alone (see DEVLOG 坑 101: a mini-game pausing the world is how
             // the pet room came back frozen).
-            if (Paused) return;
+            if (Paused)
+            {
+                UpdateBlade();
+                return;
+            }
 
             ReadBlade();
             AgeTrail(Time.deltaTime);
+            UpdateBlade();
 
             if (State == Phase.Dead)
             {

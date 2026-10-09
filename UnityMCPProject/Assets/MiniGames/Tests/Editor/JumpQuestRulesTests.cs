@@ -171,6 +171,21 @@ namespace DshMiniGames.Tests
         }
 
         [Test]
+        public void RetryLatch_SwallowsThePressThatDismissedThePanelAndNothingElse()
+        {
+            // The reported bug: 再来一次 sits under the thumb, so the tap that restarts the run was also
+            // read as the beginning of a charge, and the pet hopped with no charge and always fell short.
+            Assert.IsTrue(HopRules.LatchAfterRetry(true, true, false),
+                "a finger still on the screen is the retry tap, not a new charge");
+            Assert.IsTrue(HopRules.LatchAfterRetry(true, false, true),
+                "the release event of that tap belongs to it too");
+            Assert.IsFalse(HopRules.LatchAfterRetry(true, false, false),
+                "once nothing is held the latch must clear, or the game would never take input again");
+            Assert.IsFalse(HopRules.LatchAfterRetry(false, true, false),
+                "a latch that was never set must not swallow a legitimate press");
+        }
+
+        [Test]
         public void Arc_StartsAndEndsAtTheTwoPointsAndGoesUpInBetween()
         {
             // The animation must agree with the landing the rules already judged: the character

@@ -244,6 +244,42 @@ namespace DshMiniGames.Tests
         }
 
         [Test]
+        public void Preview_DotsSitOnTheRealParabola()
+        {
+            // 「抛物线完全错位」 was the report, and this is the part of it that a test can hold: the dots are
+            // not a lookalike curve, they are *the* shot. The flight integrates semi-implicitly
+            // (v -= g·dt, then p += v·dt), so after K steps the position is exactly
+            // x = x₀ + K·dt·vx and y = y₀ + K·dt·vy − g·dt²·K(K+1)/2 — the dots must match that, one per
+            // step, or what the player aims at is not where the bird goes.
+            var sling = new Vector2(Settings.SlingX, Settings.GroundY + Settings.SlingHeight);
+            var velocity = new Vector2(-13.5f, 9.2f);
+            var points = new System.Collections.Generic.List<Vector2>();
+
+            // Four seconds of flight, sampled once per step: long enough for this shot to reach the
+            // ground, which is where the preview has to stop.
+            BirdRules.PreviewArc(sling, velocity, Settings, points, 4f, Settings.Step);
+
+            float dt = Settings.Step;
+            Assert.Greater(points.Count, 10, "one dot per step was asked for");
+
+            for (int i = 0; i < points.Count; i++)
+            {
+                float expectedX = sling.x + velocity.x * dt * i;
+                float expectedY = sling.y + velocity.y * dt * i
+                                  - Settings.Gravity * dt * dt * (i * (i + 1)) * 0.5f;
+
+                Assert.AreEqual(expectedX, points[i].x, 0.01f, $"dot {i} is off the line of the shot");
+                Assert.AreEqual(expectedY, points[i].y, 0.01f, $"dot {i} is off the arc of the shot");
+            }
+
+            float floor = Settings.GroundY + Settings.BirdRadius;
+            var last = points[points.Count - 1];
+            Assert.GreaterOrEqual(last.y, floor, "the preview sampled a dot below the ground");
+            Assert.Less(last.y, floor + 0.3f,
+                "the preview should stop when it reaches the ground, not carry on past it");
+        }
+
+        [Test]
         public void Launch_ATinyDragIsNotAShot()
         {
             var sling = new Vector2(0f, 0f);

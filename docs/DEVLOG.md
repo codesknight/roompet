@@ -826,6 +826,34 @@
     一台"识别器从来没建出来过"的手机，设置面板显示的是「语音输入就绪：点麦克风说话」——
     面板报出的是**最后一次尝试的安静**，而不是这个功能的状态。诊断类信息要分两层：
     "这次怎么了"（可以清）和"这功能到底能不能用"（只能被成功清掉）。
+123. **同一个"世界 → 屏幕"的转换，第二次把刀光和抛物线都弄错位了。** 第 21 轮我把切水果的刀光
+    和弹弓的虚线都放在 **HUD（IMGUI）**里画，走的是 `camera.WorldToScreenPoint` → 再往
+    `GUI.matrix` 里画。而 `GUI.matrix` **本身就带缩放**（手机上是设计像素→屏幕像素的 `UiScale`，
+    还带刘海安全区偏移）——于是坐标被**又缩放、又平移了一次**：编辑器里偏差小到看不出来，
+    手机上**越靠屏幕边缘错得越多**，手指划得越快越明显。真机反馈两轮都是同一句话
+    （「不跟手」→「完全错位」），而我在编辑器里一直看它是"对的"。
+    **修法是让这个转换不存在**：刀光改成世界空间的 `LineRenderer`、抛物线改成世界空间的对象池
+    小四边形，HUD 里那套 `WorldToGui`/`DrawBlade` 整段删除（留着它下一个人还会再踩）。
+    教训与坑 36/37 是同一条，只是这次栽在**小游戏**里：**只要一个东西是"世界里的东西"，
+    就画在世界里；HUD 只画"HUD 的东西"。** 而且这类 bug 在电脑上**永远验不出来**——
+    它的偏差正比于手机的 `UiScale` 与安全区，桌面缩放是 1。
+124. **"我按画幅取了景"要问一句：Awake 里读到的是谁的画幅？** 开始界面第一版在 `Awake` 里读
+    `Camera.main.aspect` 取景：编辑器报的是**它自己猜的画幅**（我改窗口尺寸/竖屏预览之前的值），
+    不是 Game 视图也不是手机的形状。结果手机竖屏上**整扇门顶满屏幕**，菜单是写在一扇门上的。
+    修法不是"再乘一个系数"，而是**画幅变了就重新解算**（`RefreshFraming` 比对上一次的画幅，
+    转屏、改窗口都算），并且每帧在菜单状态里也调用一次。
+    **凡是"取景/布局"用到 `aspect`、`Screen.width`、`dpi` 这类环境量，都要假设它在 Awake 时是错的。**
+125. **同一根手指，会被读成两件事。** 跳一跳的结算面板一出来，「再来一次」正好落在**拇指还在的位置**：
+    这一次按下既是"关掉面板"又是"开始蓄力"，于是重开的第一跳蓄力是 0，**必然落空**。
+    这类 bug 的特征是**"每次都会发生、而且只在真机上"**（桌面上是鼠标，点完就抬起来，
+    几乎不会按住不放）。修法是**给"这一次按下"一个身份**：`ResetRun()` 闩住输入，
+    直到手指真的抬起（`HopRules.LatchAfterRetry` 是纯函数，带单测）。同类的还有坑 101
+    （暂停时丢掉攒着的这一刀）——**触屏上的"按下"是有持续时间的动作，不是一次事件。**
+126. **"看着像"和"是"之间，能量出来的就别用形容词。** 上面两条 bug 我都"看过截图、觉得没问题"，
+    而它们其实都是**数值问题**：刀尖是否在手指正下方 = 世界↔屏幕往返误差；
+    虚线是否是那条抛物线 = 每个点到真实轨迹折线的距离。这一轮把这两条量出来
+    （正交相机下 **0.000 px**、**0.0000 米**），另外把"虚线的点必须落在半隐式积分的真实抛物线上"
+    写成单测。**能给出一个数的验收，比十张截图都硬**——截图只能证明"这一刻我挑的这一帧是对的"。
 
 ---
 
@@ -835,6 +863,7 @@
 # 工程与场景
 D:\projects\dsh-unity\UnityMCPProject
 Assets\Scenes\Main.unity            # 跑酷
+Assets\Pet\Scenes\StartMenu.unity   # 开始界面（构建列表第 0 个：进入房间 / 玩法介绍 / 设置 / 离开房间 + 开门动画）
 Assets\Pet\Scenes\PetRoom.unity     # 虚拟宠物
 Assets\MiniGames\Scenes\FlyBird.unity     # 小鸟飞行
 Assets\MiniGames\Scenes\JumpQuest.unity   # 跳一跳
@@ -854,6 +883,8 @@ powershell -File scripts/setup-github.ps1
 # 自检菜单（Unity 里）
 Tools/DSH Pet/Validate Wiring       # 宠物侧完整状态报告
 Tools/DSH Pet/Build Pet Scene       # 重建场景里的房间（改了 PetRoom 的摆放逻辑后必须跑）
+Tools/DSH Pet/Build Start Menu Scene   # 重建开始界面场景（改了门/灯/取景的摆放逻辑后必须跑）
+Tools/DSH Pet/Put Start Menu First     # 把开始界面排到构建列表第 0 个（PetRoom 第 1）
 Tools/DSH Pet/Fix Script Encodings  # 补 UTF-8 BOM（中文乱码时先跑这个）
 Tools/DSH Pet/Clear Pet Save        # 清存档（含日记文件）
 Tools/DSH Runner/Validate Wiring    # 跑酷侧自检
@@ -865,7 +896,7 @@ Tools/DSH Mobile/Preview/Report Current Viewport    # 打印当前视口 / 方�
 Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
-EditMode，期望 312/312
+EditMode，期望 322/322
 
 # 存档
 %USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\

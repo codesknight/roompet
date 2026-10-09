@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/Pet/Scenes/StartMenu.unity
+    guid: 2d608e7a91ab3c441b63de92a76a67a1
+  - enabled: 1
     path: Assets/Pet/Scenes/PetRoom.unity
     guid: 81ddd401257f4e848a736939cf8641e8
   - enabled: 1

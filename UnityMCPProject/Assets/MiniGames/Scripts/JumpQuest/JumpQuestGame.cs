@@ -163,7 +163,6 @@ namespace DshMiniGames
             RenderSettings.ambientLight = new Color(0.46f, 0.48f, 0.56f);
 
             _player = BuildPlayer();
-            BuildAimLine();
         }
 
         /// <summary>
@@ -193,50 +192,9 @@ namespace DshMiniGames
 
         /// <summary>
         /// A thin line on the box tops from the animal to the box it is going to.
-        ///
-        /// It exists because the player could not tell where the animal was about to go: the hop used
-        /// to be a fixed direction, and even now, with the hop aimed at the box, "aimed at what?" is
-        /// worth answering on screen rather than in a comment. It is also the honest version of the
-        /// promise — if the line points at a box, that hop is reachable.
+        /// <summary>
+        /// Which animal the hero is, for the HUD to name it.
         /// </summary>
-        private void BuildAimLine()
-        {
-            var go = new GameObject("AimLine");
-            go.transform.SetParent(transform, false);
-
-            _aim = go.AddComponent<LineRenderer>();
-            _aim.useWorldSpace = true;
-            _aim.positionCount = 0;
-            _aim.startWidth = 0.05f;
-            _aim.endWidth = 0.05f;
-            _aim.numCapVertices = 2;
-            _aim.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            _aim.receiveShadows = false;
-            _aim.alignment = LineAlignment.View;
-
-            var shader = Shader.Find("Sprites/Default");
-            if (shader == null)
-            {
-                // No shader to draw it with: the game is still complete without the hint line.
-                Destroy(go);
-                _aim = null;
-                return;
-            }
-
-            var material = new Material(shader) { name = "Dsh_HopAim" };
-
-            // Opaque white in the material, transparency in the vertex colours: the two multiply, so
-            // a translucent material colour would have made an already-faint line invisible (which is
-            // exactly what the first version of this drew — nothing).
-            material.color = Color.white;
-            _aim.material = material;
-            _aim.startColor = new Color(1f, 0.97f, 0.82f, 0.20f);
-            _aim.endColor = new Color(1f, 0.97f, 0.82f, 0.75f);
-        }
-
-        private LineRenderer _aim;
-
-        /// <summary>Which animal the hero is, for the HUD to name it.</summary>
         private DshMobile.MiniAnimalKind _kind = DshMobile.MiniAnimalKind.Cat;
 
         /// <summary>The hero's animal name, e.g. 狐狸.</summary>
@@ -376,6 +334,12 @@ namespace DshMiniGames
             State = Phase.Ready;
             LastPopup = "";
 
+            // A restart happens *under the player's finger*: 再来一次 is exactly where they tapped, and
+            // this game's input is a full-screen hold target. Without this latch the same press charges
+            // the first hop and fires it on release — which is the reported "点再来一次之后第一次跳一定
+            // 落空". Input stays swallowed until the finger comes back up.
+            _swallowInput = true;
+
             _boxes.Add(SpawnBox(Vector2.zero, _settings.BoxHalfSize, BoxHeight, Palette[0]));
             SpawnNext();
 
@@ -383,6 +347,14 @@ namespace DshMiniGames
             SnapView();
             DshMobile.MobileHaptics.Light();
         }
+
+        /// <summary>
+        /// True while the game is deliberately deaf to the pointer.
+        ///
+        /// Set by a restart, cleared the moment nothing is held: the press that dismissed the result
+        /// panel is not a press that wants to play.
+        /// </summary>
+        private bool _swallowInput;
 
         /// <summary>Starts charging, while a finger or the space bar is down.</summary>
         public void BeginCharge()
@@ -676,24 +648,6 @@ namespace DshMiniGames
             _camera.transform.rotation = rotation;
             _camera.transform.position = _viewFocus - forward * EyeDistance;
             _camera.orthographicSize = _viewSize;
-
-            // The hint line: from the animal's feet to the middle of the box it is aimed at. Drawn
-            // just above the box tops, so it reads as "this is the hop" rather than as a laser
-            // across the room — and clear of the tops themselves, or it z-fights with them.
-            if (_aim != null)
-            {
-                float height = BoxHeight + 0.16f;
-                if (next != null && State != Phase.Dead)
-                {
-                    _aim.positionCount = 2;
-                    _aim.SetPosition(0, new Vector3(Position.x, height, Position.y));
-                    _aim.SetPosition(1, new Vector3(next.Centre.x, height, next.Centre.y));
-                }
-                else
-                {
-                    _aim.positionCount = 0;
-                }
-            }
         }
 
         /// <summary>
@@ -728,6 +682,18 @@ namespace DshMiniGames
             bool mouseHeld = Input.GetMouseButton(0) && !JumpQuestHud.PointerOverPanel;
             bool keyHeld = Input.GetKey(KeyCode.Space) || Input.GetKey(KeyCode.W);
             bool held = HoldInput || mouseHeld || keyHeld;
+
+            if (_swallowInput)
+            {
+                // Waiting for the finger that pressed 再来一次 to come up. Nothing else happens in the
+                // meantime — the run has just been reset, so there is nothing to animate but the camera.
+                _swallowInput = HopRules.LatchAfterRetry(_swallowInput, held, ReleaseInput);
+
+                _wasHeld = held;
+                ReleaseInput = false;
+                UpdateView(Time.deltaTime);
+                return;
+            }
 
             if (held && !_wasHeld) BeginCharge();
             else if (!held && _wasHeld) Release();

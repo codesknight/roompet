@@ -257,6 +257,19 @@ namespace DshMiniGames
         }
 
         /// <summary>
+        /// The retry latch: after the run ends, 再来一次 sits exactly where the thumb already is, so the
+        /// press that dismisses the panel is *also* the press that would begin the next charge. The first
+        /// version read it as one, and every retry hopped with no charge and fell short — the player's
+        /// report was "每次点再来一次都会落空".
+        ///
+        /// While the latch is set the hold input is thrown away; it clears as soon as nothing is held,
+        /// which is the moment the retry tap is really over. A value rather than a field so the rule can
+        /// be tested without a scene.
+        /// </summary>
+        public static bool LatchAfterRetry(bool latched, bool held, bool released)
+            => latched && (held || released);
+
+        /// <summary>
         /// The hop's position along its arc, 0..1 through the flight, from one point in the plane to
         /// another. The height is the arc; x and z are the straight line to the box, so the animation
         /// and the landing test cannot quietly disagree.
