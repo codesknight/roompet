@@ -17,4 +17,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/MiniGames/Scenes/JumpQuest.unity
     guid: 9c1455aa23b71934596dd317d18c4f7a
+  - enabled: 1
+    path: Assets/MiniGames/Scenes/CatchFruit.unity
+    guid: 02a6ead3e02dce94caf97d0fde552baa
   m_configObjects: {}
