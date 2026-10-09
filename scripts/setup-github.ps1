@@ -71,7 +71,8 @@ Invoke-Api PATCH "/repos/$Repo" @{
 
 Invoke-Api PUT "/repos/$Repo/topics" @{
     names = @('unity', 'unity3d', 'game', 'virtual-pet', 'csharp', 'imgui',
-              'procedural-generation', 'llm', 'deepseek', 'mcp', 'android', 'minigames')
+              'procedural-generation', 'llm', 'deepseek', 'mcp', 'android', 'minigames',
+              'generative-ai')
 } | Out-Null
 Write-Host "  description + topics set"
 
