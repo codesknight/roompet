@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using DshMobile;
 using UnityEngine;
@@ -199,8 +199,14 @@ namespace DshPet
             {
                 MobileTouch.PlayInputEnabled = !ModalOpen;
                 MobileTouch.StickEnabled = !ModalOpen && !_chatExpanded;
-                MobileTouch.StickZone = ToScreen(new Rect(
-                    0f, designHeight * 0.40f, designWidth * 0.46f, designHeight * 0.60f));
+
+                // The stick's claim area is the SAME rect the hint is drawn in, and that rect stops
+                // above the collapsed chat bar. It used to be a second, larger rectangle (the left
+                // 46% of the whole lower 60% of the screen) which swallowed the bottom strip — so a
+                // tap on 「和它说说话」 started the joystick instead of opening the chat, and the
+                // button read as dead. Two definitions of one area is one definition too many.
+                MobileTouch.StickZone = ToScreen(
+                    ComputeMobileControls(layout).StickZone);
             }
 
             // While a modal panel is up, the panels behind it must not react. GUI.enabled is
@@ -1423,13 +1429,22 @@ namespace DshPet
 
                 var inner = new Rect(rect.x + 10f, rect.y + 8f, rect.width - 20f, rect.height - 16f);
 
+                // The whole bar is the target, not only the pill inside it. Registered before the
+                // pill and the microphone so those keep their own, smaller presses — overlapping
+                // targets resolve to the smallest area — while a thumb that lands on the pet's
+                // line or in the gap beside it is asking the same question and now gets an answer
+                // instead of a dead strip. This is registered, not an Input check, so it also
+                // works when the raw-pointer fallback in MobileWidgets is the only path alive.
+                DshMobile.MobileTouch.RegisterButton(MobileButtonIds.PetChatBar,
+                    MobileWidgets.ToScreen(inner), true, "和它说说话");
+
                 // The microphone belongs here, in the bar, where the thumb already is: a separate
                 // corner button would be a second way to do the same thing, and the first version
                 // put it to the left of the input *outside* the panel, where it was simply not on
                 // screen. Space is reserved for it instead of hoped for.
                 bool micHere = DshMobile.MobileStt.Offered;
                 DshMobile.MobileStt.Tick();
-                float micSize = MobileUi.Touchable(52f);
+                float micSize = MobileUi.Touchable(64f);
                 var micRect = new Rect(inner.x, inner.y + (inner.height - micSize) * 0.5f, micSize, micSize);
 
                 if (micHere)
@@ -1461,8 +1476,16 @@ namespace DshPet
                 float sayWidth = MobileUi.Touchable(124f);
                 var sayRect = new Rect(sayX, inner.y, sayWidth, inner.height);
 
-                if (MobileWidgets.Button(MobileButtonIds.PetChat, sayRect, "和它说说话",
-                        new Color(0.30f, 0.60f, 0.86f)))
+                bool chatting = MobileWidgets.Button(MobileButtonIds.PetChat, sayRect, "和它说说话",
+                    new Color(0.30f, 0.60f, 0.86f));
+
+                if (!chatting && (DshMobile.MobileTouch.Pressed(MobileButtonIds.PetChatBar)
+                    || MobileWidgets.PointerPressedInside(inner)))
+                {
+                    chatting = true;
+                }
+
+                if (chatting)
                 {
                     _chatExpanded = true;
                     FillEditConfig(gm);
@@ -1548,8 +1571,15 @@ namespace DshPet
             public Rect Mic;
         }
 
-        /// <summary>Height of the collapsed chat bar on a phone.</summary>
-        public const float MobileChatBarHeight = 68f;
+        /// <summary>
+        /// Height of the collapsed chat bar on a phone.
+        ///
+        /// This is the one control the whole game hangs on — the room, the pet and the conversation
+        /// are the game — so it is sized to be a target rather than a strip: 80 design pixels is
+        /// about 40dp on a phone, which is the smallest a thumb reliably hits without looking, and
+        /// it is tall enough to hold the microphone at the same size as the round action buttons.
+        /// </summary>
+        public const float MobileChatBarHeight = 80f;
 
         /// <summary>
         /// Geometry for the touch controls.
@@ -1967,6 +1997,23 @@ namespace DshPet
         private int _memoryWins;
         private int _memoryBestMoves;
 
+        /// <summary>Which board the player is on. Kept between sessions, because it is a preference.</summary>
+        private MemoryDifficulty _memoryLevel = MemoryDifficulty.Normal;
+
+        private bool _memoryLevelLoaded;
+
+        /// <summary>When each slot's pair was cleared, so it can be seen to disappear.</summary>
+        private readonly float[] _memoryClearedAt = new float[PetMemoryMatch.MaxSlots];
+
+        /// <summary>Which slots we have already seen go from "in play" to "cleared".</summary>
+        private readonly bool[] _memoryClearedSeen = new bool[PetMemoryMatch.MaxSlots];
+
+        /// <summary>How long a matched pair takes to shrink and fade away.</summary>
+        public const float MemoryClearSeconds = 0.45f;
+
+        /// <summary>Where the difficulty preference lives.</summary>
+        public const string MemoryLevelKey = "dshpet.memory.level";
+
         /// <summary>
         /// Opens 记忆配对 — the second game that lives indoors, and the one that is pure UI.
         ///
@@ -1979,11 +2026,44 @@ namespace DshPet
             _showMemory = !_showMemory;
             if (!_showMemory) return;
 
-            // Six pairs: enough to need attention, few enough to finish in a minute or two.
-            _memory = PetMemoryMatch.Start(6, UnityEngine.Random.Range(0, 1 << 28));
+            if (!_memoryLevelLoaded)
+            {
+                _memoryLevel = PetMemoryMatch.ParseDifficulty(
+                    PlayerPrefs.GetString(MemoryLevelKey, ""), MemoryDifficulty.Normal);
+                _memoryLevelLoaded = true;
+            }
+
+            DealMemoryBoard(gm, $"翻开两张一样的就消掉，不一样会自己盖回去。{PetMemoryMatch.Describe(_memoryLevel)}");
+        }
+
+        /// <summary>Deals a fresh board at the current difficulty, and resets the bookkeeping.</summary>
+        private void DealMemoryBoard(PetGameManager gm, string message)
+        {
+            _memory = PetMemoryMatch.Start(_memoryLevel, UnityEngine.Random.Range(0, 1 << 28));
             _memoryPaid = false;
             _memoryOpenedAt = Time.realtimeSinceStartup;
-            SetMemoryMessage("翻开两张一样的就留下，不一样会自己盖回去。");
+
+            for (int i = 0; i < _memoryClearedSeen.Length; i++)
+            {
+                _memoryClearedSeen[i] = false;
+                _memoryClearedAt[i] = 0f;
+            }
+
+            if (!string.IsNullOrEmpty(message)) SetMemoryMessage(message);
+        }
+
+        /// <summary>Switches difficulty, saves it and deals again. The reward changes with it.</summary>
+        private void SetMemoryLevel(PetGameManager gm, MemoryDifficulty level)
+        {
+            if (_memoryLevel == level && _memory != null) return;
+
+            _memoryLevel = level;
+            _memoryLevelLoaded = true;
+            PlayerPrefs.SetString(MemoryLevelKey, PetMemoryMatch.KeyOf(level));
+            PlayerPrefs.Save();
+
+            DealMemoryBoard(gm,
+                $"换成{PetMemoryMatch.NameOf(level)}了：{PetMemoryMatch.Describe(level)}。");
         }
 
         private void DrawMemoryMatch(PetGameManager gm)
@@ -2013,13 +2093,44 @@ namespace DshPet
             }
 
             GUI.Label(new Rect(inner.x, inner.y + 36f, inner.width, 22f),
-                $"配成 {_memory.Matched}/{_memory.Pairs} 对　·　{_memory.Moves} 步　·　" +
-                $"{(int)(Time.realtimeSinceStartup - _memoryOpenedAt)} 秒", _small);
+                $"{(int)(Time.realtimeSinceStartup - _memoryOpenedAt)} 秒　·　{_memory.Moves} 步　·　" +
+                $"消掉 {_memory.Matched}/{_memory.Pairs} 对　·　{PetMemoryMatch.NameOf(_memory.Difficulty)}", _small);
+
+            // Difficulty row. Three buttons rather than a cycle: which board you are on is the first
+            // thing a player wants to change, and a control that has to be pressed twice to get back
+            // where you were is a control that gets pressed wrong.
+            float levelTop = inner.y + 62f;
+            float levelWidth = (inner.width - 16f) / 3f;
+            for (int i = 0; i < 3; i++)
+            {
+                var level = PetMemoryMatch.ClampDifficulty(i);
+                bool active = level == _memoryLevel;
+
+                var tint = active
+                    ? new Color(0.36f, 0.66f, 0.44f)
+                    : new Color(0.24f, 0.26f, 0.34f);
+
+                var box = new Rect(inner.x + i * (levelWidth + 8f), levelTop, levelWidth, 34f);
+                UiSkin.Panel(box, 10f, tint, new Color(1f, 1f, 1f, active ? 0.55f : 0.18f), 1.5f);
+
+                GUI.Label(box,
+                    $"{PetMemoryMatch.NameOf(level)}　{PetMemoryMatch.BaseRewardFor(level)} 币", _small);
+
+                if (GUI.Button(box, GUIContent.none, GUIStyle.none) && !active)
+                {
+                    SetMemoryLevel(gm, level);
+                    PetAudioDirector.Instance?.Play(SfxId.UiClick);
+
+                    // The board under this row has just been replaced; stop drawing this frame rather
+                    // than mixing the new grid with the old loop's idea of it.
+                    return;
+                }
+            }
 
             if (!string.IsNullOrEmpty(_memoryMessage))
             {
                 GUI.color = _memory.IsSolved ? new Color(0.7f, 0.95f, 0.75f) : new Color(0.85f, 0.88f, 0.95f);
-                GUI.Label(new Rect(inner.x, inner.y + 58f, inner.width, 22f), _memoryMessage, _small);
+                GUI.Label(new Rect(inner.x, levelTop + 40f, inner.width, 22f), _memoryMessage, _small);
                 GUI.color = Color.white;
             }
 
@@ -2032,7 +2143,7 @@ namespace DshPet
 
             // ---- the board ----
             const float footer = 78f;
-            float boardTop = inner.y + 86f;
+            float boardTop = levelTop + 70f;
             float boardRoom = inner.yMax - footer - boardTop;
 
             int columns = PetMemoryMatch.Columns;
@@ -2046,34 +2157,70 @@ namespace DshPet
             float boardX = inner.x + (inner.width - boardWidth) * 0.5f;
             float boardY = boardTop + Mathf.Max(0f, (boardRoom - boardHeight) * 0.5f);
 
+            float now = Time.realtimeSinceStartup;
+
             for (int i = 0; i < _memory.Count; i++)
             {
                 int row = i / columns, column = i % columns;
                 var card = new Rect(boardX + column * (cell + 8f), boardY + row * (cell + 8f), cell, cell);
 
-                bool faceUp = _memory.IsFaceUp(i) || _memory.IsTaken(i);
-                var tint = faceUp
-                    ? new Color(0.98f, 0.94f, 0.86f, 1f)
-                    : new Color(0.28f, 0.36f, 0.55f, 1f);
+                bool taken = _memory.IsTaken(i);
 
-                UiSkin.Panel(card, 12f, tint,
-                    _memory.IsTaken(i)
-                        ? new Color(0.55f, 0.85f, 0.6f, 0.9f)
-                        : new Color(1f, 1f, 1f, 0.2f), 2f);
+                // A pair that has just matched is watched going away, not teleported: the model says
+                // "banked", the screen says "gone", and the half second between them is the reward.
+                if (taken && !_memoryClearedSeen[i] && i < _memoryClearedSeen.Length)
+                {
+                    _memoryClearedSeen[i] = true;
+                    _memoryClearedAt[i] = now;
+                }
 
+                if (taken)
+                {
+                    float age = i < _memoryClearedAt.Length ? now - _memoryClearedAt[i] : 1f;
+                    float fade = Mathf.Clamp01(age / MemoryClearSeconds);
+
+                    if (fade >= 1f)
+                    {
+                        // The slot is empty and stays empty: the board is *smaller* as you win, which
+                        // is how a matched pair is supposed to read. No button, nothing to flip.
+                        UiSkin.Panel(card, 12f, new Color(1f, 1f, 1f, 0.035f),
+                            new Color(1f, 1f, 1f, 0.10f), 1.5f);
+                        continue;
+                    }
+
+                    // Green flash first, then the animal shrinks into it.
+                    UiSkin.Panel(card, 12f,
+                        new Color(0.42f, 0.78f, 0.48f, 0.75f * (1f - fade)),
+                        new Color(0.72f, 0.95f, 0.76f, 0.9f * (1f - fade)), 2f);
+
+                    float shrink = 1f - fade * 0.45f;
+                    var shrinking = new Rect(card.center.x - card.width * shrink * 0.5f,
+                        card.center.y - card.height * shrink * 0.5f,
+                        card.width * shrink, card.height * shrink);
+
+                    DrawMemoryFace(shrinking, _memory.FaceAt(i), 1f - fade);
+                    continue;
+                }
+
+                bool faceUp = _memory.IsFaceUp(i);
                 if (faceUp)
                 {
-                    var face = new GUIStyle(_title)
-                    {
-                        fontSize = Mathf.RoundToInt(cell * 0.42f),
-                        alignment = TextAnchor.MiddleCenter
-                    };
-                    face.normal.textColor = new Color(0.16f, 0.14f, 0.18f);
-                    GUI.Label(card, PetMemoryMatch.Label(_memory.FaceAt(i)), face);
+                    UiSkin.Panel(card, 12f, new Color(0.98f, 0.94f, 0.86f, 1f),
+                        new Color(1f, 1f, 1f, 0.25f), 2f);
+                    DrawMemoryFace(card, _memory.FaceAt(i), 1f);
                 }
-                else if (!_memory.IsSolved && _memory.CanFlip(i))
+                else
                 {
-                    if (GUI.Button(card, GUIContent.none, GUIStyle.none))
+                    // Face down: a card back, not a hole. The disc in the middle is what says
+                    // "there is something under here" without printing a character at it.
+                    UiSkin.Panel(card, 12f, new Color(0.28f, 0.36f, 0.55f, 1f),
+                        new Color(1f, 1f, 1f, 0.20f), 2f);
+                    float back = cell * 0.26f;
+                    UiSkin.Panel(new Rect(card.center.x - back, card.center.y - back, back * 2f, back * 2f),
+                        back, new Color(1f, 1f, 1f, 0.16f), new Color(1f, 1f, 1f, 0.10f), 2f);
+
+                    if (!_memory.IsSolved && _memory.CanFlip(i)
+                        && GUI.Button(card, GUIContent.none, GUIStyle.none))
                     {
                         if (_memory.Flip(i))
                         {
@@ -2092,10 +2239,7 @@ namespace DshPet
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("重开一局", _button, GUILayout.Height(34f)))
             {
-                _memory = PetMemoryMatch.Start(6, UnityEngine.Random.Range(0, 1 << 28));
-                _memoryPaid = false;
-                _memoryOpenedAt = Time.realtimeSinceStartup;
-                SetMemoryMessage("重新洗牌了。");
+                DealMemoryBoard(gm, $"重新洗牌了。{PetMemoryMatch.Describe(_memoryLevel)}");
             }
 
             GUILayout.FlexibleSpace();
@@ -2104,6 +2248,22 @@ namespace DshPet
             GUILayout.EndArea();
 
             DrawModalEscape();
+        }
+
+        /// <summary>The animal on a card, filling the middle of it.</summary>
+        private static void DrawMemoryFace(Rect card, int face, float alpha)
+        {
+            float inset = Mathf.Min(card.width, card.height) * 0.12f;
+            var art = new Rect(card.x + inset, card.y + inset,
+                card.width - inset * 2f, card.height - inset * 2f);
+
+            var texture = PetAvatarArt.TextureFor(face);
+            if (texture == null) return;
+
+            var was = GUI.color;
+            GUI.color = new Color(1f, 1f, 1f, alpha);
+            GUI.DrawTexture(art, texture, ScaleMode.ScaleToFit, true);
+            GUI.color = was;
         }
 
         private void SetMemoryMessage(string message) => _memoryMessage = message;
@@ -2127,12 +2287,15 @@ namespace DshPet
             DshMobile.PetWallet.Add(coins);
             DshMobile.MobileHaptics.Medium();
 
-            gm.Memory.AddPet($"（和你玩记忆配对，{_memory.Moves} 步就全找齐了）");
+            string level = PetMemoryMatch.NameOf(_memory.Difficulty);
+            gm.Memory.AddPet($"（和你玩{level}的记忆配对，{_memory.Moves} 步就全找齐了）");
             gm.Journal.Add(MemoryKind.Play, "玩记忆配对",
-                $"{_memory.Moves} 步配完 {_memory.Pairs} 对，赚了 {coins} 个宠物币", 0.45f);
+                $"{level}：{_memory.Moves} 步配完 {_memory.Pairs} 对，赚了 {coins} 个宠物币", 0.45f);
             gm.AnnounceChat();
 
-            SetMemoryMessage($"全配上了！赚了 {coins} 个宠物币（{PetMemoryMatch.RankFor(_memory.Pairs, _memory.Moves)}）");
+            SetMemoryMessage(
+                $"全消掉了！{level}拿 {coins} 个宠物币（{PetMemoryMatch.RankFor(_memory.Pairs, _memory.Moves)}）" +
+                "——想多赚就换更难的。");
         }
 
 
@@ -2706,11 +2869,19 @@ namespace DshPet
                 {
                     // The switch is a preference, the test is a diagnostic: it speaks even with
                     // the switch off, because "I hear nothing" has to be answerable from here.
+                    //
+                    // But pressing it also means "I want to hear this", so the test switches
+                    // speech on. That is the whole complaint it answers: the phone could talk and
+                    // the pet still said nothing, because the checkbox above was off and nobody
+                    // had a reason to open this panel at all.
+                    if (!DshMobile.MobileTts.Enabled) DshMobile.MobileTts.Enabled = true;
+                    DshMobile.MobileTts.WarmUp();
+
                     float testPitch, testRate;
                     PetVoice.SpeechParams(gm.Species, gm.Personality, out testPitch, out testRate);
                     bool spoke = DshMobile.MobileTts.Test(testPitch, testRate);
                     SetVoiceMessage(spoke
-                        ? "已经念了一句，听到了吗？听不到就把手机音量调大一点（用的是媒体音量）。"
+                        ? "已经念了一句，朗读也打开了：宠物之后说的话都会念出来。听不到就把手机音量调大一点（用的是媒体音量）。"
                         : "没能念出来：" + DshMobile.MobileTts.LastError, spoke);
                 }
                 GUILayout.EndHorizontal();

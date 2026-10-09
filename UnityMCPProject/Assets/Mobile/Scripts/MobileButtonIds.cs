@@ -19,6 +19,15 @@ namespace DshMobile
         /// <summary>Opens/closes the chat panel (and the on-screen keyboard).</summary>
         public const string PetChat = "pet.chat";
 
+        /// <summary>
+        /// The whole collapsed chat bar, not just the pill in it.
+        ///
+        /// Registered under its own id so the pill and the microphone keep their own presses
+        /// (overlapping targets resolve to the smallest), while a thumb that lands on the pet's
+        /// line or in the gap beside it still opens the transcript instead of doing nothing.
+        /// </summary>
+        public const string PetChatBar = "pet.chatbar";
+
         /// <summary>Sends whatever is typed in the chat box.</summary>
         public const string PetSend = "pet.send";
 

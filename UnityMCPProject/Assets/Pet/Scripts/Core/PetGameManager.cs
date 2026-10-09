@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -1313,9 +1313,10 @@ namespace DshPet
             var audio = PetAudioDirector.Instance;
             if (audio != null) audio.Speak(Needs.Mood);
 
-            // ...and, if the player turned it on, says the line in words. Same voice profile as
-            // the chirp, so a bear reading its own sentence still sounds like the bear. Off by
-            // default: a phone that starts talking unprompted is a phone that gets muted.
+            // ...and says the line in words, unless the player has muted it. Same voice profile as
+            // the chirp, so a bear reading its own sentence still sounds like the bear. This is ON
+            // by default now: it used to be off, and the report from the first phone to run it was
+            // "the pet still does not talk", because the switch lives in a panel nobody opens.
             float speechPitch, speechRate;
             PetVoice.SpeechParams(Species, Personality, out speechPitch, out speechRate);
             DshMobile.MobileTts.Speak(reply.Speech, speechPitch, speechRate);

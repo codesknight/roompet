@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using UnityEngine;
 
 namespace DshMobile
@@ -77,8 +77,12 @@ namespace DshMobile
         /// <summary>
         /// Whether the pet reads its lines out loud.
         ///
-        /// Defaults to OFF, unlike the pet's own chirps. A phone that suddenly starts talking is
-        /// a phone you mute, and the player who wants this will find it in the settings.
+        /// Defaults to ON. It used to default to off, on the theory that a phone which suddenly
+        /// starts talking is a phone you mute — and the report from the first phone to run this was
+        /// "the pet still does not talk", because the switch was a checkbox in a settings panel the
+        /// player never opened. A pet that only speaks once you find the right toggle is not a
+        /// talking pet; the chirps were already on by default for the same reason, and the switch
+        /// is right here for anyone who wants the room quiet.
         /// </summary>
         public static bool Enabled
         {
@@ -86,7 +90,7 @@ namespace DshMobile
             {
                 if (!_enabledLoaded)
                 {
-                    _enabled = PlayerPrefs.GetInt(EnabledKey, 0) != 0;
+                    _enabled = PlayerPrefs.GetInt(EnabledKey, 1) != 0;
                     _enabledLoaded = true;
                 }
                 return _enabled;

@@ -1,13 +1,20 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace DshMiniGames
 {
     /// <summary>
-    /// 接果子's interface: a score, hearts, and two big movement pads.
+    /// 接果子's interface: a score, lives, and a whole screen you drag.
     ///
-    /// The pads are held buttons rather than taps — this is the one game in the collection with
-    /// continuous input — and they sit on the *same* side of the screen as the falling fruit's
-    /// spread, so a thumb can hold left and watch the whole width at once.
+    /// The control is a horizontal drag, and the drag is read in <see cref="Update"/> rather than
+    /// in <see cref="OnGUI"/> for a reason that is easy to get wrong: IMGUI runs its layout and its
+    /// repaint pass in the same frame, so a *delta* consumed in OnGUI is applied twice and the
+    /// basket travels at double speed on a real repaint and a single speed in a still editor view.
+    /// Update runs exactly once per frame, which is what a delta needs.
+    ///
+    /// The two hold-to-move pads are gone. They were a digital control on an analog play area: you
+    /// overshoot and correct instead of arriving, and the report from the phone was that the right
+    /// pad in particular did not respond. A drag that maps the finger's own travel onto the world
+    /// cannot be off by a pixel, and it works anywhere on the screen.
     /// </summary>
     public class CatchFruitHud : MonoBehaviour
     {
@@ -19,10 +26,54 @@ namespace DshMiniGames
         /// <summary>True while the pointer is over a panel, so taps there do not start a run.</summary>
         public static bool PointerOverPanel { get; private set; }
 
-        public const string LeftId = "catch.left";
-        public const string RightId = "catch.right";
+        private float _lastMouseX = float.NaN;
 
         private void Awake() => _game = GetComponent<CatchFruitGame>();
+
+        /// <summary>
+        /// Converts this frame's drag into basket movement.
+        ///
+        /// Two sources, because the game has to be playable in the editor as well as on a phone:
+        /// the touch layer's gesture (a finger, or the mouse when the phone layout is forced on),
+        /// and the raw mouse for a desktop build that is not using touch controls at all.
+        /// </summary>
+        private void Update()
+        {
+            if (_game == null) return;
+            if (_game.State == CatchFruitGame.Phase.Dead) return;
+
+            float dx = 0f;
+
+            var gesture = DshMobile.MobileTouch.Gesture;
+            if (gesture.IsActive)
+            {
+                dx = gesture.FrameDelta.x;
+
+                // Taken, not merely read: this is the one input in the game that is a distance
+                // rather than a flag, and a delta left lying around gets applied again next frame.
+                gesture.ConsumeFrameDelta();
+            }
+            else if (Input.GetMouseButton(0))
+            {
+                float x = Input.mousePosition.x;
+                if (!Input.GetMouseButtonDown(0) && !float.IsNaN(_lastMouseX)) dx = x - _lastMouseX;
+                _lastMouseX = x;
+            }
+            else
+            {
+                _lastMouseX = float.NaN;
+            }
+
+            if (Mathf.Abs(dx) < 0.01f) return;
+
+            _hintUsed = true;
+
+            // The world is the width of the play area; the screen pixel is the unit the finger
+            // actually moved in. Scaling by the design width keeps a drag the same physical
+            // distance on a phone and in a tall editor window.
+            float screenWidth = Mathf.Max(1f, Screen.width);
+            _game.DragBy(CatchRules.PixelsToWorld(dx, screenWidth, CatchSettings.Default));
+        }
 
         private void EnsureStyles()
         {
@@ -90,8 +141,8 @@ namespace DshMiniGames
                 GUI.Label(new Rect(panel.x + 20f, panel.y + 12f, panel.width - 40f, 32f), "接果子", _title);
                 GUI.Label(new Rect(panel.x + 20f, panel.y + 46f, panel.width - 40f, 24f),
                     DshMobile.MobileUi.UseTouchControls
-                        ? "按住屏幕左下 / 右下的箭头移动篮子"
-                        : "A / D 或 ← → 移动篮子", _small);
+                        ? "在屏幕上左右滑动，篮子跟着手指走"
+                        : "拖动鼠标，或按 A / D 与 ← →", _small);
                 GUI.Label(new Rect(panel.x + 20f, panel.y + 72f, panel.width - 40f, 24f),
                     "接到果子得分，掉三个就结束。", _small);
                 PointerOverPanel |= panel.Contains(Event.current.mousePosition);
@@ -123,67 +174,25 @@ namespace DshMiniGames
                 PointerOverPanel = true;
             }
 
-            // The movement pads: big, in the bottom corners, held rather than tapped.
-            if (_game.State != CatchFruitGame.Phase.Dead)
+            // The control hint, on the playfield itself. It replaces the two movement pads: with the
+            // whole screen draggable there is no control to look at, so the thing to draw is the
+            // instruction, and it goes away once the player has dragged.
+            if (_game.State == CatchFruitGame.Phase.Playing && !_hintUsed)
             {
-                float pad = Mathf.Min(150f, width * 0.24f);
-                float bottom = height - pad - 26f;
-
-                var left = new Rect(20f, bottom, pad, pad);
-                var right = new Rect(width - pad - 20f, bottom, pad, pad);
-
-                _game.MoveInput = 0f;
-                if (Pad(LeftId, left, "◀")) _game.MoveInput = -1f;
-                if (Pad(RightId, right, "▶")) _game.MoveInput = 1f;
-
-                PointerOverPanel = true;
+                var hint = new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter, fontSize = 20 };
+                hint.normal.textColor = new Color(1f, 1f, 1f, 0.75f);
+                GUI.Label(new Rect(0f, height - 74f, width, 30f), "◀ 左右滑动屏幕移动篮子 ▶", hint);
             }
 
             GUI.matrix = previous;
         }
 
+        private bool _hintUsed;
+
         private static GUIStyle ButtonStyle()
         {
             var style = new GUIStyle(GUI.skin.button) { fontSize = 17, padding = new RectOffset(14, 14, 8, 8) };
             return style;
-        }
-
-        /// <summary>A held direction pad: true for every frame the finger is down.</summary>
-        private static bool Pad(string id, Rect rect, string label)
-        {
-            DshMobile.MobileTouch.RegisterButton(id, DshMobile.MobileWidgets.ToScreen(rect), true, label);
-            bool down = DshMobile.MobileTouch.Held(id) || DshMobile.MobileTouch.Pressed(id);
-
-            float radius = Mathf.Min(rect.width, rect.height) * 0.5f;
-            var circle = new Rect(rect.center.x - radius, rect.center.y - radius, radius * 2f, radius * 2f);
-            DshMobile.UiSkin.Shadow(circle, radius, 4f, 0.4f);
-            DshMobile.UiSkin.Panel(circle, radius,
-                down ? new Color(0.34f, 0.62f, 0.40f, 0.85f) : new Color(0.12f, 0.16f, 0.14f, 0.55f),
-                new Color(1f, 1f, 1f, down ? 0.6f : 0.3f), 3f);
-
-            var previous = GUI.color;
-            GUI.color = new Color(1f, 1f, 1f, down ? 1f : 0.8f);
-            GUI.Label(circle, label, PadStyle());
-            GUI.color = previous;
-
-            return down;
-        }
-
-        private static GUIStyle _padStyle;
-
-        private static GUIStyle PadStyle()
-        {
-            if (_padStyle == null)
-            {
-                _padStyle = new GUIStyle(GUI.skin.label)
-                {
-                    fontSize = 40,
-                    fontStyle = FontStyle.Bold,
-                    alignment = TextAnchor.MiddleCenter
-                };
-                _padStyle.normal.textColor = Color.white;
-            }
-            return _padStyle;
         }
     }
 }

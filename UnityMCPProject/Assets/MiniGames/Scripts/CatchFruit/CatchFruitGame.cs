@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -167,8 +167,30 @@ namespace DshMiniGames
             State = Phase.Playing;
         }
 
-        /// <summary>Left/right input, pushed by the HUD's pads or the keyboard.</summary>
+        /// <summary>Left/right input, pushed by the keyboard (the phone steers by dragging).</summary>
         public float MoveInput { get; set; }
+
+        /// <summary>
+        /// Moves the basket by a drag, in world units. This is the phone's control.
+        ///
+        /// It replaces the two hold-to-move pads, which were the wrong shape for this game: a pad
+        /// is a *digital* control (left, right, or nothing) bolted onto an *analog* play area, so
+        /// catching a fruit that landed 1.5 units away meant holding right, overshooting, tapping
+        /// the other pad, and arriving late — and on a phone it was the right-hand pad that got
+        /// missed, which is the report that produced this. Dragging paints the finger onto the
+        /// world instead: the basket goes exactly where the thumb goes, and the whole screen is
+        /// the control rather than two circles in the corners.
+        /// </summary>
+        public void DragBy(float worldDelta)
+        {
+            if (State == Phase.Dead) return;
+            if (Mathf.Abs(worldDelta) <= 0.0001f) return;
+
+            if (State == Phase.Ready) StartRun();
+
+            _basketX = CatchRules.DragTo(_basketX, worldDelta, _settings);
+            ApplyBasket();
+        }
 
         private void Update()
         {

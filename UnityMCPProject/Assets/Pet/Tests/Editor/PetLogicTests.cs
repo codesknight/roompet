@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -1970,6 +1970,30 @@ namespace DshPet.Tests
             }
         }
 
+        [Test]
+        public void Tts_IsOnOutOfTheBox()
+        {
+            // The first phone to run this said "the pet still does not talk", and it was right: the
+            // switch defaulted to off, so the pet only spoke to a player who had opened a settings
+            // panel to look for a checkbox they had no reason to suspect. A talking pet that has to
+            // be switched on is not a talking pet.
+            bool previous = DshMobile.MobileTts.Enabled;
+            try
+            {
+                PlayerPrefs.DeleteKey(DshMobile.MobileTts.EnabledKey);
+                PlayerPrefs.Save();
+                DshMobile.MobileTts.ResetCache();
+
+                Assert.IsTrue(DshMobile.MobileTts.Enabled,
+                    "on a phone with no preference saved, speech has to be on");
+            }
+            finally
+            {
+                DshMobile.MobileTts.Enabled = previous;
+                DshMobile.MobileTts.ResetCache();
+            }
+        }
+
         // ------------------------------------------------------------------- puzzle
 
         [Test]
@@ -2584,6 +2608,151 @@ namespace DshPet.Tests
             for (int face = -2; face < PetMemoryMatch.SafeFaces.Length + 3; face++)
             {
                 Assert.IsFalse(string.IsNullOrEmpty(PetMemoryMatch.Label(face)), $"face {face} is blank");
+            }
+        }
+
+        [Test]
+        public void Memory_DifficultiesDealBiggerBoardsThatPayMore()
+        {
+            // The point of a difficulty selector. If hard paid the same there would be no reason to
+            // pick it, and if it were the same size it would not be harder.
+            int easy = PetMemoryMatch.PairsFor(MemoryDifficulty.Easy);
+            int normal = PetMemoryMatch.PairsFor(MemoryDifficulty.Normal);
+            int hard = PetMemoryMatch.PairsFor(MemoryDifficulty.Hard);
+
+            Assert.Less(easy, normal);
+            Assert.Less(normal, hard);
+            Assert.LessOrEqual(hard, PetMemoryMatch.SafeFaces.Length,
+                "a board cannot use more animals than there are animals");
+
+            Assert.Less(PetMemoryMatch.BaseRewardFor(MemoryDifficulty.Easy),
+                PetMemoryMatch.BaseRewardFor(MemoryDifficulty.Normal));
+            Assert.Less(PetMemoryMatch.BaseRewardFor(MemoryDifficulty.Normal),
+                PetMemoryMatch.BaseRewardFor(MemoryDifficulty.Hard));
+
+            // A perfect hard board beats a perfect easy one; a sloppy hard board still pays.
+            Assert.Greater(PetMemoryMatch.Reward(MemoryDifficulty.Hard, hard * 2),
+                PetMemoryMatch.Reward(MemoryDifficulty.Easy, easy * 2));
+            Assert.GreaterOrEqual(PetMemoryMatch.Reward(MemoryDifficulty.Hard, 500),
+                PetMemoryMatch.BaseRewardFor(MemoryDifficulty.Easy) / 2,
+                "finishing a hard board badly should not pay less than half an easy board");
+        }
+
+        [Test]
+        public void Memory_DifficultyNamesAndKeysSurviveASaveRoundTrip()
+        {
+            foreach (var level in new[]
+                     { MemoryDifficulty.Easy, MemoryDifficulty.Normal, MemoryDifficulty.Hard })
+            {
+                Assert.IsFalse(string.IsNullOrEmpty(PetMemoryMatch.NameOf(level)));
+                Assert.IsFalse(string.IsNullOrEmpty(PetMemoryMatch.Describe(level)));
+
+                string key = PetMemoryMatch.KeyOf(level);
+                Assert.AreEqual(level, PetMemoryMatch.ParseDifficulty(key, MemoryDifficulty.Easy),
+                    $"{key} did not survive the round trip");
+            }
+
+            // Junk must not throw, and an empty save must land on the fallback.
+            Assert.AreEqual(MemoryDifficulty.Hard,
+                PetMemoryMatch.ParseDifficulty("nonsense", MemoryDifficulty.Hard));
+            Assert.AreEqual(MemoryDifficulty.Normal,
+                PetMemoryMatch.ParseDifficulty(null, MemoryDifficulty.Normal));
+
+            // Every index a button could pass is a real difficulty: the row is drawn in a loop.
+            Assert.AreEqual(MemoryDifficulty.Easy, PetMemoryMatch.ClampDifficulty(-3));
+            Assert.AreEqual(MemoryDifficulty.Hard, PetMemoryMatch.ClampDifficulty(99));
+        }
+
+        [Test]
+        public void Memory_ADealtBoardKnowsItsOwnDifficulty()
+        {
+            var board = PetMemoryMatch.Start(MemoryDifficulty.Hard, 7);
+            Assert.AreEqual(MemoryDifficulty.Hard, board.Difficulty);
+            Assert.AreEqual(PetMemoryMatch.PairsFor(MemoryDifficulty.Hard), board.Pairs);
+            Assert.AreEqual(PetMemoryMatch.PairsFor(MemoryDifficulty.Hard) * 2, board.SlotCount,
+                "a deck is two of every face");
+            Assert.LessOrEqual(board.SlotCount, PetMemoryMatch.MaxSlots,
+                "the UI's per-slot bookkeeping has to be big enough for the biggest board");
+            Assert.IsFalse(string.IsNullOrEmpty(board.DifficultyName));
+        }
+
+        [Test]
+        public void Memory_CardFacesAreRealAnimals()
+        {
+            // The faces used to be text. They are drawn animals now, and the two things that can go
+            // wrong are both invisible in a screenshot of the editor: a deck index outside the table,
+            // and a texture that never gets built.
+            for (int face = 0; face < PetMemoryMatch.SafeFaces.Length; face++)
+            {
+                var kind = PetMemoryMatch.Kind(face);
+                Assert.IsFalse(string.IsNullOrEmpty(PetAvatarArt.Name(kind)), $"face {face} has no name");
+
+                var texture = PetAvatarArt.TextureFor(face);
+                Assert.IsNotNull(texture, $"face {face} has no art");
+                Assert.AreEqual(PetAvatarArt.Size, texture.width);
+                Assert.AreEqual(PetAvatarArt.Size, texture.height);
+
+                // Built once and handed out again: rasterising eight faces per repaint would be
+                // visible as a stutter on a phone.
+                Assert.AreSame(texture, PetAvatarArt.TextureFor(face));
+            }
+
+            // Out-of-range decks clamp rather than throw, the same way Label does.
+            Assert.IsFalse(string.IsNullOrEmpty(PetAvatarArt.Name(PetAvatarArt.KindAt(-5))));
+            Assert.IsFalse(string.IsNullOrEmpty(PetAvatarArt.Name(PetAvatarArt.KindAt(500))));
+        }
+
+        [Test]
+        public void Avatars_AreDrawnRatherThanLeftBlank()
+        {
+            // A painting bug (all one colour, or nothing drawn at all) is exactly what a phone
+            // reports as "the cards are empty", so the coverage is checked here instead.
+            for (int face = 0; face < PetAvatarArt.KindCount; face++)
+            {
+                var texture = PetAvatarArt.TextureFor(face);
+                var pixels = texture.GetPixels32();
+
+                int opaque = 0;
+                var colours = new System.Collections.Generic.HashSet<int>();
+                for (int i = 0; i < pixels.Length; i++)
+                {
+                    if (pixels[i].a <= 8) continue;
+                    opaque++;
+                    colours.Add((pixels[i].r << 16) | (pixels[i].g << 8) | pixels[i].b);
+                }
+
+                float coverage = opaque / (float)pixels.Length;
+                Assert.Greater(coverage, 0.18f, $"face {face} is nearly empty ({coverage:P0})");
+                Assert.Less(coverage, 0.92f, $"face {face} fills its whole box ({coverage:P0})");
+                Assert.Greater(colours.Count, 3, $"face {face} is a flat blob");
+            }
+        }
+
+        [Test]
+        public void Avatars_AreDifferentAnimals()
+        {
+            // Eight identical faces would still pass every check above, and would also make the game
+            // impossible: a memory game whose cards all look the same is not a memory game.
+            var signatures = new System.Collections.Generic.HashSet<string>();
+            for (int face = 0; face < PetAvatarArt.KindCount; face++)
+            {
+                var pixels = PetAvatarArt.TextureFor(face).GetPixels32();
+                var sb = new System.Text.StringBuilder(pixels.Length);
+
+                // Shape *and* colour, sampled on a grid: two animals with the same silhouette in
+                // different fur are still distinguishable on a card, and two in the same fur are not.
+                for (int y = 0; y < PetAvatarArt.Size; y += 4)
+                {
+                    for (int x = 0; x < PetAvatarArt.Size; x += 4)
+                    {
+                        var pixel = pixels[y * PetAvatarArt.Size + x];
+                        sb.Append(pixel.a <= 8
+                            ? "...."
+                            : $"{pixel.r / 64}{pixel.g / 64}{pixel.b / 64}.");
+                    }
+                }
+
+                Assert.IsTrue(signatures.Add(sb.ToString()), $"face {face} looks like another card");
             }
         }
 

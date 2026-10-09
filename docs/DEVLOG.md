@@ -15,13 +15,13 @@
 | 项 | 状态 |
 |---|---|
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
-| 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/FlyBird.unity`（小鸟飞行）、`Assets/MiniGames/Scenes/JumpQuest.unity`（跳跃冒险），四个都已在 Build Settings |
+| 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/FlyBird.unity`（小鸟飞行）、`Assets/MiniGames/Scenes/JumpQuest.unity`（跳一跳）、`Assets/MiniGames/Scenes/CatchFruit.unity`（接果子），五个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **225/225 通过**（虚拟宠物 145 + 跑酷 15 + 手机端 34 + 小游戏 31），EditMode |
+| 测试 | **235/235 通过**（虚拟宠物 152 + 跑酷 15 + 手机端 34 + 小游戏 34），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
-| 安卓包 | `UnityMCPProject/Builds/Android/RoomPet.apk`（约 15 MB，开发版；被 git 忽略） |
+| 安卓包 | `UnityMCPProject/Builds/RoomPet.apk`（约 16 MB，开发版；被 git 忽略），发布在 GitHub release `v0.2.0-mobile.1` |
 | 回归证据图 | `docs/evidence/*.png`（随文档一起提交，便于复盘） |
 
 **两个场景一句话说明**
@@ -167,7 +167,9 @@
    | `dshpet.view` | 视角模式（0 全景 / 1 自由 / 2 跟随主角） |
    | `dshpet.away` | "出去玩了"标记（小游戏往返用） |
    | `dshpet.voice` | 宠物叫声开关（默认开） |
-   | `dshpet.tts` / `dshpet.tts.hinted` | 朗读开关（默认关）/ "已经提示过设置里能开朗读" |
+   | `dshpet.tts` / `dshpet.tts.hinted` | 朗读开关（**第 14 轮起默认开**，和叫声一致）/ "已经提示过设置里能开朗读" |
+   | `dshpet.stt` | 语音输入开关（默认开，关掉就不显示麦克风按钮） |
+   | `dshpet.memory.level` | 记忆配对的难度（`easy`/`normal`/`hard`） |
    | `dshpet.coins` | 宠物币（`DshMobile.PetWallet`） |
    | `dshpet.collection` | 商城/仓库/背包的 JSON（`PetCollection`） |
    | `dshpet.world.unlocked` / `dshpet.world.current` | 地图解锁列表 / 当前所在地 |
@@ -579,6 +581,37 @@
     30px，正好压在聊天栏的「和它说说话」按钮上——玩家看到两层东西叠在一起，点下去时触控层又把
     手指判给了摇杆，于是「按钮不好使」。修法：虚影严格放在自己的区域**内部**，并且在玩家第一次
     拖动之后淡出（一个永久的提示到最后只剩噪音）。
+79. **一个区域被定义两次，就一定会分叉。** 坑 78 只修了"画在哪"，没修"抓在哪"：摇杆的抓取区
+    （`MobileTouch.StickZone`）仍然是**凭空写的一个矩形**——屏幕左侧 46% × 下方 60%，
+    把整个聊天栏都盖住了。于是「和它说说话」依然点不动：点在按钮上，手指被判给了摇杆。
+    现在抓取区**就是**绘制用的那个矩形（`ComputeMobileControls(layout).StickZone`）。
+    **"画"和"点"必须是同一个数**；两份定义里错的那一份，永远不会在截图上显形。
+80. **emoji 第四次：卡片正面。** 记忆配对第一版用 🍎🐟🦴 之类当牌面，结果每张牌都是空白——
+    Unity 内建字体没有 emoji（前三次：宠物页签、底栏标签、圆按钮）。这次不再换成汉字了事：
+    牌面改成**程序化画的小动物**（`PetAvatarArt`，96×96 逐像素：头 + 耳朵 + 眼睛高光 + 口鼻）。
+    顺带一条经验：**程序化画的东西要能被单测"看"**——两条测试盯着"八张脸互不相同"
+    和"覆盖率 18%–92%、颜色数 > 3"，因为"一片空白"和"一坨纯色"在编辑器截图里都不明显。
+81. **配对成功后牌该消失。** 第一版配对成功只是盖着牌加个绿边，盘面永远是满的——玩家读到的是
+    "已完成"，而不是"我赢了"。现在绿闪一下 → 动物缩小淡出 → 那一格**真的空掉**（0.45 秒）。
+    实现上模型不用变：界面自己比较 `IsTaken` 的变化记下"刚配对"的时刻。
+    **胜利最好看得见，不然它只是一个计数器。**
+82. **难度不加钱就等于没有难度。** 三档难度只把盘面变大而奖励一样，玩家没有理由去点困难。
+    现在简单/中等/困难 = 4/6/8 对，奖励最多 20/30/45（步数扣减、保底三成），并且**会记住**档位。
+83. **拖动是"距离"，而 IMGUI 一帧会跑两遍。** 接果子改成滑屏之后，最危险的一行是
+    "在 OnGUI 里读这一帧移动了多少"：Layout 和 Repaint 都会跑 OnGUI，同一帧的位移被应用两次，
+    篮子走双倍距离——而**编辑器里静止的画面完全看不出来**。修法：拖动在 `Update`（一帧一次）
+    里读，读完 `ConsumeFrameDelta()` 清掉。同一条道理反过来也成立：`FrameDelta` 是唯一一个
+    "不是标志位"的输入，任何读它的地方都必须自己负责消费掉它。
+84. **默认值就是产品决策（第二遍，反着来）。** 坑 57 说"朗读默认关"，理由是"手机突然说话会被
+    静音"；真机反馈是"宠物还是不会说话"——玩家按了「▶ 测试朗读」听得见，宠物却一直闭嘴，
+    因为那是同一个偏好值，而它默认是关的。**一个功能要靠翻设置才生效，就不是默认开不开的问题，
+    而是没人知道它存在。** 现在默认开，并且**按下测试按钮就等于打开它**：玩家的动作已经表达
+    了意图，不该再让他去找勾选框。
+85. **同一个按钮点不动，通常有三个原因，要一次修完。** 「麦克风不好使」最后是：①尺寸太小
+    （52 → 64 设计像素，栏高 68 → 80）②没权限时提示"再点一次"（一句没人读的话）——现在**记住
+    意图，拿到权限自动开始听**；③国产 ROM 的识别服务要 `EXTRA_CALLING_PACKAGE`，否则回
+    `ERROR_CLIENT` 就像"听过了"。**"点不动"是一个体验描述，不是一个 bug 描述**：
+    尺寸、时序、平台差异都要各查一遍。
 
 ---
 
@@ -589,6 +622,9 @@
 D:\projects\dsh-unity\UnityMCPProject
 Assets\Scenes\Main.unity            # 跑酷
 Assets\Pet\Scenes\PetRoom.unity     # 虚拟宠物
+Assets\MiniGames\Scenes\FlyBird.unity     # 小鸟飞行
+Assets\MiniGames\Scenes\JumpQuest.unity   # 跳一跳
+Assets\MiniGames\Scenes\CatchFruit.unity  # 接果子
 
 # 仓库
 git remote -v                       # origin = github.com/codesknight/roompet
@@ -605,14 +641,15 @@ Tools/DSH Pet/Build Pet Scene       # 重建场景里的房间（改了 PetRoom 
 Tools/DSH Pet/Fix Script Encodings  # 补 UTF-8 BOM（中文乱码时先跑这个）
 Tools/DSH Pet/Clear Pet Save        # 清存档（含日记文件）
 Tools/DSH Runner/Validate Wiring    # 跑酷侧自检
+Tools/DSH Mini/Build CatchFruit Scene   # 从代码重建接果子场景并注册到 Build Settings
 Tools/DSH Mobile/Report Mobile Status          # 平台/触控/缩放/安全区/包名/架构
 Tools/DSH Mobile/Toggle Touch Preview          # 编辑器里用手机布局（鼠标当手指），Ctrl+Shift+T
 Tools/DSH Mobile/Preview/Phone Portrait 1080x2400   # 把 Game 视图切成真机尺寸，Ctrl+Shift+1..4
 Tools/DSH Mobile/Preview/Report Current Viewport    # 打印当前视口 / 方向 / 缩放 / 设计尺寸
-Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
+Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
-EditMode，期望 115/115
+EditMode，期望 235/235
 
 # 存档
 %USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\

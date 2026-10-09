@@ -159,6 +159,18 @@ namespace DshMobile
         /// <summary>Test/manual helper: consume the swipe so it is not seen twice.</summary>
         public void ConsumeSwipe() => Swipe = SwipeDirection.None;
 
+        /// <summary>
+        /// Clears the per-frame movement, after a consumer has applied it.
+        ///
+        /// A continuous drag is the one gesture whose result is *not* a flag, and that makes it the
+        /// one that can be applied twice: the delta stays in this object until the next
+        /// <see cref="Move"/>, which is normally the next frame but is not guaranteed to be — a
+        /// finger whose events stop arriving leaves the last delta sitting here, and a consumer that
+        /// reads it every frame would slide the basket across the room on its own. The consumer
+        /// takes it, and clears it.
+        /// </summary>
+        public void ConsumeFrameDelta() => FrameDelta = Vector2.zero;
+
         public void ConsumeTap() => Tapped = false;
     }
 }

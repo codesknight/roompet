@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace DshMobile
 {
@@ -40,6 +40,17 @@ namespace DshMobile
         private static string _error = "";
         private static int _errorCode = int.MinValue;
         private static float _listeningSince;
+
+        /// <summary>
+        /// Set when the player asked to speak but the permission dialog was still in the way.
+        ///
+        /// The first version told them to "press the microphone again after agreeing", which is a
+        /// sentence nobody reads and, on a phone, a button they then press twice with nothing
+        /// happening the first time. The platform's dialog is asynchronous, so the honest thing is
+        /// to remember the request and start listening the moment the permission lands.
+        /// </summary>
+        private static bool _pendingStart;
+        private static float _pendingSince;
 
         /// <summary>Give up on a listen that never produced a result.</summary>
         public const float TimeoutSeconds = 12f;
@@ -130,9 +141,16 @@ namespace DshMobile
             }
         }
 
+        /// <summary>True when a listen is queued behind the permission dialog.</summary>
+        public static bool PendingPermission => _pendingStart;
+
         /// <summary>
         /// Starts listening. Returns false — with a reason in <see cref="LastError"/> — when there
         /// is no recogniser or no permission, rather than pretending to listen.
+        ///
+        /// The no-permission case is not a dead end: the request is remembered and
+        /// <see cref="Tick"/> starts listening as soon as the platform reports the permission, so
+        /// the player's one press is honoured instead of being thrown away.
         /// </summary>
         public static bool StartListening()
         {
@@ -145,9 +163,13 @@ namespace DshMobile
             if (!HasPermission)
             {
                 RequestPermission();
-                _error = "需要麦克风权限：同意之后再点一次麦克风";
+                _pendingStart = true;
+                _pendingSince = Time.realtimeSinceStartup;
+                _error = "正在申请麦克风权限：同意之后会自动开始听。";
                 return false;
             }
+
+            _pendingStart = false;
 
             if (!EnsureRecognizer())
             {
@@ -209,17 +231,39 @@ namespace DshMobile
 
             _listener = null;
             _listening = false;
+            _pendingStart = false;
         }
 
-        /// <summary>Call once a frame: gives up on a listen that produced nothing.</summary>
+        /// <summary>Call once a frame: starts the queued listen, and gives up on a silent one.</summary>
         public static void Tick()
         {
+            if (_pendingStart)
+            {
+                if (HasPermission)
+                {
+                    // The dialog has been answered with a yes. Start now, which is what the player
+                    // asked for one press ago.
+                    _pendingStart = false;
+                    StartListening();
+                }
+                else if (Time.realtimeSinceStartup - _pendingSince > PendingPermissionSeconds)
+                {
+                    // Refused (or dismissed and never granted): stop pretending something is coming.
+                    _pendingStart = false;
+                    _error = "没有麦克风权限：到系统设置里允许「录音」，再点麦克风。";
+                    return;
+                }
+            }
+
             if (!_listening) return;
             if (Time.realtimeSinceStartup - _listeningSince < TimeoutSeconds) return;
 
             Cancel();
             _error = "没听到声音（超时）";
         }
+
+        /// <summary>How long a queued listen waits for the permission dialog before giving up.</summary>
+        public const float PendingPermissionSeconds = 25f;
 
         /// <summary>Consumes the result, so the UI can fill the input box exactly once.</summary>
         public static string TakeResult()
@@ -284,6 +328,28 @@ namespace DshMobile
                     // player needs to see before they stop talking.
                     _intent.Call<AndroidJavaObject>("putExtra",
                         intentClass.GetStatic<string>("EXTRA_PARTIAL_RESULTS"), true);
+
+                    // Several recognisers — the Chinese ROMs especially — ignore an intent that does
+                    // not name the package that is asking, and answer with ERROR_CLIENT instead of
+                    // listening. It costs one extra and turns "the engine is broken" into "the
+                    // engine was asked properly", which is the whole difference on a Xiaomi.
+                    try
+                    {
+                        using (var activity = CurrentActivity())
+                        {
+                            string package = activity.Call<string>("getPackageName");
+                            if (!string.IsNullOrEmpty(package))
+                            {
+                                _intent.Call<AndroidJavaObject>("putExtra",
+                                    intentClass.GetStatic<string>("EXTRA_CALLING_PACKAGE"), package);
+                            }
+                        }
+                    }
+                    catch (System.Exception e)
+                    {
+                        // Not fatal: the older recognisers do not need it at all.
+                        Debug.Log("[DshMobile] calling_package extra skipped: " + e.Message);
+                    }
                 }
 
                 return true;

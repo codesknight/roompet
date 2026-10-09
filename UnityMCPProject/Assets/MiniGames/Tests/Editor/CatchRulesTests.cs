@@ -1,4 +1,4 @@
-using DshMiniGames;
+﻿using DshMiniGames;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -169,6 +169,64 @@ namespace DshMiniGames.Tests
                 Assert.IsFalse(string.IsNullOrEmpty(CatchRules.RankFor(caught)), $"no rank at {caught}");
             }
             Assert.AreNotEqual(CatchRules.RankFor(0), CatchRules.RankFor(60));
+        }
+
+        [Test]
+        public void Drag_MovesTheBasketExactlyAsFarAsTheFinger()
+        {
+            // The control is a drag now, and its whole promise is that it does not overshoot: the
+            // basket covers the distance the thumb covered, no more. This is the property that made
+            // it worth replacing the two hold-to-move pads with.
+            float x = CatchRules.DragTo(0f, 1.25f, Settings);
+            Assert.AreEqual(1.25f, x, 0.0001f);
+
+            x = CatchRules.DragTo(x, -0.5f, Settings);
+            Assert.AreEqual(0.75f, x, 0.0001f);
+
+            // A drag is not a speed: the same delta moves the same distance however long it took.
+            float small = CatchRules.DragTo(0f, 0.2f, Settings);
+            for (int i = 0; i < 5; i++) small = CatchRules.DragTo(small, 0.2f, Settings);
+            Assert.AreEqual(1.2f, small, 0.0001f, "five small drags add up to one big one");
+        }
+
+        [Test]
+        public void Drag_StopsAtTheSameWallsAsTheButtons()
+        {
+            // Two ways to steer must not disagree about where the edge is: a drag that could push
+            // the basket past the limit the held-direction path enforces would put the basket off
+            // the play area, and the fruit it should catch would land beside it.
+            float limit = CatchRules.LimitFor(Settings);
+
+            float right = CatchRules.DragTo(0f, 999f, Settings);
+            Assert.AreEqual(limit, right, 0.0001f);
+
+            float left = CatchRules.DragTo(0f, -999f, Settings);
+            Assert.AreEqual(-limit, left, 0.0001f);
+
+            float held = 0f;
+            for (int i = 0; i < 600; i++) held = CatchRules.StepBasket(held, 1f, 1f / 60f, Settings);
+            Assert.AreEqual(held, right, 0.001f, "the drag and the held direction share a wall");
+        }
+
+        [Test]
+        public void Drag_PixelsBecomeWorldUnitsMonotonically()
+        {
+            // A drag has to move the basket *towards* the finger on every screen: a portrait phone
+            // and a wide tablet cannot both be right unless the mapping scales with the width.
+            float phone = CatchRules.PixelsToWorld(200f, 1080f, Settings);
+            float tablet = CatchRules.PixelsToWorld(200f, 2160f, Settings);
+
+            Assert.Greater(phone, 0f, "dragging right has to move right");
+            Assert.Greater(phone, tablet, "the same pixels are worth more world on a narrow screen");
+
+            // The whole screen is worth the whole play area, which is what makes the basket track
+            // the thumb instead of lagging behind it.
+            Assert.AreEqual(Settings.HalfWidth * 2f,
+                CatchRules.PixelsToWorld(1080f, 1080f, Settings), 0.0001f);
+
+            // A degenerate screen size is a divide-by-zero waiting to happen.
+            Assert.IsFalse(float.IsNaN(CatchRules.PixelsToWorld(10f, 0f, Settings)));
+            Assert.IsFalse(float.IsInfinity(CatchRules.PixelsToWorld(10f, 0f, Settings)));
         }
     }
 }

@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace DshMobile
 {
@@ -111,8 +111,39 @@ namespace DshMobile
         }
 
         /// <summary>
+        /// Whether a pointer press landed inside a design-space rect, read straight from the
+        /// pointer instead of from the touch layer.
+        ///
+        /// <see cref="MobileTouch"/> is the good path — it tracks fingers by id, so two controls
+        /// can be held at once — but it is also a lot of machinery between a finger and a button,
+        /// and when anything in that machinery is wrong the symptom is "the button does not
+        /// respond", with nothing on screen to explain it. This asks the same question the dumb
+        /// way: did a click this frame land in this rect. The two answers are OR'd, so the good
+        /// path still owns multi-touch and this can only ever add a press that would be lost.
+        /// A click is what Unity synthesises from a single touch, so this is exactly one finger.
+        /// </summary>
+        public static bool PointerPressedInside(Rect designRect)
+        {
+            if (!MobileTouch.PlayInputEnabled) return false;
+            if (!Input.GetMouseButtonDown(0)) return false;
+
+            var screen = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
+            return designRect.Contains(ToDesign(screen));
+        }
+
+        /// <summary>Like <see cref="PointerPressedInside"/>, but for as long as the pointer is down.</summary>
+        public static bool PointerHeldInside(Rect designRect)
+        {
+            if (!MobileTouch.PlayInputEnabled) return false;
+            if (!Input.GetMouseButton(0)) return false;
+
+            var screen = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
+            return designRect.Contains(ToDesign(screen));
+        }
+
+        /// <summary>
         /// A tappable control: draws it, registers its rect, and highlights it while held.
-        /// Returns true when it was pressed this frame (press = finger down on it).
+        /// Returns true when it was pressed this frame (finger down on it, on either input path).
         /// The rect is in the HUD's current (design) space; registration converts it.
         /// </summary>
         public static bool Button(string id, Rect rect, string label, Color tint, bool enabled = true)
@@ -120,7 +151,7 @@ namespace DshMobile
             EnsureStyles();
             MobileTouch.RegisterButton(id, ToScreen(rect), enabled, label);
 
-            bool held = enabled && MobileTouch.Held(id);
+            bool held = enabled && (MobileTouch.Held(id) || PointerHeldInside(rect));
 
             Color fill = enabled
                 ? (held ? Color.Lerp(tint, Color.white, 0.45f) : new Color(tint.r, tint.g, tint.b, 0.55f))
@@ -133,7 +164,7 @@ namespace DshMobile
             GUI.Label(rect, label, _label);
             GUI.color = previous;
 
-            return enabled && MobileTouch.Pressed(id);
+            return enabled && (MobileTouch.Pressed(id) || PointerPressedInside(rect));
         }
 
         /// <summary>
@@ -154,7 +185,7 @@ namespace DshMobile
             EnsureStyles();
             MobileTouch.RegisterButton(id, ToScreen(rect), enabled, label);
 
-            bool held = enabled && MobileTouch.Held(id);
+            bool held = enabled && (MobileTouch.Held(id) || PointerHeldInside(rect));
             float radius = Mathf.Min(rect.width, rect.height) * 0.5f;
             var circle = new Rect(rect.center.x - radius, rect.center.y - radius, radius * 2f, radius * 2f);
 
@@ -178,7 +209,7 @@ namespace DshMobile
             GUI.Label(circle, label, _label);
             GUI.color = previous;
 
-            return enabled && MobileTouch.Pressed(id);
+            return enabled && (MobileTouch.Pressed(id) || PointerPressedInside(rect));
         }
 
         /// <summary>

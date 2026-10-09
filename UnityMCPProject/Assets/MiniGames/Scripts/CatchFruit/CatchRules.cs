@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace DshMiniGames
 {
@@ -65,6 +65,35 @@ namespace DshMiniGames
             float limit = settings.HalfWidth - settings.BasketHalfWidth;
             return Mathf.Clamp(x + Mathf.Clamp(direction, -1f, 1f) * settings.BasketSpeed * step,
                 -limit, limit);
+        }
+        /// <summary>How far the basket may travel from the middle.</summary>
+        public static float LimitFor(CatchSettings settings) => settings.HalfWidth - settings.BasketHalfWidth;
+
+        /// <summary>
+        /// Where the basket ends up after being dragged by a distance, in world units.
+        ///
+        /// The swipe is the control now, and its one rule is that the basket must not outrun the
+        /// finger: a thumb that has dragged 200px across a 5.2-unit-wide play area has moved the
+        /// basket 200px worth, no more and no less. Clamped to the same limit the held-direction
+        /// path uses, so the two ways of steering cannot disagree about where the walls are.
+        /// </summary>
+        public static float DragTo(float x, float worldDelta, CatchSettings settings)
+        {
+            return Mathf.Clamp(x + worldDelta, -LimitFor(settings), LimitFor(settings));
+        }
+
+        /// <summary>
+        /// Turns a drag in screen pixels into a drag in world units.
+        ///
+        /// The play area is <c>HalfWidth * 2</c> units across and <c>screenWidth</c> pixels across,
+        /// so a pixel is worth this many units. Painting the finger's motion onto the world this way
+        /// is what makes the basket feel attached to the thumb instead of chasing it at some
+        /// invented speed.
+        /// </summary>
+        public static float PixelsToWorld(float pixels, float screenWidth, CatchSettings settings)
+        {
+            float width = Mathf.Max(1f, screenWidth);
+            return pixels * (settings.HalfWidth * 2f) / width;
         }
 
         /// <summary>How fast fruit falls after this many points.</summary>
