@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 namespace DshPet
@@ -60,11 +60,7 @@ namespace DshPet
             BuildFurniture();
 
             BuildBowls();
-            BuildBed();
-            BuildBall();
-            BuildBrush();
-            BuildToilet();
-            BuildBath();
+            BuildPurchasedProps();
             BuildDoor();
 
             BuildDecor();
@@ -1030,17 +1026,59 @@ namespace DshPet
 
         // -------------------------------------------------------------- interactables
 
+        /// <summary>
+        /// Builds the furniture the player has bought *and* placed.
+        ///
+        /// The default room is deliberately bare — the pet and the two bowls, nothing else —
+        /// because a bed, a litter box and a ball are now things you earn rather than things that
+        /// are just there. Everything else in this room comes from <see cref="PetInventory"/>.
+        /// </summary>
+        private void BuildPurchasedProps()
+        {
+            var placed = PetInventory.Placed();
+            for (int i = 0; i < PetShop.All.Length; i++)
+            {
+                var item = PetShop.All[i];
+                if (item.IsFood || !item.Kind.HasValue) continue;
+                if (!placed.ContainsKey(item.Id)) continue;
+
+                BuildProp(item);
+            }
+        }
+
+        /// <summary>Builds one placed shop prop at the position the player chose for it.</summary>
+        private Interactable BuildProp(ShopItem item)
+        {
+            Vector2 at = PetInventory.PositionOf(item.Id);
+            switch (item.Kind.Value)
+            {
+                case InteractableKind.Bed: return BuildBed(at);
+                case InteractableKind.Ball: return BuildBall(at);
+                case InteractableKind.Brush: return BuildBrush(at);
+                case InteractableKind.Toilet: return BuildToilet(at);
+                case InteractableKind.Bath: return BuildBath(at);
+                case InteractableKind.Toy: return BuildToy(at);
+                default: return null;
+            }
+        }
+
         private Interactable[] BuildBowls()
-        {            var food = Bowl("FoodBowl", new Vector3(3.4f, 0f, 3.2f), new Color(0.92f, 0.42f, 0.35f));
+        {
+            Vector2 foodAt = PetInventory.PositionOf(PetShop.FoodBowl);
+            Vector2 waterAt = PetInventory.PositionOf(PetShop.WaterBowl);
+
+            var food = Bowl("FoodBowl", new Vector3(foodAt.x, 0f, foodAt.y), new Color(0.92f, 0.42f, 0.35f));
             food.Kind = InteractableKind.Food;
             food.Label = "食物碗";
-            food.ApproachPoint = new Vector3(3.4f, 0f, 2.0f);
+            food.ItemId = PetShop.FoodBowl;
+            food.ApproachPoint = new Vector3(foodAt.x, 0f, foodAt.y - 1.2f);
             AddFruit(food.transform, "Runner/Items/apple", new Vector3(0f, 0.18f, 0f), 0.26f);
 
-            var water = Bowl("WaterBowl", new Vector3(4.6f, 0f, 3.2f), new Color(0.35f, 0.62f, 0.85f));
+            var water = Bowl("WaterBowl", new Vector3(waterAt.x, 0f, waterAt.y), new Color(0.35f, 0.62f, 0.85f));
             water.Kind = InteractableKind.Water;
             water.Label = "水碗";
-            water.ApproachPoint = new Vector3(4.6f, 0f, 2.0f);
+            water.ItemId = PetShop.WaterBowl;
+            water.ApproachPoint = new Vector3(waterAt.x, 0f, waterAt.y - 1.2f);
             BoxUnder(water.transform, "Water", new Vector3(0f, 0.11f, 0f), new Vector3(0.62f, 0.06f, 0.62f),
                 new Color(0.45f, 0.78f, 0.95f), 0.9f);
 
@@ -1094,11 +1132,11 @@ namespace DshPet
             }
         }
 
-        private Interactable BuildBed()
+        private Interactable BuildBed(Vector2 at)
         {
             var go = new GameObject("Bed");
             go.transform.SetParent(_root, false);
-            go.transform.position = new Vector3(-4.4f, 0f, -4.4f);
+            go.transform.position = new Vector3(at.x, 0f, at.y);
 
             BoxUnder(go.transform, "Base", new Vector3(0f, 0.14f, 0f), new Vector3(2.2f, 0.28f, 1.8f),
                 new Color(0.50f, 0.34f, 0.24f), 0.4f);
@@ -1114,15 +1152,16 @@ namespace DshPet
             var interactable = go.AddComponent<Interactable>();
             interactable.Kind = InteractableKind.Bed;
             interactable.Label = "小床";
-            interactable.ApproachPoint = new Vector3(-4.4f, 0f, -2.9f);
+            interactable.ItemId = "bed";
+            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y + 1.5f);
             return interactable;
         }
 
-        private Interactable BuildBall()
+        private Interactable BuildBall(Vector2 at)
         {
             var go = new GameObject("Ball");
             go.transform.SetParent(_root, false);
-            go.transform.position = new Vector3(1.8f, 0f, 4.2f);
+            go.transform.position = new Vector3(at.x, 0f, at.y);
 
             var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             sphere.name = "Sphere";
@@ -1147,7 +1186,8 @@ namespace DshPet
             var interactable = go.AddComponent<Interactable>();
             interactable.Kind = InteractableKind.Ball;
             interactable.Label = "小球（按 E 拿起 / 点它让宠物去捡）";
-            interactable.ApproachPoint = new Vector3(1.8f, 0f, 3.0f);
+            interactable.ItemId = "ball";
+            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y - 1.2f);
 
             // Throwing and fetching need the ball to be a stateful object, not a static prop.
             var ball = go.AddComponent<PetBall>();
@@ -1155,11 +1195,11 @@ namespace DshPet
             return interactable;
         }
 
-        private Interactable BuildBrush()
+        private Interactable BuildBrush(Vector2 at)
         {
             var go = new GameObject("Brush");
             go.transform.SetParent(_root, false);
-            go.transform.position = new Vector3(-1.6f, 0f, 4.6f);
+            go.transform.position = new Vector3(at.x, 0f, at.y);
 
             BoxUnder(go.transform, "Handle", new Vector3(0f, 0.10f, 0f), new Vector3(0.9f, 0.09f, 0.16f),
                 new Color(0.62f, 0.44f, 0.30f), 0.5f);
@@ -1173,7 +1213,8 @@ namespace DshPet
             var interactable = go.AddComponent<Interactable>();
             interactable.Kind = InteractableKind.Brush;
             interactable.Label = "梳子";
-            interactable.ApproachPoint = new Vector3(-1.6f, 0f, 3.4f);
+            interactable.ItemId = "brush";
+            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y - 1.2f);
             return interactable;
         }
 
@@ -1182,11 +1223,11 @@ namespace DshPet
         /// reach it is a pet that sometimes does not make it, which is where the mess system
         /// comes from.
         /// </summary>
-        private Interactable BuildToilet()
+        private Interactable BuildToilet(Vector2 at)
         {
             var go = new GameObject("Toilet");
             go.transform.SetParent(_root, false);
-            go.transform.position = new Vector3(5.1f, 0f, -5.0f);
+            go.transform.position = new Vector3(at.x, 0f, at.y);
 
             BoxUnder(go.transform, "Tray", new Vector3(0f, 0.12f, 0f), new Vector3(1.7f, 0.24f, 1.3f),
                 new Color(0.55f, 0.62f, 0.68f), 0.25f);
@@ -1202,16 +1243,17 @@ namespace DshPet
             var interactable = go.AddComponent<Interactable>();
             interactable.Kind = InteractableKind.Toilet;
             interactable.Label = "猫砂盆";
-            interactable.ApproachPoint = new Vector3(5.1f, 0f, -3.6f);
+            interactable.ItemId = "litter_box";
+            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y + 1.4f);
             return interactable;
         }
 
         /// <summary>A wash basin with a raised lip, plus a soap bar so it reads as a bath.</summary>
-        private Interactable BuildBath()
+        private Interactable BuildBath(Vector2 at)
         {
             var go = new GameObject("Bath");
             go.transform.SetParent(_root, false);
-            go.transform.position = new Vector3(-5.2f, 0f, 4.6f);
+            go.transform.position = new Vector3(at.x, 0f, at.y);
 
             BoxUnder(go.transform, "Tub", new Vector3(0f, 0.26f, 0f), new Vector3(1.9f, 0.52f, 1.5f),
                 new Color(0.80f, 0.86f, 0.90f), 0.35f);
@@ -1227,7 +1269,41 @@ namespace DshPet
             var interactable = go.AddComponent<Interactable>();
             interactable.Kind = InteractableKind.Bath;
             interactable.Label = "澡盆";
-            interactable.ApproachPoint = new Vector3(-5.2f, 0f, 3.4f);
+            interactable.ItemId = "bath";
+            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y - 1.2f);
+            return interactable;
+        }
+
+        /// <summary>A small squeaky toy: a yarn ball on the floor, for the pet to pounce on.</summary>
+        private Interactable BuildToy(Vector2 at)
+        {
+            var go = new GameObject("Toy");
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(at.x, 0f, at.y);
+
+            var ball = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            ball.name = "Yarn";
+            ball.transform.SetParent(go.transform, false);
+            ball.transform.localScale = Vector3.one * 0.46f;
+            ball.transform.localPosition = new Vector3(0f, 0.23f, 0f);
+            SetColor(ball, new Color(0.88f, 0.36f, 0.44f), 0.7f);
+
+            var ear = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            ear.name = "Ear";
+            ear.transform.SetParent(go.transform, false);
+            ear.transform.localScale = Vector3.one * 0.20f;
+            ear.transform.localPosition = new Vector3(0.30f, 0.42f, 0f);
+            SetColor(ear, new Color(0.98f, 0.90f, 0.85f), 0.7f);
+
+            var hit = go.AddComponent<SphereCollider>();
+            hit.radius = 0.42f;
+            hit.center = new Vector3(0f, 0.28f, 0f);
+
+            var interactable = go.AddComponent<Interactable>();
+            interactable.Kind = InteractableKind.Toy;
+            interactable.Label = "玩具（点它让宠物去玩）";
+            interactable.ItemId = "toy";
+            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y + 1.2f);
             return interactable;
         }
 

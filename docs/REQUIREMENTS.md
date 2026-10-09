@@ -353,6 +353,21 @@
 | R24.8 | 背景音乐 · 设置开关 + 音量 | 开始界面与房间内设置面板各加「背景音乐」开关（默认开）+ **音量滑条**（0–100%，默认 45%），持久化到 PlayerPrefs；与音效静音互不影响；关掉立刻停、开回来立刻重播。面板显示「现在放的是：曲名（作者）」 | 单测：开关与音量持久化、音量钳到 0..1、默认开、`ResetForTests` 清空 ✅ |
 | R24.9 | 音频导入 | `MusicImportPostprocessor` 对 `Resources/Music/` 下的音频自动设 **Streaming + Vorbis(0.7) + 不预载**（两分钟的歌不该整首解进内存），逐平台设置 | 实测：11 首都导入成功、时长 47.6–248.4 秒、全部 Streaming ✅ |
 
+---
+
+## 阶段 25：商城、仓库、自由摆放，以及猫砂盆的经济
+
+| 编号 | 需求 | 实现 | 验收证据 |
+|---|---|---|---|
+| R25.1 | 商城卖粮食和道具，每件有介绍和价格 | `PetShop`（纯数据目录）：七件商品，每件 `Id/Name/Emoji/Price/Blurb/Category/Kind/DefaultPosition`。UI「家具」面板（`PetHud.DrawFurnish`）商城页逐件列出名称、价格、一句介绍和「购买」按钮（买不起显示"还差 N"、已拥有显示"已拥有"）| 单测：每件商品都有 id/名字/介绍/正价格；道具都映射到一个 `InteractableKind`，粮食是消耗品不是家具 ✅ 截图 `round25_furnish_shop.png` |
+| R25.2 | 初始房间只有宠物、水盆、饭盆 | `PetRoom.Build` 不再无条件建床/球/梳子/猫砂盆/澡盆，改为 `BuildPurchasedProps()` 只建**已拥有且已摆放**的家具；两个碗永远在（starter）。**房间每次加载都按存档重建**（修掉旧代码"主题没变就复用场景烘焙家具"的漏洞，否则买回来的床不显示）| 单测：`PetInventory.Placed()` 初始只含两个碗；床/猫砂盆未购买前 `IsPlaced=false` ✅ 实测（编辑器）：裸房间 bed/ball/toilet 都为 0、碗 2 个 ✅ |
+| R25.3 | 仓库能存放、卖掉、摆放 | `PetInventory`（纯状态机 + PlayerPrefs）：`Owned`（仓库里的家具）、`Placed`（已摆放 + 位置）、`Food`（粮存量）。`Place`（放进房间）、`Store`（收回仓库）、`Sell`（返还半价并清出房间）。碗不能卖/收但可挪 | 单测：买了只能买一次、摆放/收回来回、卖掉返还半价并同时清仓库和房间、碗不能卖/收、未拥有的不能摆 ✅ |
+| R25.4 | 自由放置模式 | `PlacementDragger`（新组件）：进入摆放模式后按住家具**拖到新位置、松手保存**；拖动时 HUD 把房间标记为 modal（`ModalOpen` 含 `_placeMode`），暂停"点床让宠物去睡"；位置钳在房间内。家具位置按 `id` 存进 `Placed` | 单测：`ClampToRoom` 把越界位置钳回来、合法位置不动 ✅ 实测（编辑器）：买+摆猫砂盆后重建，toilet 从 0 → 1 ✅ |
+| R25.5 | 有猫砂盆 → 自由上厕所自动赚金币 | `PetController.UsePending` 的 `Toilet` 分支：`needed = Bladder < 0.7f`，`Needs.Relieve()` 后若 needed 则 `PetWallet.Add(3)`（`LitterBoxCoinReward`）——只有真的需要时才产币，防止刷钱 | 实测（运行中的游戏）：膀胱 0.5 用猫砂盆 +3、膀胱 1.0 +0 ✅ |
+| R25.6 | 没有猫砂盆 → 拉在房间，打扫赚金币 | 猫砂盆没摆放时房间里没有 `Toilet`，宠物憋不住就走原有事故流程 `SpawnMess` 拉在地上；`PetGameManager.CleanMess` 现在 `PetWallet.Add(5)`（`CleaningCoinReward`）| 实测（运行中的游戏）：生成污渍 → 打扫，金币 +5、污渍移除 ✅ |
+| R25.7 | 饭碗空了会挨饿、要去补货 | 粮食是消耗品：`PetInventory.Food`，宠物每吃一顿 `TryConsumeMeal()`；吃空后 `UsePending` 不喂食并触发 `BowlsEmpty`。行为表 `eat` 新增 `NeedsFood` 门槛 + 上下文 `FoodAvailable`——**宠物不会再去空碗** | 单测：`TryConsumeMeal` 三顿吃完返回 false；`eat` 在 `FoodAvailable=false` 时不触发、在 true 时触发 ✅ |
+| R25.8 | 玩具是新的可交互道具 | 新 `InteractableKind.Toy` 的 `BuildToy`（毛线球），`UsePending` 的 `Toy` 分支 `Needs.Play(0.45, true)` + 扑玩动画 | 目录里 `toy` 映射到 `InteractableKind.Toy`，单测覆盖 ✅ |
+
 
 ## 非功能需求 / 设计约束
 

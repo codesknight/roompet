@@ -886,6 +886,18 @@
     修法是提成一个纯函数 `Toggled(wasOn, tapped) = tapped ? !wasOn : wasOn`，单测钉住真值表；
     音乐系统还补了一道：重新打开却没有目标曲目时，按当前场景自动补一首。
     **"点击"是瞬时的，"状态"是持续的；凡是要返回"值"的控件，都要从点击里推算出值，而不是直接返回点击。**
+133. **家具一旦变成"存档里拥有的"，房间就必须每次按存档重建。** 旧代码有个优化：场景里预先烘焙好的房间
+    在"主题没变"时直接复用，跳过重建。这在家具是写死的时候没问题；但家具变成**买回来才有的**之后，
+    烘焙快照就永远可能是旧的——一个买了小床的玩家，重进游戏会加载进那个没床的烘焙房间（买了=白买）。
+    修法不是"烘焙时带上家具"，而是**干脆每次加载都重建**：房间是几十个基本体，几毫秒的事，
+    "房间和存档一致"比省这点时间重要。**凡是对象由"存档状态"决定，就别再缓存它的"烘焙快照"。**
+134. **"自动赚金币"要防刷钱，得问一句"这次是不是真的需要"。** 猫砂盆每用一次 +3 币，但如果不加门槛，
+    玩家反复点猫砂盆就能刷钱。门槛是 `needed = Bladder < 0.7f`：只有宠物真憋了才产币，膀胱满的时候点它
+    是 0。**任何"互动就给钱"的设计，都要先想清楚"玩家能不能空手重复触发"，能，就加一个真实状态的门槛。**
+135. **"打扫赚金币"这类规则，要写成常量、写成可测的状态机，而不是散在代码里。** 这轮的经济
+    （打扫 +5、猫砂盆 +3、半价回收、粮食三顿一袋）全部落在 `PetInventory`（纯状态机，PlayerPrefs 存取）和
+    两个 `const` 上，9 条单测覆盖：买、只能买一次、摆、收、卖、碗不能卖、位置钳在房间内、粮吃完、
+    `eat` 在有粮/无粮下的门槛。**"每个商品都有特殊交互"这句话，只有变成"每条规则都有测试"才是真的。**
 
 ---
 
@@ -897,6 +909,9 @@ D:\projects\dsh-unity\UnityMCPProject
 Assets\Scenes\Main.unity            # 跑酷
 Assets\Pet\Scenes\StartMenu.unity   # 开始界面（构建列表第 0 个：进入房间 / 玩法介绍 / 设置 / 离开房间 + 开门动画）
 Assets\Pet\Scenes\PetRoom.unity     # 虚拟宠物（同一场景三处地方：Cabin 墙 / Garden 栅栏 / Terrace 栏杆，见 RoomShell）
+Assets\Pet\Scripts\Shop\PetShop.cs         # 商城目录（七件商品：介绍/价格/摆放位置）
+Assets\Pet\Scripts\Shop\PetInventory.cs    # 仓库/摆放/粮食/买卖（纯状态机，PlayerPrefs）
+Assets\Pet\Scripts\World\PlacementDragger.cs  # 自由摆放：按住家具拖、松手保存
 Assets\Resources\Music\              # 11 首 CC0 背景音乐（出处见 docs/MUSIC_SOURCES.md），Streaming+Vorbis
 Assets\MiniGames\Scenes\FlyBird.unity     # 小鸟飞行
 Assets\MiniGames\Scenes\JumpQuest.unity   # 跳一跳
@@ -929,7 +944,7 @@ Tools/DSH Mobile/Preview/Report Current Viewport    # 打印当前视口 / 方�
 Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
-EditMode，期望 335/335
+EditMode，期望 345/345
 
 # 存档
 %USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\

@@ -40,6 +40,10 @@ namespace DshPet
         /// <summary>True while a mess is waiting to be cleaned up.</summary>
         public bool MessPresent;
 
+        /// <summary>True while there is food in the pantry for the bowl. The pet stops going to
+        /// an empty bowl — walking to dinner and finding none is the sad kind of realistic.</summary>
+        public bool FoodAvailable;
+
         /// <summary>Kinds of interactable currently reachable and off cooldown.</summary>
         public InteractableKind[] AvailableTargets;
 
@@ -159,6 +163,10 @@ namespace DshPet
         /// <summary>When true the row cleans up a mess instead of using a target.</summary>
         public bool CleansMess;
 
+        /// <summary>When true the row fires only while the pantry has food. The "eat" row is the
+        /// whole of it: a pet cannot walk to dinner that is not there.</summary>
+        public bool NeedsFood;
+
         public InteractableKind? Target
         {
             get
@@ -193,6 +201,7 @@ namespace DshPet
             // thrown across the room is the most interesting thing in the world.
             if (Fetch && !ctx.BallLoose) return false;
             if (NeedsMess && !ctx.MessPresent) return false;
+            if (NeedsFood && !ctx.FoodAvailable) return false;
 
             if (!string.IsNullOrEmpty(RequiresNeed))
             {

@@ -28,6 +28,9 @@ namespace DshPet
                     Id = "eat", Label = "去吃饭", Drive = BehaviorDrive.Proactive,
                     Action = PetAction.Eat, Duration = 2.6f, Cooldown = 45f, Weight = 1.4f,
                     RequiresNeed = "Hunger", NeedBelow = 0.40f, TargetKind = "Food",
+                    // The bowl is always there; the *food* in it is a shop item. No pantry, no
+                    // trip to the bowl — which is how an empty bowl becomes the shop's job.
+                    NeedsFood = true,
                     Lines = new[] { "肚子在叫了……", "我去看看碗里还有没有。" }
                 },
                 new PetBehavior

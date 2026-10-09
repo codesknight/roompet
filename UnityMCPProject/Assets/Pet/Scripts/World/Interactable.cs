@@ -13,6 +13,12 @@ namespace DshPet
         public InteractableKind Kind = InteractableKind.Food;
         public string Label = "";
 
+        /// <summary>
+        /// The shop id this item corresponds to ("" for the door and messes). Free placement
+        /// moves the object and writes the new position back under this id.
+        /// </summary>
+        public string ItemId = "";
+
         /// <summary>Where the pet stands to use this. Defaults to a spot in front of it.</summary>
         public Vector3 ApproachPoint;
 

@@ -159,6 +159,12 @@ namespace DshPet
         /// <summary>Raised when the pet has an accident, so the notebook can record it.</summary>
         public event Action BladderAccident;
 
+        /// <summary>Raised when the pet finds the food bowl empty, so the HUD can say "去商城".</summary>
+        public event Action BowlsEmpty;
+
+        /// <summary>Coins the litter box pays out each time the pet actually needed it.</summary>
+        public const int LitterBoxCoinReward = 3;
+
         /// <summary>
         /// How long the pet gets to reach the tray, from where it currently is.
         ///
@@ -726,8 +732,20 @@ namespace DshPet
             switch (target.Kind)
             {
                 case InteractableKind.Food:
-                    Needs.Feed();
-                    Avatar.PlayAction(PetAction.Eat, 2.6f);
+                    // The bowl is the starter furniture; the *food* in it is a shop item. A meal
+                    // costs one unit of the pantry, and an empty pantry means the pet sits down
+                    // to an empty bowl — which is the player's cue to go shopping.
+                    if (PetInventory.TryConsumeMeal())
+                    {
+                        Needs.Feed();
+                        Avatar.PlayAction(PetAction.Eat, 2.6f);
+                    }
+                    else
+                    {
+                        Needs.Pet(0.05f);
+                        Avatar.PlayAction(PetAction.Sad, 2.2f);
+                        BowlsEmpty?.Invoke();
+                    }
                     break;
                 case InteractableKind.Water:
                     Needs.GiveWater();
@@ -749,8 +767,13 @@ namespace DshPet
                     StartBubbles(target.transform.position);
                     break;
                 case InteractableKind.Toilet:
+                    // Using the litter box is the tidy option and pays for itself a little. The
+                    // reward only fires when the pet actually needed to go, so clicking the box
+                    // on a full bladder cannot be mined into an infinite coin fountain.
+                    bool needed = Needs.Bladder < 0.7f;
                     Needs.Relieve();
                     Avatar.PlayAction(PetAction.Sit, 3f);
+                    if (needed) DshMobile.PetWallet.Add(LitterBoxCoinReward);
                     break;
                 case InteractableKind.Mess:
                     // The pet tidying up after itself, or the player cleaning: either way the
@@ -758,6 +781,12 @@ namespace DshPet
                     Needs.Clean(0.25f);
                     Avatar.PlayAction(PetAction.Sad, 1.8f);
                     Room?.RemoveMess(target);
+                    break;
+                case InteractableKind.Toy:
+                    // The toy is a prop the player bought and placed, so it earns its price back
+                    // in mood — the pet pounces on it on its own when it is bored.
+                    Needs.Play(0.45f, true);
+                    Avatar.PlayAction(PetAction.Play, 3f);
                     break;
                 case InteractableKind.Bed:
                     CurrentMode = Mode.Sleep;

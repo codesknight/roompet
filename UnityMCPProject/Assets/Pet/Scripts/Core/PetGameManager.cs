@@ -192,26 +192,17 @@ namespace DshPet
 
         private void BuildRoomAndPet()
         {
-            // "Already built" has to mean "already built FOR THIS PLACE". The room in the saved
-            // scene is a snapshot of whichever place it was authored in, so a pet that has moved
-            // since would otherwise load into the old room — the map would look like it did
-            // nothing at all after a scene reload.
-            bool roomAlreadyBuilt = Room != null && Room.transform.Find("Room") != null &&
-                                    Room.BuiltFor(Room.Theme);
-
             if (Room == null) Room = GetComponentInChildren<PetRoom>();
             if (Room == null) Room = gameObject.AddComponent<PetRoom>();
 
-            if (roomAlreadyBuilt)
-            {
-                // The scene was authored in the editor: reuse it, just re-collect the
-                // clickable objects (that list is runtime-only and not serialised).
-                Room.CollectInteractables();
-            }
-            else
-            {
-                Room.Build(false);
-            }
+            // The room is a function of BOTH the place and the furniture the player owns, and the
+            // furniture is changed from the shop/warehouse, outside the room. A scene snapshot can
+            // therefore be stale even when the place is unchanged, so the room is rebuilt on every
+            // load — it is a few dozen primitives, and "the room matches the save" is the thing
+            // that actually matters. (The old shortcut reused the authored scene when the theme
+            // matched, which is precisely what would show a returning player's bought bed as absent.)
+            Room.Theme = PetWorldMap.Current;
+            Room.Build(false);
 
             if (Avatar == null) Avatar = GetComponentInChildren<PetAvatar>();
             if (Avatar == null)
@@ -287,6 +278,24 @@ namespace DshPet
         /// manager had registered is now pointing at a destroyed object. Forgetting this is
         /// exactly how "the bowls stopped working after I moved" happens.
         /// </summary>
+        /// <summary>
+        /// Rebuilds the room in place, for when the furniture changes (bought, sold, placed,
+        /// stored) but the place does not. The pet and its companions are re-anchored afterwards.
+        /// </summary>
+        public void RebuildRoom()
+        {
+            if (Room != null)
+            {
+                Room.Theme = PetWorldMap.Current;
+                Room.Build(false);
+            }
+
+            RebindRoom();
+            RecentrePet();
+            SpawnCompanions();
+            ChatChanged?.Invoke();
+        }
+
         private void RebindRoom()
         {
             if (Room == null) return;
@@ -1116,6 +1125,7 @@ namespace DshPet
                 PlayerPresent = true,
                 BallLoose = Room != null && Room.Ball != null && Room.Ball.IsLoose,
                 MessPresent = Room != null && Room.HasMess,
+                FoodAvailable = PetInventory.HasFood,
                 AvailableTargets = targets.ToArray(),
                 Personality = Personality,
 
@@ -1718,6 +1728,10 @@ namespace DshPet
             Needs.AddAffection(0.03f);
             Needs.Pet(0.08f);
 
+            // Tidying up is a chore, and chores pay. It is also the consolation prize of the
+            // no-litter-box loop: a pet without a tray makes work, and work should be worth it.
+            DshMobile.PetWallet.Add(CleaningCoinReward);
+
             PetAudioDirector.Instance?.Play(SfxId.Brush);
             DshMobile.MobileHaptics.Light();
 
@@ -1725,6 +1739,9 @@ namespace DshPet
             Journal.Add(MemoryKind.Care, "主人帮我收拾", "", 0.35f);
             ChatChanged?.Invoke();
         }
+
+        /// <summary>Coins earned for wiping up an accident.</summary>
+        public const int CleaningCoinReward = 5;
 
         // -------------------------------------------------------------- throw & fetch
 

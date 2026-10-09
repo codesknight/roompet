@@ -252,7 +252,8 @@ namespace DshPet.Tests
 
         private static PetBehaviorContext Context(float hunger = 0.9f, float energy = 0.9f,
             float joy = 0.9f, float clean = 0.9f, float affection = 0.5f, float hour = 12f,
-            bool ballLoose = false, string place = "", params InteractableKind[] targets)
+            bool ballLoose = false, string place = "", bool foodAvailable = true,
+            params InteractableKind[] targets)
         {
             return new PetBehaviorContext
             {
@@ -265,6 +266,7 @@ namespace DshPet.Tests
                 HourOfDay = hour,
                 PlayerPresent = true,
                 BallLoose = ballLoose,
+                FoodAvailable = foodAvailable,
                 AvailableTargets = targets,
                 Place = place
             };
