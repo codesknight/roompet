@@ -13,5 +13,8 @@ EditorBuildSettings:
     guid: 07a826ac19625b44faa6ab9fa0ba68c0
   - enabled: 1
     path: Assets/MiniGames/Scenes/FlyBird.unity
-    guid: 00000000000000000000000000000000
+    guid: a274cdf15e3b37c44a15cd198a550bd3
+  - enabled: 1
+    path: Assets/MiniGames/Scenes/JumpQuest.unity
+    guid: 9c1455aa23b71934596dd317d18c4f7a
   m_configObjects: {}

@@ -15,6 +15,7 @@ namespace DshMiniGames.EditorTools
     public static class FlyBirdSceneMenu
     {
         public const string ScenePath = "Assets/MiniGames/Scenes/FlyBird.unity";
+        public const string JumpQuestScenePath = "Assets/MiniGames/Scenes/JumpQuest.unity";
 
         [MenuItem("Tools/DSH Mini/Build FlyBird Scene")]
         public static void BuildScene()
@@ -31,19 +32,32 @@ namespace DshMiniGames.EditorTools
             Debug.Log($"[DshMini] FlyBird scene built at {ScenePath} and registered in Build Settings.");
         }
 
+        [MenuItem("Tools/DSH Mini/Build JumpQuest Scene")]
+        public static void BuildJumpQuestScene()
+        {
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+            var root = new GameObject("JumpQuest");
+            root.AddComponent<JumpQuestGame>();
+            root.AddComponent<JumpQuestHud>();
+
+            EditorSceneManager.SaveScene(scene, JumpQuestScenePath);
+
+            RegisterInBuildSettings();
+            Debug.Log($"[DshMini] JumpQuest scene built at {JumpQuestScenePath}.");
+        }
+
         [MenuItem("Tools/DSH Mini/Add Mini Game Scenes To Build Settings")]
         public static void RegisterInBuildSettings()
         {
             var scenes = new System.Collections.Generic.List<EditorBuildSettingsScene>(
                 EditorBuildSettings.scenes);
 
-            if (!HasScene(scenes, ScenePath))
-            {
-                scenes.Add(new EditorBuildSettingsScene(ScenePath, true));
-            }
+            AddIfPresent(scenes, ScenePath);
+            AddIfPresent(scenes, JumpQuestScenePath);
 
-            // The room and the runner are registered by their own menus; keeping the pet room here
-            // as well means a fresh clone can be made playable by running the menus in any order.
+            // The room and the runner are registered by their own menus; keeping them here as well
+            // means a fresh clone can be made playable by running the menus in any order.
             AddIfPresent(scenes, "Assets/Pet/Scenes/PetRoom.unity");
             AddIfPresent(scenes, "Assets/Scenes/Main.unity");
 

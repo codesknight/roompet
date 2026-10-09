@@ -15,9 +15,9 @@
 | 项 | 状态 |
 |---|---|
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
-| 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/FlyBird.unity`（小鸟飞行），三个都已在 Build Settings |
+| 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/FlyBird.unity`（小鸟飞行）、`Assets/MiniGames/Scenes/JumpQuest.unity`（跳跃冒险），四个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **191/191 通过**（虚拟宠物 130 + 跑酷 15 + 手机端 34 + 小游戏 12），EditMode |
+| 测试 | **202/202 通过**（虚拟宠物 130 + 跑酷 15 + 手机端 34 + 小游戏 23），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -128,9 +128,15 @@
 | `Scripts/FlyBird/FlyBirdGame.cs` | 玩法与场景内容（鸟/管道/地面都是 primitive 生成）、按屏幕形状取景（`FitCamera`）、管道生成与回收、点击输入、死亡与结算 |
 | `Scripts/FlyBird/FlyBirdHud.cs` | IMGUI：分数、最高分、宠物币、开始提示、结算面板（再来一次 / 回到宠物小屋）、`PointerOverPanel`（防"点按钮同时扇翅膀"） |
 | `Editor/FlyBirdSceneMenu.cs` | 菜单：`Tools/DSH Mini/{Build FlyBird Scene, Add Mini Game Scenes To Build Settings, Report Mini Games}` |
+| `Scripts/JumpQuest/JumpQuestRules.cs` | 横版平台玩法的纯逻辑：跳跃弧线（含按住跳更高）、最小平移量碰撞解算、踩怪/侧撞判定、关卡生成与**可通过性校验**、金币与评价 |
+| `Scripts/JumpQuest/JumpQuestGame.cs` | 玩法与场景内容（关卡由数据生成 primitive）、相机跟随、敌人巡逻、金币与终点、三条命 |
+| `Scripts/JumpQuest/JumpQuestHud.cs` | IMGUI：金币/命数、开始与结算面板、**按住式**触屏方向键（借 `MobileTouch`，可同时按走与跳） |
 | `Tests/Editor/FlyBirdRulesTests.cs` | 12 条测试（抬升与下落、帧率无关、长帧钳位、难度封顶、间隙永远可达、碰撞算宽度、金币单调） |
+| `Tests/Editor/JumpQuestRulesTests.cs` | 11 条测试（跳跃弧线、按住跳更高、帧率无关、落到平台上、撞墙停下、踩怪判定、60 个种子的关卡可通过、三种坏关卡被拒、结算与评价） |
 
 在屋里玩的**拼图**没有独立场景：`DshPet` 里的 `PetPuzzle`（纯状态机）+ `PuzzleArt`（程序化画图）+ `PetHud.DrawPuzzle`（面板）。
+三个玩法的形状是一样的：**一个纯逻辑规则类（全部可单测）+ 一个只负责画矩形/面板的场景或面板 + 一个 IMGUI HUD**。
+加第四个玩法的成本因此是可预测的。
 
 ### Shader（`Assets/Shaders/`）
 
@@ -514,6 +520,23 @@
 6. **语音输入（STT）**：等 TTS 在真机上验过之后再评估，两者共用同一套"宠物在说话"的时序。
 7. **扔球的地面落点指示**：现在有力蓄条和准星，但没有"球会落在哪"的地面标记。
 8. **云存档**：日记与记忆现在是本地文件 + PlayerPrefs。
+
+66. **"先竖直再水平"的碰撞解算会把撞墙的玩家顶到墙顶上。** 横版玩法的第一版按这个顺序解算：
+    先看竖直重叠，再看水平重叠。一个跑向墙的玩家在竖直方向上也"重叠"着墙（墙有 4 个单位高），
+    于是竖直那一步很贴心地把他放到了墙顶——**他就这样走过了关卡里的每一堵墙**。
+    正确做法是**最小平移量**：算出四个方向的推出距离，沿最小的那个方向推出去，
+    并且跑两遍（角落需要第一次推完才露出来）。这条是被单测抓到的，不是被眼睛。
+67. **生成的关卡必须被"验算"，不能只是被生成。** 平台跳跃的第一条不变量是
+    "这一关能不能过"：每个缺口都要短于一次跳跃、每级台阶都要低于一次跳跃、必须有终点。
+    所以 `JumpQuestRules.IsPassable` 是生成器的一部分——不通过就重新生成
+    （单测还会拿 60 个种子全跑一遍，外加三种"坏关卡"必须被拒）。
+    **"过不去的关卡"不是难度，是 bug。**
+68. **三个玩法共用一个形状，这件事值得写下来。** 拼图、小鸟飞行、跳跃冒险都是
+    "纯逻辑规则类（吃到全部单测）+ 只负责画矩形/面板的视图 + IMGUI HUD"，
+    场景里几乎没有逻辑。这个形状让"再加一个小游戏"变成一件可以估工的工作。
+    另外两条从这两个游戏里学到的：**按住式的按钮不能用 `GUI.Button`**
+    （它在松手时才触发，对"一直往左走"没有用），要用共享触控层注册矩形；
+    **相机取景要看两个方向**（竖屏按高度取景会把主角放到屏幕外，见坑 64）。
 
 ---
 

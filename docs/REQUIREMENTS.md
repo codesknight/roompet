@@ -173,6 +173,7 @@
 | R11.7 | 小鸟飞行小游戏 | 新程序集 `DshMiniGames` + 场景 `Assets/MiniGames/Scenes/FlyBird.unity`（由 `Tools/DSH Mini/Build FlyBird Scene` 从代码生成并注册进 Build Settings）：`FlyBirdRules`（纯逻辑）+ `FlyBirdGame`（玩法/相机取景/管道生成）+ `FlyBirdHud`（IMGUI）。`MiniGameLibrary` 加一行即可在地图里出现 | 单测 10 条：点击抬升、帧率无关、长帧钳位、速度与间隙的封顶、间隙永远可达、碰撞算鸟的宽度、金币单调且不为负；实测 50 秒游戏时间过 84 根管子、`RunCoins=100`、撞到后钱包 3930 → 4032 ✅ |
 | R11.8 | 相机按屏幕形状取景 | `FlyBirdGame.FitCamera`：同时满足"整条飞行走廊在竖直方向可见"与"鸟前方要有反应距离"（竖屏按高度取景会把鸟放到屏幕外——实测抓到），并在转屏时重新取景 | 实测：竖屏 0.45 宽高比下 `orthographicSize = 11.78`、鸟在屏内、管道与地面都可见 ✅ |
 | R11.9 | 系统提示不进模型的上下文 | `ChatMessage.IsSystem` + `Memory.AddSystem`：对话里居中灰字显示；`PetMemory.RecentLines`、`PetPrompting`、`OpenAiClient` 三处都跳过它 | 实测：提示出现在对话里，宠物不会去回答它 ✅ |
+| R11.10 | 超级玛丽式横版玩法 | 新场景 `Assets/MiniGames/Scenes/JumpQuest.unity`：`JumpQuestRules`（跳跃弧线、按住跳更高、最小平移量碰撞解算、踩怪/侧撞判定、基于跳跃高度的关卡生成 + 可通过性校验）+ `JumpQuestGame`（相机跟随、敌人巡逻、金币、终点、三条命与结算）+ `JumpQuestHud`（IMGUI，含借共享触控层的**按住式**方向键，可同时按"走"与"跳"） | 单测 11 条：跳跃弧线与按住跳更高、帧率无关与长帧钳位、落到平台上而不穿透、撞墙停下且不"爬"上去、踩怪只在从上方落下时成立、60 个随机种子的关卡全部通过可通过性校验、以及"缺口太宽/台阶太高/没有终点"三种坏关卡都被拒绝 ✅ 实测：走过金币被收集、踩怪不掉命、掉坑掉命、碰到旗子结算（钱包 4053 → 4069）✅ |
 
 ---
 

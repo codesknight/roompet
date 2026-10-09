@@ -72,6 +72,15 @@ namespace DshPet
                 SceneName = "FlyBird",
                 ScenePath = "Assets/MiniGames/Scenes/FlyBird.unity",
                 Icon = "🐦"
+            },
+            new MiniGameDefinition
+            {
+                Id = "jumpquest",
+                DisplayName = "跳跃冒险",
+                Blurb = "左右走、跳上去踩小怪、捡金币，跑到终点的旗子。",
+                SceneName = "JumpQuest",
+                ScenePath = "Assets/MiniGames/Scenes/JumpQuest.unity",
+                Icon = "🚩"
             }
             // 新增玩法就在这里加一行：填一个已在 Build Settings 里的场景即可。
         };
