@@ -465,6 +465,7 @@ namespace DshMiniGames
 
         public void ReturnToRoom()
         {
+            DshMobile.SceneClock.Restore("leaving the catch game");
             PlayerPrefs.SetInt("dshpet.away", 0);
             PlayerPrefs.Save();
             SceneManager.LoadScene("PetRoom");

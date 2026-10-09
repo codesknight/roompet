@@ -484,6 +484,7 @@ namespace DshMiniGames
         /// <summary>Goes home, the same way the other games do.</summary>
         public void ReturnToRoom()
         {
+            DshMobile.SceneClock.Restore("leaving the hop game");
             PlayerPrefs.SetInt("dshpet.away", 0);
             PlayerPrefs.Save();
             SceneManager.LoadScene("PetRoom");

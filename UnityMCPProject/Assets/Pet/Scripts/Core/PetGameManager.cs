@@ -74,6 +74,13 @@ namespace DshPet
             if (Instance != null && Instance != this) { Destroy(gameObject); return; }
             Instance = this;
             Application.runInBackground = true;
+
+            // The room is the hub, and the hub must never open frozen. The forest run pauses by
+            // setting Time.timeScale to 0 and that value is global: a player who paused and then
+            // went home used to arrive in a room where nothing moved and no button worked, with no
+            // error to explain it. The clock is restored on arrival as well as on departure, because
+            // "the scene I came from forgot" is not something this scene can rule out.
+            DshMobile.SceneClock.Restore("the pet room loaded");
         }
 
         private void Start()

@@ -278,6 +278,10 @@ namespace DshRunner
         /// </summary>
         public static void ReturnToRoom()
         {
+            // The pause button is right there next to this one, and a paused game has the clock
+            // stopped: leaving without putting it back froze the pet room (see DshMobile.SceneClock).
+            DshMobile.SceneClock.Restore("leaving the run");
+
             PlayerPrefs.SetInt(AwayFlagKey, 0);
             PlayerPrefs.Save();
             UnityEngine.SceneManagement.SceneManager.LoadScene(RoomSceneName);

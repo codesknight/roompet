@@ -241,7 +241,18 @@
 
 | R16.3 | 「人物和宠物脚下有黑色方块」 | 两个角色的接触阴影原本是 `CreatePrimitive(Cube)` 压成的近黑薄板。新增 `DshMobile.SoftShadow`：平躺四边形 + 程序化径向渐变 alpha 贴图（64×64，`pow(1-d, 1.6)`）+ 透明无光照 shader（`Sprites/Default`，在 Unity 默认 always-included 列表里）+ 共享材质 + `MaterialPropertyBlock` 调不透明度；跳一跳主角脚下的纯黑圆盘一并替换 | 单测 2 条：渐变中心最暗、四角全透明、沿半径**单调下降**（方块会是平顶 + 硬边）、边缘中点不为 0（不出现圆环）；阴影是**透明队列**的四边形、无碰撞体、单个对象 ✅ 像素实测：同机位开/关阴影的地面亮度差从中心 13.5 平滑衰减到边缘 2.1 ✅ |
 
+---
+
+## 阶段 17：跨场景的残留状态（不能移动）、语音识别的主线程异常
+
+| 编号 | 需求 | 实现 | 验收证据 |
+|---|---|---|---|
+| R17.1 | 「玩完小游戏回来人不能动」 | 触控层的按钮表是"画时注册、从不删除"，而小鸟飞行的"点屏幕扇翅膀"是**整屏**点击区；回到房间后它仍然"可见"，输入分发又**先查按钮后查摇杆**，于是摇杆区的手指令被判给那个不存在的按钮。新增 `MobileTouch.OnSceneLoaded()`（清空按钮/手指归属/手势/摇杆/摇杆区并恢复输入开关），由常驻的 `MobileTouchDriver` 订阅 `SceneManager.sceneLoaded` 调用 | 单测：注册一个整屏按钮 → `HitTest` 命中它 → `OnSceneLoaded()` 之后 `HitTest` 为 null、可见按钮 0、`StickZone` 清空、输入开关恢复 ✅ 实测（真实流程）：`Main → FlyBird → PetRoom` 之后 `HitTest(摇杆中心)` 从 `fly.tap` 变成 `null`，房间只剩自己的 3 个按钮 ✅ |
+| R17.2 | 「再玩一次森林奔跑也不能动」 | 跑酷的暂停把 `Time.timeScale` 设为 0，而它是**全局且跨场景存活**的：暂停后回房间，世界仍然是停的（宠物不动、人不动、无报错）。新增 `DshMobile.SceneClock.Restore()`（只在 `timeScale <= 0` 时恢复，不干扰将来的慢动作），由场景加载统一调用，并在四个游戏的 `ReturnToRoom`、跑酷的 `HudController.ReturnToRoom`、以及宠物小屋的 `Awake` 各兜一次 | 单测：`timeScale = 0` → `Restore` 后为 1；`timeScale = 0.35` → `Restore` 后仍是 0.35 ✅ 实测：森林奔跑里暂停到 `timeScale=0` → 点「返回宠物小屋」→ 房间 `timeScale=1`、跑酷按钮已清空、摇杆拿得到点击 ✅ |
+| R17.3 | 语音识别的主线程异常 | `SpeechRecognizer` 的每个入口都会校验调用线程，非主线程直接抛 `RuntimeException`。`MobileStt` 现在把 create / setRecognitionListener / startListening / stopListening / cancel / destroy **全部**经 `activity.runOnUiThread(...)` 调用：已在主线程时就地执行（行为不变），否则投递；每个 Runnable 自带 `try/catch` 把错误记进状态（投递后抛的异常调用方看不见）。诊断新增「调用线程 / 排到主线程的次数」 | 单测：编辑器里 `Available == false` 时全部调用是无害空操作、状态文案覆盖各种情形 ✅ ⏳ **真机确认：点麦克风不应再出现该异常** |
+
 ## 非功能需求 / 设计约束
+
 
 
 

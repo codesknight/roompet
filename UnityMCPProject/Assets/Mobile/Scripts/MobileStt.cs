@@ -209,6 +209,8 @@ namespace DshMobile
             sb.Append("· 语言参数：").Append(_useLanguageExtra ? "zh-CN" : "交给系统");
             if (_retryPending) sb.Append("（正在自动重试）");
             sb.Append('\n');
+            sb.Append("· 调用线程：").Append(OnMainThread ? "主线程" : "非主线程")
+              .Append("；帮它排到主线程的次数 ").Append(MarshalledCalls).Append('\n');
             sb.Append("· 上次结果：").Append(string.IsNullOrEmpty(_heard) ? "（无）" : _heard);
             return sb.ToString();
         }
@@ -277,70 +279,95 @@ namespace DshMobile
                 return false;
             }
 
-            try
-            {
-                _attemptsThisPress++;
-                _heard = "";
-                _error = "";
-                _errorCode = int.MinValue;
-                _sawReady = false;
-                HasResult = false;
-                _listening = true;
-                _listeningSince = Time.realtimeSinceStartup;
+            _attemptsThisPress++;
+            _heard = "";
+            _error = "";
+            _errorCode = int.MinValue;
+            _sawReady = false;
+            HasResult = false;
+            _listening = true;
+            _listeningSince = Time.realtimeSinceStartup;
+            _startCalled = true;
 
-                // cancel() before start(): after an error some engines are still tearing the last
-                // session down, and a start that arrives mid-teardown is ignored.
-                try { _recognizer.Call("cancel"); } catch { /* nothing to cancel */ }
-
-                _startCalled = true;
-                _recognizer.Call("startListening", _intent);
-                return true;
-            }
-            catch (System.Exception e)
+            // The call into the platform goes through the main thread — see RunOnUiThread. The
+            // result of a *posted* call cannot be read here, so the managed errors it produces are
+            // recorded into _error by the body itself.
+            RunOnUiThread("startListening", () =>
             {
-                _listening = false;
-                _startCalled = false;
-                _needsRebuild = true;
-                _error = e.Message;
-                Debug.LogWarning("[DshMobile] Speech recogniser failed to start: " + e.Message);
-                return false;
-            }
+                try
+                {
+                    // cancel() before start(): after an error some engines are still tearing the last
+                    // session down, and a start that arrives mid-teardown is ignored.
+                    try { _recognizer.Call("cancel"); } catch { /* nothing to cancel */ }
+                    _recognizer.Call("startListening", _intent);
+                }
+                catch (System.Exception e)
+                {
+                    _listening = false;
+                    _startCalled = false;
+                    _needsRebuild = true;
+                    _error = "startListening 失败：" + e.Message;
+                    Debug.LogWarning("[DshMobile] speech start failed: " + e.Message);
+                }
+            });
+
+            return true;
         }
 
         private static void DestroyRecognizer()
         {
-            if (_recognizer != null)
-            {
-                try { _recognizer.Call("destroy"); }
-                catch { /* going away anyway */ }
-                _recognizer.Dispose();
-                _recognizer = null;
-            }
-
-            if (_intent != null)
-            {
-                _intent.Dispose();
-                _intent = null;
-            }
-
+            var recognizer = _recognizer;
+            var intent = _intent;
+            _recognizer = null;
+            _intent = null;
             _listener = null;
             _listening = false;
+
+            if (recognizer == null && intent == null) return;
+
+            RunOnUiThread("destroy", () =>
+            {
+                try
+                {
+                    if (recognizer != null)
+                    {
+                        recognizer.Call("destroy");
+                        recognizer.Dispose();
+                    }
+
+                    if (intent != null) intent.Dispose();
+                }
+                catch (System.Exception e)
+                {
+                    Debug.Log("[DshMobile] recogniser teardown skipped: " + e.Message);
+                }
+            });
         }
 
         public static void StopListening()
         {
             if (_recognizer == null) return;
-            try { _recognizer.Call("stopListening"); }
-            catch { /* it is going away anyway */ }
             _listening = false;
+
+            var recognizer = _recognizer;
+            RunOnUiThread("stopListening", () =>
+            {
+                try { recognizer.Call("stopListening"); }
+                catch { /* it is going away anyway */ }
+            });
         }
 
         public static void Cancel()
         {
             if (_recognizer == null) return;
-            try { _recognizer.Call("cancel"); }
-            catch { /* nothing useful to do */ }
             _listening = false;
+
+            var recognizer = _recognizer;
+            RunOnUiThread("cancel", () =>
+            {
+                try { recognizer.Call("cancel"); }
+                catch { /* nothing useful to do */ }
+            });
         }
 
         public static void Shutdown()
@@ -438,10 +465,28 @@ namespace DshMobile
                         return false;
                     }
 
-                    _listener = new Listener();
-                    _recognizer = recognizerClass.CallStatic<AndroidJavaObject>(
-                        "createSpeechRecognizer", CurrentActivity());
-                    _recognizer.Call("setRecognitionListener", _listener);
+                    // Creation and listener registration are the two calls the platform is strictest
+                    // about: a recogniser built off the main thread binds its internal Handler to the
+                    // wrong Looper and then throws on *every* later call. Marshalled like the rest.
+                    var created = false;
+                    RunOnUiThread("createSpeechRecognizer", () =>
+                    {
+                        try
+                        {
+                            _listener = new Listener();
+                            _recognizer = recognizerClass.CallStatic<AndroidJavaObject>(
+                                "createSpeechRecognizer", CurrentActivity());
+                            _recognizer.Call("setRecognitionListener", _listener);
+                            created = _recognizer != null;
+                        }
+                        catch (System.Exception e)
+                        {
+                            _error = "创建识别器失败：" + e.Message;
+                            Debug.LogWarning("[DshMobile] " + _error);
+                        }
+                    });
+
+                    if (!created) return false;
                 }
 
                 using (var intentClass = new AndroidJavaClass("android.speech.RecognizerIntent"))
@@ -508,6 +553,60 @@ namespace DshMobile
             using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
             {
                 return player.GetStatic<AndroidJavaObject>("currentActivity");
+            }
+        }
+
+        // ------------------------------------------------------- the main-thread promise
+
+        /// <summary>
+        /// Whether the current call is on the thread Android considers the main one.
+        ///
+        /// On Android, Unity's main thread <i>is</i> the UI thread and its managed thread id is 1. A
+        /// call from anywhere else may still work until it reaches a platform class that checks — and
+        /// <c>SpeechRecognizer</c> checks on every entry point, throwing
+        /// <c>RuntimeException: Speech Recognizer should be used only from the application's main
+        /// thread</c>. The player experiences that as "the microphone does nothing", so nothing here
+        /// is left to chance: every call into the recogniser is marshalled explicitly.
+        /// </summary>
+        public static bool OnMainThread => System.Threading.Thread.CurrentThread.ManagedThreadId == 1;
+
+        /// <summary>How many calls had to be marshalled onto the UI thread, for the diagnostics.</summary>
+        public static int MarshalledCalls { get; private set; }
+
+        /// <summary>
+        /// Runs <paramref name="action"/> on the Android UI thread.
+        ///
+        /// If we are already on it — the normal case, since OnGUI and Update both are — Android's
+        /// <c>runOnUiThread</c> runs the action immediately, so this costs one JNI call and changes
+        /// nothing else. If we are not, the action is *posted* rather than thrown, which is the whole
+        /// point: the platform requires the main thread, it does not require synchrony.
+        ///
+        /// The action must handle its own exceptions: one thrown inside a posted Runnable surfaces in
+        /// Java, where the managed <c>try</c> around the caller cannot see it.
+        /// </summary>
+        private static void RunOnUiThread(string what, System.Action action)
+        {
+            if (action == null) return;
+
+            try
+            {
+                using (var activity = CurrentActivity())
+                {
+                    if (activity == null)
+                    {
+                        action();
+                        return;
+                    }
+
+                    if (!OnMainThread) MarshalledCalls++;
+                    var runnable = new AndroidJavaRunnable(action);
+                    activity.Call("runOnUiThread", runnable);
+                }
+            }
+            catch (System.Exception e)
+            {
+                _error = "把语音请求排到主线程时失败：" + e.Message + "（" + what + "）";
+                Debug.LogWarning("[DshMobile] " + _error);
             }
         }
 

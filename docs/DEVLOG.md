@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/FlyBird.unity`（小鸟飞行）、`Assets/MiniGames/Scenes/JumpQuest.unity`（跳一跳）、`Assets/MiniGames/Scenes/CatchFruit.unity`（接果子），五个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **248/248 通过**（虚拟宠物 152 + 跑酷 15 + 手机端 43 + 小游戏 38），EditMode |
+| 测试 | **250/250 通过**（虚拟宠物 152 + 跑酷 15 + 手机端 45 + 小游戏 38），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -679,6 +679,25 @@
     **理论可达**，但证明不了**可玩**：窗口是按"从静止开始、用尽全部位移"算的，而真实的鸟
     带着速度、玩家的手指会晚一帧。这一轮的所有调参都是被那条自动驾驶测试逼出来的，
     而不是被"看起来能过"逼出来的。最后又在**真实场景**里用同一个控制器飞了 462 个管子收尾。
+100. **比"内存泄漏"更常见的是"状态泄漏"：上一个场景留下的注册表。** 触控层跨场景常驻，
+    它的按钮表是"画的时候注册、从不删除"。小鸟飞行的"点屏幕就扇翅膀"是一个**整屏**点击区，
+    回到宠物小屋之后它仍然在表里、仍然"可见"——而输入分发**先查按钮、后查摇杆**，
+    于是摇杆区里的手指令被判给了那个已经不存在的按钮：**摇杆永不出现、人不能动**，
+    而且房间里没有任何东西是坏的，所以也没有任何报错。
+    规则：**常驻系统必须在场景切换时清空自己**（`MobileTouch.OnSceneLoaded`，
+    由常驻驱动挂 `SceneManager.sceneLoaded`）。跨场景的"注册表"和缓存，都要问一句"谁负责清"。
+101. **`Time.timeScale` 是全局的，也是会跨场景活下来的。** 跑酷的暂停把它设成 0；
+    暂停后点"返回宠物小屋"，房间里的世界仍然是停的——宠物不动、人不动、动画不走，
+    **没有报错**，看起来像房间坏了，其实是上一个游戏没收拾。修法是两条：离开的游戏自己拨回来，
+    **枢纽场景在加载时再兜一次底**（宠物小屋是枢纽，绝不能冻着加载）。
+    而且恢复只在 `timeScale <= 0` 时动手，免得把将来的慢动作道具冲掉。
+    **全局量 + 场景切换 = 一定要有"谁负责还原"的答案。**
+102. **平台的"必须在主线程"要用 `runOnUiThread` 兜住，而投递出去就抓不到异常了。**
+    安卓的 `SpeechRecognizer` 每个入口都检查线程，非主线程直接抛
+    `Speech Recognizer should be used only from the application's main thread`——
+    玩家看到的就是"点了麦克风没反应"。现在所有调用都走 `activity.runOnUiThread(...)`：
+    已在主线程就地执行（行为不变），否则投递。**代价是投递之后抛的异常调用方的 `try` 看不见**，
+    所以每个 Runnable 必须自己 `try/catch` 并把错误写进状态，否则这个异常就只剩日志。
 
 ---
 
@@ -716,7 +735,7 @@ Tools/DSH Mobile/Preview/Report Current Viewport    # 打印当前视口 / 方�
 Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
-EditMode，期望 248/248
+EditMode，期望 250/250
 
 # 存档
 %USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\

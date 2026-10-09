@@ -451,10 +451,26 @@ namespace DshMobile
             Owners.Clear();
             Gesture.End(Gesture.Position, 0f);
             Stick.End();
+            StickZone = new Rect(0f, 0f, 0f, 0f);
             UiTouchActive = false;
             PlayInputEnabled = true;
             StickEnabled = true;
         }
+
+        /// <summary>
+        /// Called when a scene has finished loading: everything the outgoing scene registered is
+        /// stale, and leaving it behind is how the player loses control of the *next* scene.
+        ///
+        /// This is the bug that made the pet room unplayable after a mini game. The bird game
+        /// registers a <b>full-screen</b> tap target — that is how "tap anywhere to flap" works — and
+        /// a registered rect is never removed, only overwritten by whoever draws next. Coming back to
+        /// the room, that full-screen rect was still there and still marked visible, so the input
+        /// pass handed it every tap that did not land on a smaller button… including every tap in
+        /// the movement stick's zone, which is only consulted *after* the buttons. The joystick never
+        /// appeared and the character would not move, with no error anywhere, because nothing in the
+        /// room itself was broken.
+        /// </summary>
+        public static void OnSceneLoaded() => Reset();
     }
 
     /// <summary>
@@ -478,6 +494,26 @@ namespace DshMobile
         }
 
         private static MobileTouchDriver _instance;
+
+        private void OnEnable()
+        {
+            // This object survives scene loads (it has to — it is the input layer), which makes it
+            // the one place that can reliably hear about them.
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded += HandleSceneLoaded;
+            DshMobile.SceneClock.Restore("the touch layer started");
+        }
+
+        private void OnDisable()
+        {
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded -= HandleSceneLoaded;
+        }
+
+        private static void HandleSceneLoaded(UnityEngine.SceneManagement.Scene scene,
+            UnityEngine.SceneManagement.LoadSceneMode mode)
+        {
+            MobileTouch.OnSceneLoaded();
+            DshMobile.SceneClock.Restore(scene.name);
+        }
 
         private void Update() => MobileTouch.Tick();
     }

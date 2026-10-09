@@ -445,6 +445,7 @@ namespace DshMiniGames
         /// <summary>Goes home, the same way the runner does.</summary>
         public void ReturnToRoom()
         {
+            DshMobile.SceneClock.Restore("leaving the bird game");
             PlayerPrefs.SetInt("dshpet.away", 0);
             PlayerPrefs.Save();
             SceneManager.LoadScene("PetRoom");

@@ -762,6 +762,74 @@ namespace DshMobile.Tests
             }
         }
 
+        // ------------------------------------------------------------- scene transitions
+
+        [Test]
+        public void SceneLoad_ClearsTheButtonsTheLastSceneRegistered()
+        {
+            // The bug: the bird game registers a full-screen tap target ("tap anywhere to flap"), and
+            // a registered rect is never removed — only overwritten by whoever draws next. Coming back
+            // to the pet room, that full-screen rect was still there and still visible, so every tap
+            // that did not land on a smaller button went to it… including every tap in the movement
+            // stick's zone, which is only consulted *after* the buttons. The joystick never appeared
+            // and the character would not move.
+            MobileTouch.Reset();
+            try
+            {
+                var screen = new Rect(0f, 0f, 1080f, 2400f);
+                MobileTouch.RegisterButton("fly.tap", screen, true, "tap to flap");
+                MobileTouch.StickZone = new Rect(0f, 1900f, 460f, 300f);
+
+                // While the game is up, the full-screen tap target really does own the screen.
+                Assert.AreEqual("fly.tap", MobileTouch.HitTest(new Vector2(200f, 2050f)));
+
+                // …and the game leaves its own flags behind too.
+                MobileTouch.StickEnabled = false;
+                MobileTouch.PlayInputEnabled = false;
+
+                MobileTouch.OnSceneLoaded();
+
+                // After a scene change, none of it may survive.
+                Assert.IsNull(MobileTouch.HitTest(new Vector2(200f, 2050f)),
+                    "a stale full-screen control is still swallowing taps");
+                Assert.AreEqual(0, MobileTouch.VisibleButtonCount());
+                Assert.AreEqual(new Rect(0f, 0f, 0f, 0f), MobileTouch.StickZone,
+                    "the stick zone belonged to the scene that just unloaded");
+                Assert.IsTrue(MobileTouch.PlayInputEnabled, "the next scene starts playable");
+                Assert.IsTrue(MobileTouch.StickEnabled);
+            }
+            finally
+            {
+                MobileTouch.Reset();
+            }
+        }
+
+        [Test]
+        public void SceneClock_PutsTheClockBackAfterAPause()
+        {
+            // The forest run pauses with Time.timeScale = 0, which is global and survives a scene
+            // load: a player who paused and then tapped "返回宠物小屋" landed in a pet room where
+            // nothing moved. Nothing was broken in the room — the clock was.
+            float previous = Time.timeScale;
+            try
+            {
+                Time.timeScale = 0f;
+                SceneClock.Restore("test");
+                Assert.AreEqual(SceneClock.NormalTimeScale, Time.timeScale,
+                    "a scene change has to leave the world running");
+
+                // And it must not fight a scene that is deliberately running slow.
+                Time.timeScale = 0.35f;
+                SceneClock.Restore("test");
+                Assert.AreEqual(0.35f, Time.timeScale, 0.0001f,
+                    "a slow-motion scene must keep its speed");
+            }
+            finally
+            {
+                Time.timeScale = previous;
+            }
+        }
+
         // ------------------------------------------------------------------ contact shadow
 
         [Test]
