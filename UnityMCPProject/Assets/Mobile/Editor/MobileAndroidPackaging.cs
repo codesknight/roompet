@@ -110,7 +110,9 @@ namespace DshMobileEditor
             string patched = manifest;
 
             // Vibration needs a normal permission, and Unity has no player setting for it
-            // (only INTERNET has one). Without it every pulse is silently dropped.
+            // (only INTERNET has one). Without it every pulse is silently dropped. The microphone
+            // is the same story — and although it is also asked for at runtime, a permission that
+            // is not declared at all can never be granted.
             bool vibrate = !patched.Contains("android.permission.VIBRATE");
             if (vibrate)
             {
@@ -118,15 +120,24 @@ namespace DshMobileEditor
                     "<uses-permission android:name=\"android.permission.VIBRATE\" />\n  ");
             }
 
-            // Text-to-speech, and this is the one that made "the pet never talks on my phone"
-            // happen: from Android 11 (API 30) an app can only see other packages it declares
-            // an intent for. Without this <queries> block the speech engine is invisible, the
-            // TextToSpeech constructor never calls back, and every utterance is dropped — on the
-            // device only, with nothing in the log and nothing in the editor to reproduce it.
-            bool queries = !patched.Contains("android.intent.action.TTS_SERVICE");
-            if (queries)
+            bool microphone = !patched.Contains("android.permission.RECORD_AUDIO");
+            if (microphone)
             {
-                patched = patched.Insert(ApplicationAnchor(patched), TtsQueries);
+                patched = patched.Insert(ApplicationAnchor(patched),
+                    "<uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n  ");
+            }
+
+            // Text-to-speech and speech recognition, and this is the one that made "the pet never
+            // talks on my phone" happen: from Android 11 (API 30) an app can only see other packages
+            // it declares an intent for. Without these <queries> blocks the speech engines are
+            // invisible, their callbacks never fire, and every utterance and every listen is
+            // dropped — on the device only, with nothing in the log and nothing in the editor to
+            // reproduce it.
+            bool tts = !patched.Contains("android.intent.action.TTS_SERVICE");
+            bool stt = !patched.Contains("android.speech.RecognitionService");
+            if (tts || stt)
+            {
+                patched = patched.Insert(ApplicationAnchor(patched), SpeechQueries(tts, stt));
             }
 
             bool cleartext = AllowsCleartext() && !patched.Contains("usesCleartextTraffic");
@@ -148,7 +159,9 @@ namespace DshMobileEditor
 
             var added = new System.Collections.Generic.List<string>();
             if (vibrate) added.Add("VIBRATE");
-            if (queries) added.Add("TTS queries (Android 11+ package visibility)");
+            if (microphone) added.Add("RECORD_AUDIO");
+            if (tts) added.Add("TTS queries (Android 11+ package visibility)");
+            if (stt) added.Add("speech recognition queries");
             added.Add(cleartext
                 ? $"cleartext http ({(IsDevelopmentBuild() ? "development" : "release")} build, " +
                   $"InsecureHttpOption.{PlayerSettings.insecureHttpOption})"
@@ -157,18 +170,22 @@ namespace DshMobileEditor
         }
 
         /// <summary>
-        /// The package-visibility declaration for text-to-speech.
+        /// The package-visibility declarations the speech engines need.
         ///
         /// A direct child of &lt;manifest&gt;, which is why it is inserted at the &lt;application&gt;
-        /// anchor rather than inside it.
+        /// anchor rather than inside it. Both actions live in one block when both are missing,
+        /// because a manifest with two sibling &lt;queries&gt; elements is legal but confusing.
         /// </summary>
-        private const string TtsQueries =
-            "<!-- Android 11+ package visibility: the speech engine is invisible without this. -->\n" +
-            "  <queries>\n" +
-            "    <intent>\n" +
-            "      <action android:name=\"android.intent.action.TTS_SERVICE\" />\n" +
-            "    </intent>\n" +
-            "  </queries>\n  ";
+        private static string SpeechQueries(bool tts, bool stt)
+        {
+            var xml = new System.Text.StringBuilder();
+            xml.Append("<!-- Android 11+ package visibility: the speech engines are invisible ");
+            xml.Append("without these. -->\n  <queries>\n");
+            if (tts) xml.Append("    <intent>\n      <action android:name=\"android.intent.action.TTS_SERVICE\" />\n    </intent>\n");
+            if (stt) xml.Append("    <intent>\n      <action android:name=\"android.speech.RecognitionService\" />\n    </intent>\n");
+            xml.Append("  </queries>\n  ");
+            return xml.ToString();
+        }
 
         /// <summary>Offset of the <c>&lt;application&gt;</c> element, or -1.</summary>
         private static int ApplicationAnchor(string manifest)

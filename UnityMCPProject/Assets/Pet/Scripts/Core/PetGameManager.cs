@@ -84,7 +84,20 @@ namespace DshPet
 
             string savedSpecies = PlayerPrefs.GetString(SpeciesKey, PetSpecies.All[0].Id);
             Species = PetSpecies.Copy(savedSpecies);
-            PetName = PlayerPrefs.GetString(NameKey + "." + Species.Id, Species.DisplayName);
+
+            // With a collection, the pet that owns the room is the primary *record*: its name and
+            // its temperament come from the record, and its save lives under the record's id.
+            var primary = PetCollection.Primary;
+            if (primary != null && !string.IsNullOrEmpty(primary.SpeciesId))
+            {
+                Species = PetSpecies.Copy(primary.SpeciesId);
+                PetName = primary.Name;
+            }
+            else
+            {
+                PetName = PlayerPrefs.GetString(NameKey + "." + PetKey, Species.DisplayName);
+            }
+
             BindPersonality();
             LoadNeeds();
 
@@ -92,8 +105,8 @@ namespace DshPet
             BuildRoomAndPet();
             ApplyThemeToNeeds();
             RebuildBrain();
-            Memory.Load(Species.Id);
-            Journal.Bind(Species.Id);
+            Memory.Load(PetKey);
+            Journal.Bind(PetKey);
 
             if (Memory.Recent.Count == 0)
             {
@@ -121,17 +134,39 @@ namespace DshPet
         /// </summary>
         private void BindPersonality()
         {
-            Personality = PetPersonality.Load(Species.Id ?? "");
+            // The individual first: a pet in the collection owns its own temperament, so the cat
+            // you have been looking after for a week does not become a different cat because you
+            // switched to the other one and back.
+            var primary = PetCollection.Primary;
+            if (primary != null && !string.IsNullOrEmpty(primary.Id) && primary.SpeciesId == Species.Id)
+            {
+                Personality = primary.Personality;
+            }
+            else
+            {
+                Personality = PetPersonality.Load(PetKey);
+            }
+
             Needs.Personality = Personality;
         }
 
-        /// <summary>Rolls a new temperament for this species, for when the player wants a
-        /// different companion rather than the same one again.</summary>
+        /// <summary>Rolls a new temperament for this pet, for when the player wants a different
+        /// companion rather than the same one again.</summary>
         public void RerollPersonality()
         {
             int seed = Environment.TickCount ^ (Species.Id != null ? Species.Id.GetHashCode() : 0);
             Personality = PetPersonality.Create(seed);
-            Personality.Save(Species.Id ?? "");
+            Personality.Save(PetKey);
+
+            // Written back to the record as well: the panel reads the record, so a reroll that only
+            // lived in PlayerPrefs would look like it did nothing.
+            var primary = PetCollection.Primary;
+            if (primary != null && !string.IsNullOrEmpty(primary.Id))
+            {
+                primary.SetPersonality(Personality);
+                PetCollection.SaveNow();
+            }
+
             Needs.Personality = Personality;
             Journal.Add(MemoryKind.Milestone, "换了个脾气",
                 $"现在的脾气是「{Personality.Archetype}」。", 0.4f);
@@ -298,13 +333,19 @@ namespace DshPet
             DespawnCompanions();
 
             var companions = PetCollection.Companions();
-            int index = 0;
+
+            // The pet that owns the room is "the one with the brain", and that is now whichever
+            // record the player selected — not "whoever happens to be first in the backpack". The
+            // old version skipped slot one, which was the same thing while the primary could only
+            // ever be the original pet; the moment a hand-over could choose the second cat, the
+            // first one silently stopped being instantiated at all.
+            var primary = PetCollection.Primary;
+            string primaryId = primary != null ? primary.Id : "";
 
             foreach (var record in companions)
             {
-                // Slot one is the primary pet, which already exists.
-                index++;
-                if (record == null || record.Primary || index == 1) continue;
+                if (record == null) continue;
+                if (record.Id == primaryId || record.Primary) continue;
                 if (_companions.Count >= PetCollection.BackpackSlots - 1) break;
 
                 var species = PetSpecies.Copy(record.SpeciesId);
@@ -324,7 +365,7 @@ namespace DshPet
                 controller.Needs = new PetNeeds { Personality = record.Personality };
                 controller.Ball = Room != null ? Room.Ball : null;
 
-                EnsurePokeTarget(go, false);
+                EnsurePokeTarget(go, false, record.Id);
                 var target = go.GetComponent<PetClickTarget>();
                 target.Species = species;
                 target.Personality = record.Personality;
@@ -350,6 +391,25 @@ namespace DshPet
         public int PetsInRoom => 1 + _companions.Count;
 
         /// <summary>
+        /// The key this pet's save lives under.
+        ///
+        /// A pet's save used to be keyed by its *species*, which was fine while a species was an
+        /// individual. The moment the collection could hold two cats, it stopped being fine: they
+        /// shared a name, a pantry and a diary, and switching between them did nothing. Now the key
+        /// is the collection record when there is one, and the species only for the bare case where
+        /// no collection exists yet.
+        /// </summary>
+        public string PetKey
+        {
+            get
+            {
+                var primary = PetCollection.Primary;
+                if (primary != null && !string.IsNullOrEmpty(primary.Id)) return primary.Id;
+                return Species != null ? Species.Id : "fox";
+            }
+        }
+
+        /// <summary>
         /// Tells the HUD the transcript changed, for the few places the UI itself writes to it —
         /// the puzzle paying out, for instance.
         /// </summary>
@@ -371,6 +431,9 @@ namespace DshPet
             public PetPersonality Personality;
             public PetNeeds Needs;
             public PetController Controller;
+
+            /// <summary>Which collection record this pet is, or empty for a pet with no record.</summary>
+            public string RecordId;
         }
 
         /// <summary>
@@ -391,7 +454,8 @@ namespace DshPet
                     Species = Species,
                     Personality = Personality,
                     Needs = Needs,
-                    Controller = Controller
+                    Controller = Controller,
+                    RecordId = PetCollection.Primary != null ? PetCollection.Primary.Id : ""
                 }
             };
 
@@ -416,7 +480,8 @@ namespace DshPet
                         ? needs.Personality
                         : (target != null ? target.Personality : Personality),
                     Needs = needs,
-                    Controller = controller
+                    Controller = controller,
+                    RecordId = target != null ? target.RecordId : ""
                 });
             }
 
@@ -448,12 +513,50 @@ namespace DshPet
             }
             else
             {
-                SelectedPetIndex = index;
+                RequestPrimary(index);
                 CardExpanded = true;
             }
 
             ChatChanged?.Invoke();
         }
+
+        /// <summary>
+        /// Tapping a pet asks for it to become the one being looked after.
+        ///
+        /// Asking rather than doing, because the switch is a hand-over that rebuilds the room: it
+        /// has to happen once, after the input pass, and not in the middle of drawing the card that
+        /// asked for it. <see cref="Update"/> carries it out on the next frame.
+        /// </summary>
+        private void RequestPrimary(int cardIndex)
+        {
+            if (cardIndex <= 0)
+            {
+                SelectedPetIndex = 0;
+                _pendingPrimary = null;
+                return;
+            }
+
+            var cards = Cards();
+            if (cardIndex >= cards.Count) return;
+
+            string id = cards[cardIndex].RecordId;
+            if (string.IsNullOrEmpty(id))
+            {
+                SelectedPetIndex = cardIndex;
+                return;
+            }
+
+            var primary = PetCollection.Primary;
+            if (primary != null && primary.Id == id)
+            {
+                SelectedPetIndex = cardIndex;
+                return;
+            }
+
+            _pendingPrimary = id;
+        }
+
+        private string _pendingPrimary;
 
         /// <summary>Forgets which pet was selected, after the room changes under it.</summary>
         public void ResetSelection()
@@ -461,6 +564,103 @@ namespace DshPet
             SelectedPetIndex = 0;
             CardExpanded = true;
         }
+
+        /// <summary>
+        /// Makes one of the collection's pets the one being looked after.
+        ///
+        /// This is what "点谁就切到谁" means in practice, and it is a real hand-over rather than a
+        /// highlight: the chosen pet gets the brain, the memory, the diary, its own pantry and its
+        /// own name, and the pet that had them becomes a companion. Which is why it flushes the
+        /// outgoing pet's state first — a swap that forgets to flush is how a conversation
+        /// disappears.
+        /// </summary>
+        public bool MakePrimary(string recordId)
+        {
+            var record = PetCollection.Find(recordId);
+            if (record == null) return false;
+
+            var current = PetCollection.Primary;
+            if (current != null && current.Id == recordId) return false;
+
+            // Flush before anything moves: memory and needs belong to the pet that is leaving.
+            SaveNeeds();
+            Memory.Save(PetKey);
+            Journal.Save();
+
+            PetCollection.SetPrimary(recordId);
+
+            Species = PetSpecies.Copy(record.SpeciesId);
+            PetName = record.Name;
+            PlayerPrefs.SetString(SpeciesKey, Species.Id);
+            PlayerPrefs.Save();
+
+            BindPersonality();
+            LoadNeeds();
+            Avatar.Build(Species, false);
+            EnsurePokeTarget(Avatar.gameObject, true);
+            Memory.Load(PetKey);
+            Journal.Bind(PetKey);
+            Scheduler.Reset();
+
+            if (Memory.Recent.Count == 0) Memory.AddPet(Greeting());
+
+            Journal.Add(MemoryKind.Milestone, record.Name + "成了主要照顾的宠物",
+                "现在陪着你的换成了它。", 0.4f);
+
+            // The room is rebuilt around the new pet: the one that had the brain becomes a companion.
+            ResetSelection();
+            SpawnCompanions();
+            RebuildBrain();
+            RecentrePet();
+
+            Memory.AddSystem($"（现在主要照顾的是{record.Name}，它的记忆和记事本会跟着它）");
+            ChatChanged?.Invoke();
+            return true;
+        }
+
+        /// <summary>
+        /// Two pets in the room, alone with each other, occasionally produce a kitten.
+        ///
+        /// Local and free — the point of the feature is that a *new pet* can appear without the
+        /// shop, made out of the two the player already has. The rules (chance, cooldown, the blend
+        /// of temperaments) live in <see cref="PetBreeding"/> and are pure; this only applies the
+        /// answer.
+        /// </summary>
+        private void TryBreeding()
+        {
+            var records = PetCollection.Companions();
+            if (records.Count < 2) return;
+
+            var first = records[0];
+            var second = records[1];
+            if (first == null || second == null || first.Id == second.Id) return;
+
+            float roll = (float)_chatterRng.NextDouble();
+            float chance;
+            bool litter = PetBreeding.TryBreed(first, second, Needs.Affection,
+                PetBreeding.MinutesSinceLastLitter(), roll, out chance);
+
+            LastBreedingChance = chance;
+            if (!litter) return;
+
+            var child = PetBreeding.Child(first, second,
+                Environment.TickCount ^ first.Id.GetHashCode() ^ second.Id.GetHashCode());
+            if (child == null) return;
+
+            PetBreeding.MarkLitter();
+            PetCollection.AddBorn(child);
+
+            Memory.AddPet(PetBreeding.Announcement(first, second, child));
+            Memory.AddSystem($"（{child.Name}在仓库里等着你，去「宠物」面板就能让它进屋）");
+            Journal.Add(MemoryKind.Milestone, "家里多了一只小的",
+                $"{first.Name}和{second.Name}的宝宝：{child.Name}（{child.Personality.Archetype}）", 0.7f);
+            PetAudioDirector.Instance?.Play(SfxId.Happy);
+            DshMobile.MobileHaptics.Medium();
+            ChatChanged?.Invoke();
+        }
+
+        /// <summary>The last breeding chance that was rolled, for the wiring report.</summary>
+        public float LastBreedingChance { get; private set; }
 
         /// <summary>
         /// Points the card at whichever pet was clicked in the room.
@@ -528,7 +728,8 @@ namespace DshPet
         /// A capsule on the root is enough for both platforms: Unity synthesises mouse events
         /// from the primary touch, so a tap on a phone arrives through the same OnMouseDown.
         /// </summary>
-        public static void EnsurePokeTarget(GameObject petObject, bool primary)
+        public static void EnsurePokeTarget(GameObject petObject, bool primary,
+            string recordId = null)
         {
             if (petObject == null) return;
 
@@ -542,6 +743,7 @@ namespace DshPet
             var target = petObject.GetComponent<PetClickTarget>();
             if (target == null) target = petObject.AddComponent<PetClickTarget>();
             target.Primary = primary;
+            target.RecordId = recordId;
         }
 
         private void BuildPlayer(bool editorMode = false)
@@ -629,6 +831,7 @@ namespace DshPet
             // synthetic voice still reading the last reply over the loading screen is the kind of
             // bug that makes a feature feel broken.
             DshMobile.MobileTts.Stop();
+            DshMobile.MobileStt.Cancel();
 
             if (Controller != null)
             {
@@ -728,6 +931,14 @@ namespace DshPet
                 LastExchange = exchange;
                 PetAudioDirector.Instance?.Speak(Species, Personality,
                     joy >= 0f ? PetMood.Happy : PetMood.Lonely);
+
+                // An exchange that went well is also the only moment a kitten can happen: two pets
+                // that like each other, alone in a room, on a cooldown. Nothing here costs a token.
+                if (exchange == PetChatter.Exchange.Cuddle || exchange == PetChatter.Exchange.Play)
+                {
+                    TryBreeding();
+                }
+
                 break;
             }
 
@@ -766,6 +977,16 @@ namespace DshPet
 
         private void Update()
         {
+            // A pending hand-over runs here rather than in the click handler: the switch rebuilds
+            // the room, and doing that from inside the input pass that asked for it is how a UI
+            // ends up drawing a card for an animal that no longer exists.
+            if (!string.IsNullOrEmpty(_pendingPrimary))
+            {
+                string wanted = _pendingPrimary;
+                _pendingPrimary = null;
+                MakePrimary(wanted);
+            }
+
             ApplyThemeToNeeds();
             Needs.Tick(Time.deltaTime);
             TickCompanionNeeds(Time.deltaTime);
@@ -1102,7 +1323,7 @@ namespace DshPet
             HintAboutSpeech();
 
             SaveNeeds();
-            Memory.Save(Species.Id);
+            Memory.Save(PetKey);
             ChatChanged?.Invoke();
         }
 
@@ -1315,7 +1536,7 @@ namespace DshPet
         public void FlushToDisk()
         {
             SaveNeeds();
-            Memory.Save(Species.Id);
+            Memory.Save(PetKey);
             Journal.Save();
         }
 
@@ -1469,9 +1690,9 @@ namespace DshPet
             var next = PetSpecies.Get(index);
             if (next.Id == Species.Id) return;
 
-            Memory.Save(Species.Id);
+            Memory.Save(PetKey);
             Species = next.Copy();
-            PetName = PlayerPrefs.GetString(NameKey + "." + Species.Id, Species.DisplayName);
+            PetName = PlayerPrefs.GetString(NameKey + "." + PetKey, Species.DisplayName);
 
             PlayerPrefs.SetString(SpeciesKey, Species.Id);
             PlayerPrefs.Save();
@@ -1479,8 +1700,8 @@ namespace DshPet
             LoadNeeds();
             BindPersonality();
             Avatar.Build(Species, false);
-            Memory.Load(Species.Id);
-            Journal.Bind(Species.Id);
+            Memory.Load(PetKey);
+            Journal.Bind(PetKey);
             Scheduler.Reset();
             RebuildBrain();
 
@@ -1511,7 +1732,7 @@ namespace DshPet
             string previous = PetName;
             PetName = cleaned;
 
-            PlayerPrefs.SetString(NameKey + "." + Species.Id, PetName);
+            PlayerPrefs.SetString(NameKey + "." + PetKey, PetName);
             PlayerPrefs.Save();
 
             Memory.Remember("我的名字是" + PetName + "，是主人给我起的。");
@@ -1540,7 +1761,7 @@ namespace DshPet
         public void ResetPet()
         {
             Memory.Clear();
-            Memory.Save(Species.Id);
+            Memory.Save(PetKey);
             Needs.Hunger = 0.85f;
             Needs.Energy = 0.85f;
             Needs.Joy = 0.7f;
@@ -1558,13 +1779,13 @@ namespace DshPet
 
         private void SaveNeeds()
         {
-            PlayerPrefs.SetString(NeedsKey + "." + Species.Id, JsonUtility.ToJson(Needs.Snapshot()));
+            PlayerPrefs.SetString(NeedsKey + "." + PetKey, JsonUtility.ToJson(Needs.Snapshot()));
             PlayerPrefs.Save();
         }
 
         private void LoadNeeds()
         {
-            string json = PlayerPrefs.GetString(NeedsKey + "." + Species.Id, "");
+            string json = PlayerPrefs.GetString(NeedsKey + "." + PetKey, "");
             if (string.IsNullOrEmpty(json)) return;
             try
             {
@@ -1580,7 +1801,7 @@ namespace DshPet
         private void OnApplicationQuit()
         {
             SaveNeeds();
-            Memory.Save(Species.Id);
+            Memory.Save(PetKey);
             Journal.Save();
         }
     }

@@ -5,48 +5,85 @@ using UnityEngine.SceneManagement;
 namespace DshMiniGames
 {
     /// <summary>
-    /// A side-scrolling run-and-jump level: platforms, coins, patrolling enemies, a flag.
+    /// 跳一跳: hold to charge, release to hop from box to box.
     ///
-    /// The third game, and the one the other two were quietly rehearsing. It is bigger than they
-    /// are — it needs a world, a moving camera, enemies and lives — but the shape is identical:
-    /// a pure rules class (<see cref="JumpQuestRules"/>) that decides everything that can be
-    /// tested, a scene that only draws rectangles, and an IMGUI HUD. The level itself is
-    /// generated and then *checked* for reachability, because a hand-built level in a scene file
-    /// is the thing this project keeps avoiding and an unjumpable gap is a bug, not difficulty.
+    /// This replaced a side-scrolling platformer, which the player asked for by name — and the
+    /// replacement is a better fit for where this game is played. A platformer wants two thumbs, a
+    /// run-up and a level you learn; a hop wants one finger and thirty seconds, which is what "a
+    /// small game you open from your pet's room" actually means.
+    ///
+    /// The shape is the same as the other two games, deliberately: <see cref="HopRules"/> is pure
+    /// arithmetic with all the tests, this class only builds boxes and animates one arc, and the
+    /// HUD is IMGUI. Nothing here decides anything the rules could have decided.
     /// </summary>
     public class JumpQuestGame : MonoBehaviour
     {
-        public enum Phase { Ready, Running, Dead, Finished }
+        public enum Phase { Ready, Charging, Flying, Dead }
 
         public Phase State { get; private set; } = Phase.Ready;
-        public int Coins { get; private set; }
-        public int Lives { get; private set; } = 3;
 
-        /// <summary>Best coin count of this session.</summary>
+        /// <summary>Points scored: one per box, two for a perfect landing.</summary>
+        public int Score { get; private set; }
+
+        /// <summary>Best score of this session.</summary>
         public int Best { get; private set; }
 
-        private JumpSettings _settings = JumpSettings.Default;
-        private readonly List<Block> _blocks = new List<Block>();
-        private readonly List<GameObject> _visuals = new List<GameObject>();
-        private readonly List<Enemy> _enemies = new List<Enemy>();
-        private readonly List<GameObject> _coinVisuals = new List<GameObject>();
+        /// <summary>How long the current charge has been held, in seconds.</summary>
+        public float Held { get; private set; }
 
-        private class Enemy
+        /// <summary>Charge as 0..1, for the bar.</summary>
+        public float Charge => Mathf.Clamp01(Held / HopRules.FullChargeSeconds(_settings));
+
+        /// <summary>Where the character is standing, along the line.</summary>
+        public float PositionX { get; private set; }
+
+        /// <summary>Set briefly after a perfect landing, for the "+2" popup.</summary>
+        public string LastPopup { get; private set; } = "";
+
+        private float _popupUntil;
+
+        private HopSettings _settings = HopSettings.Default;
+        private readonly System.Random _rng = new System.Random();
+
+        private class Box
         {
-            public Block Block;
             public Transform Transform;
-            public float Direction = 1f;
+            public float X;          // centre, along the line
+            public float Size;       // half-extent
+            public float Height;
+            public float Drift;      // sideways offset, cosmetic
         }
 
-        private Vector2 _position;
-        private Vector2 _velocity;
-        private float _heldFor;
-        private float _spawnX;
-        private bool _grounded;
-        private float _deathAt;
+        private readonly List<Box> _boxes = new List<Box>();
         private Transform _player;
         private Camera _camera;
         private float _lastAspect;
+
+        private float _hopFrom;
+        private float _hopTo;
+        private float _hopT;
+        private float _deathAt;
+        private bool _wasHeld;
+        private float _nextX;
+        private int _colour;
+
+        /// <summary>
+        /// Which box the player is standing on. Separate from <see cref="Score"/> on purpose: a
+        /// perfect landing scores two points but is still one box further along the line.
+        /// </summary>
+        private int _boxIndex;
+
+        private static readonly Color[] Palette =
+        {
+            new Color(0.42f, 0.58f, 0.86f),   // blue
+            new Color(0.52f, 0.76f, 0.55f),   // green
+            new Color(0.88f, 0.62f, 0.42f),   // orange
+            new Color(0.76f, 0.52f, 0.78f),   // purple
+            new Color(0.90f, 0.80f, 0.48f),   // yellow
+            new Color(0.46f, 0.72f, 0.76f)    // teal
+        };
+
+        // ------------------------------------------------------------------ setup
 
         private void Awake()
         {
@@ -66,13 +103,12 @@ namespace DshMiniGames
                 go.AddComponent<AudioListener>();
             }
 
+            // A three-quarter view, so the boxes read as boxes rather than as bars.
             camera.orthographic = true;
-            camera.transform.position = new Vector3(0f, 1.6f, -12f);
-            camera.transform.rotation = Quaternion.identity;
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.42f, 0.62f, 0.86f);
+            camera.backgroundColor = new Color(0.16f, 0.19f, 0.28f);
             camera.nearClipPlane = 0.1f;
-            camera.farClipPlane = 80f;
+            camera.farClipPlane = 120f;
             _camera = camera;
             FitCamera();
 
@@ -80,16 +116,15 @@ namespace DshMiniGames
             {
                 var light = new GameObject("Sun").AddComponent<Light>();
                 light.type = LightType.Directional;
-                light.color = new Color(1f, 0.97f, 0.9f);
-                light.intensity = 1.05f;
-                light.transform.rotation = Quaternion.Euler(48f, -30f, 0f);
+                light.color = new Color(1f, 0.96f, 0.9f);
+                light.intensity = 1.1f;
+                light.transform.rotation = Quaternion.Euler(48f, -34f, 0f);
             }
 
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.52f, 0.55f, 0.62f);
+            RenderSettings.ambientLight = new Color(0.46f, 0.48f, 0.56f);
 
             _player = BuildPlayer();
-            BuildLevelVisuals();
         }
 
         private Transform BuildPlayer()
@@ -97,195 +132,234 @@ namespace DshMiniGames
             var root = new GameObject("Player").transform;
             root.SetParent(transform, false);
 
-            var body = Box("Body", Vector3.zero, new Vector3(0.6f, 0.8f, 0.6f),
-                new Color(0.92f, 0.45f, 0.32f));
+            // A little bottle-shaped figure, like the original's: body, head, scarf.
+            var body = Shape("Body", PrimitiveType.Cylinder, new Vector3(0f, 0.34f, 0f),
+                new Vector3(0.34f, 0.30f, 0.34f), new Color(0.94f, 0.95f, 0.98f));
             body.SetParent(root, false);
 
-            var head = Box("Head", Vector3.zero, new Vector3(0.44f, 0.4f, 0.44f),
-                new Color(0.98f, 0.86f, 0.68f));
+            var head = Shape("Head", PrimitiveType.Sphere, new Vector3(0f, 0.78f, 0f),
+                Vector3.one * 0.36f, new Color(0.36f, 0.44f, 0.86f));
             head.SetParent(root, false);
-            head.localPosition = new Vector3(0f, 0.56f, 0f);
 
-            var eye = Box("Eye", Vector3.zero, new Vector3(0.08f, 0.1f, 0.1f),
-                new Color(0.15f, 0.12f, 0.12f));
-            eye.SetParent(root, false);
-            eye.localPosition = new Vector3(0.14f, 0.6f, -0.22f);
+            var scarf = Shape("Scarf", PrimitiveType.Cylinder, new Vector3(0f, 0.58f, 0f),
+                new Vector3(0.30f, 0.03f, 0.30f), new Color(0.92f, 0.36f, 0.36f));
+            scarf.SetParent(root, false);
 
             return root;
         }
 
-        private void BuildLevelVisuals()
+        private Transform Shape(string name, PrimitiveType type, Vector3 localPosition,
+            Vector3 scale, Color color)
         {
-            for (int i = 0; i < _visuals.Count; i++)
-            {
-                if (_visuals[i] != null) Destroy(_visuals[i]);
-            }
-            _visuals.Clear();
-            _enemies.Clear();
-            _coinVisuals.Clear();
+            var go = GameObject.CreatePrimitive(type);
+            go.name = name;
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = localPosition;
+            go.transform.localScale = scale;
 
-            for (int i = 0; i < _blocks.Count; i++)
-            {
-                var block = _blocks[i];
-                switch (block.Kind)
-                {
-                    case BlockKind.Ground:
-                        _visuals.Add(Box("Ground", new Vector3(block.X, block.Y, 0f),
-                            new Vector3(block.Width, block.Height, 1.2f),
-                            new Color(0.36f, 0.60f, 0.34f)).gameObject);
-                        break;
-
-                    case BlockKind.Platform:
-                        _visuals.Add(Box("Platform", new Vector3(block.X, block.Y, 0f),
-                            new Vector3(block.Width, block.Height, 1f),
-                            new Color(0.72f, 0.55f, 0.36f)).gameObject);
-                        break;
-
-                    case BlockKind.Coin:
-                        var coin = Box("Coin", new Vector3(block.X, block.Y, 0f),
-                            new Vector3(0.42f, 0.42f, 0.2f), new Color(1f, 0.84f, 0.28f));
-                        coin.localRotation = Quaternion.Euler(0f, 0f, 45f);
-                        _visuals.Add(coin.gameObject);
-                        _coinVisuals.Add(coin.gameObject);
-                        break;
-
-                    case BlockKind.Enemy:
-                        var enemy = Box("Enemy", new Vector3(block.X, block.Y, 0f),
-                            new Vector3(block.Width, block.Height, 0.7f),
-                            new Color(0.62f, 0.32f, 0.62f));
-                        _visuals.Add(enemy.gameObject);
-                        _enemies.Add(new Enemy { Block = block, Transform = enemy });
-                        break;
-
-                    case BlockKind.Goal:
-                        var pole = Box("Goal", new Vector3(block.X, block.Y, 0f),
-                            new Vector3(block.Width, block.Height, 0.3f),
-                            new Color(0.95f, 0.95f, 0.95f));
-                        _visuals.Add(pole.gameObject);
-                        var flag = Box("Flag", Vector3.zero, new Vector3(1.1f, 0.7f, 0.12f),
-                            new Color(0.9f, 0.28f, 0.32f));
-                        flag.SetParent(pole, false);
-                        flag.localPosition = new Vector3(0.62f, 0.9f, 0f);
-                        break;
-                }
-            }
+            Tint(go, color);
+            Destroy(go.GetComponent<Collider>());
+            return go.transform;
         }
 
-        private Transform Box(string name, Vector3 position, Vector3 size, Color color)
+        private Transform ShapeParented(Transform parent, string name, Vector3 scale, Color color)
         {
-            var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            box.name = name;
-            box.transform.position = position;
-            box.transform.localScale = size;
-            box.transform.SetParent(transform, true);
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            go.transform.SetParent(parent, false);
+            go.transform.localScale = scale;
 
-            var renderer = box.GetComponent<Renderer>();
+            Tint(go, color);
+            Destroy(go.GetComponent<Collider>());
+            return go.transform;
+        }
+
+        private static void Tint(GameObject go, Color color)
+        {
+            var renderer = go.GetComponent<Renderer>();
+            if (renderer == null) return;
+
+            // One material per object: they are few, and a shared one would make every box change
+            // colour when one of them did.
             var material = new Material(Shader.Find("Standard"));
             material.color = color;
-            material.SetFloat("_Glossiness", 0.2f);
+            material.SetFloat("_Glossiness", 0.32f);
             renderer.material = material;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
+        }
 
-            Destroy(box.GetComponent<Collider>());
-            return box.transform;
+        // ------------------------------------------------------------------ boxes
+
+        private Box SpawnBox(float x, float size, float height, Color tint, float drift)
+        {
+            var root = new GameObject("Box").transform;
+            root.SetParent(transform, false);
+
+            var cube = ShapeParented(root, "Block", new Vector3(size * 2f, height, size * 2f), tint);
+            cube.localPosition = new Vector3(0f, height * 0.5f, 0f);
+
+            // A lighter top face, so the box reads as a box from a three-quarter camera.
+            var top = ShapeParented(root, "Top", new Vector3(size * 2f, 0.06f, size * 2f),
+                Color.Lerp(tint, Color.white, 0.28f));
+            top.localPosition = new Vector3(0f, height + 0.03f, 0f);
+
+            root.position = new Vector3(x, 0f, drift);
+            return new Box { Transform = root, X = x, Size = size, Height = height, Drift = drift };
+        }
+
+        private void ClearBoxes()
+        {
+            for (int i = 0; i < _boxes.Count; i++)
+            {
+                if (_boxes[i].Transform != null) Destroy(_boxes[i].Transform.gameObject);
+            }
+            _boxes.Clear();
+        }
+
+        private void SpawnNext()
+        {
+            float gap = HopRules.NextGap((float)_rng.NextDouble(), Score, _settings);
+            float drift = HopRules.NextDrift((float)_rng.NextDouble(), _settings);
+
+            _colour = (_colour + 1) % Palette.Length;
+            _nextX += gap;
+
+            _boxes.Add(SpawnBox(_nextX, _settings.BoxHalfSize, 1.1f, Palette[_colour], drift));
         }
 
         // ------------------------------------------------------------------ run control
 
-        private int _seed;
-
-        public void ResetRun(bool newLevel = true)
+        public void ResetRun()
         {
-            Coins = 0;
-            Lives = 3;
-            _deathAt = 0f;
+            ClearBoxes();
+            Score = 0;
+            _boxIndex = 0;
+            Held = 0f;
+            PositionX = 0f;
+            _nextX = 0f;
+            _hopT = 0f;
+            _hopFrom = 0f;
+            _hopTo = 0f;
+            State = Phase.Ready;
+            LastPopup = "";
 
-            if (newLevel || _blocks.Count == 0)
+            _boxes.Add(SpawnBox(0f, _settings.BoxHalfSize, 1.1f, Palette[0], 0f));
+            SpawnNext();
+
+            ApplyPlayer(0f, 0f);
+            SnapCamera();
+            DshMobile.MobileHaptics.Light();
+        }
+
+        /// <summary>Starts charging, while a finger or the space bar is down.</summary>
+        public void BeginCharge()
+        {
+            if (State == Phase.Dead)
             {
-                _seed = Random.Range(0, 1 << 28);
-                _blocks.Clear();
-                _blocks.AddRange(JumpQuestRules.BuildLevel(_seed, _settings));
-
-                // A generated level that cannot be finished is a bug, not a difficulty setting —
-                // so it is checked here and regenerated rather than shipped to the player.
-                int attempts = 0;
-                string complaint;
-                while (!JumpQuestRules.IsPassable(_blocks, _settings, out complaint) && attempts < 12)
-                {
-                    attempts++;
-                    Debug.LogWarning($"[DshMini] Regenerating level: {complaint}");
-                    _seed = Random.Range(0, 1 << 28);
-                    _blocks.Clear();
-                    _blocks.AddRange(JumpQuestRules.BuildLevel(_seed, _settings));
-                }
-
-                BuildLevelVisuals();
+                if (Time.time - _deathAt > 0.7f) ResetRun();
+                return;
             }
 
-            _spawnX = -6f;
-            _position = new Vector2(_spawnX, 1.6f);
-            _velocity = Vector2.zero;
-            _grounded = false;
+            if (State == Phase.Ready) State = Phase.Charging;
+        }
+
+        /// <summary>Releases the charge and hops. Also the "tap to play again" path.</summary>
+        public void Release()
+        {
+            if (State == Phase.Dead)
+            {
+                if (Time.time - _deathAt > 0.7f) ResetRun();
+                return;
+            }
+
+            if (State == Phase.Ready) State = Phase.Charging;
+            if (State != Phase.Charging) return;
+
+            float distance = HopRules.HopDistance(Held, _settings);
+            _hopFrom = PositionX;
+            _hopTo = PositionX + distance;
+            _hopT = 0f;
+            Held = 0f;
+            State = Phase.Flying;
+
+            DshMobile.MobileHaptics.Light();
+
+            // The box under the player squashes as they leave it: the tiny piece of feedback that
+            // makes a hop feel like it had weight.
+            var from = _boxes.Count > 0
+                ? _boxes[Mathf.Clamp(_boxIndex, 0, _boxes.Count - 1)].Transform
+                : null;
+            if (from != null) StartCoroutine(Squash(from));
+        }
+
+        private System.Collections.IEnumerator Squash(Transform box)
+        {
+            float t = 0f;
+            while (t < 1f)
+            {
+                t += Time.deltaTime * 6f;
+                float k = 1f - Mathf.Sin(Mathf.Clamp01(t) * Mathf.PI) * 0.10f;
+                if (box != null) box.localScale = new Vector3(1f, k, 1f);
+                yield return null;
+            }
+            if (box != null) box.localScale = Vector3.one;
+        }
+
+        /// <summary>
+        /// Resolves the landing. Public so a test (or an autopilot) can drive a whole run without
+        /// waiting for an animation.
+        /// </summary>
+        public void Land()
+        {
+            // The box the player is standing on is counted in BOXES, not in points: a perfect
+            // landing is worth two points but still advances one box, and conflating the two made
+            // the game look up a box that did not exist yet the first time anyone landed dead
+            // centre. Caught by driving a run from a script before it ever reached a phone.
+            var next = _boxes.Count > _boxIndex + 1 ? _boxes[_boxIndex + 1] : null;
+            var landing = next == null
+                ? HopRules.Landing.Missed
+                : HopRules.Judge(_hopFrom, _hopTo - _hopFrom, next.X, _settings);
+
+            if (landing == HopRules.Landing.Missed)
+            {
+                Die();
+                return;
+            }
+
+            PositionX = _hopTo;
+            _boxIndex++;
+            Score += HopRules.PointsFor(landing);
+            if (Score > Best) Best = Score;
+
+            if (landing == HopRules.Landing.Perfect)
+            {
+                LastPopup = "完美 +2";
+                _popupUntil = Time.time + 1.1f;
+                DshMobile.MobileHaptics.Medium();
+            }
+            else
+            {
+                DshMobile.MobileHaptics.Light();
+            }
+
+            SpawnNext();
             State = Phase.Ready;
-            ApplyPlayer();
-            DshMobile.MobileHaptics.Light();
-        }
-
-        public void StartRun()
-        {
-            if (State == Phase.Running) return;
-            State = Phase.Running;
-        }
-
-        public void Jump()
-        {
-            if (State == Phase.Ready) StartRun();
-            if (State != Phase.Running) return;
-
-            _velocity.y = _settings.JumpSpeed;
-            _heldFor = 0f;
-            _grounded = false;
-            DshMobile.MobileHaptics.Light();
+            ApplyPlayer(PositionX, 0f);
         }
 
         private void Die()
         {
-            if (State != Phase.Running) return;
-
-            Lives--;
-            DshMobile.MobileHaptics.Heavy();
-
-            if (Lives > 0)
-            {
-                _position = new Vector2(Mathf.Max(_spawnX, _position.x - 3f), 2.2f);
-                _velocity = Vector2.zero;
-            }
-            else
-            {
-                State = Phase.Dead;
-                _deathAt = Time.time;
-                PayOut(false);
-            }
-        }
-
-        private void Finish()
-        {
-            if (State != Phase.Running) return;
-            State = Phase.Finished;
+            State = Phase.Dead;
             _deathAt = Time.time;
             DshMobile.MobileHaptics.Heavy();
-            PayOut(true);
+
+            // Paid immediately: the coins were earned on the way, and a crash should not take them.
+            int coins = HopRules.CoinsFor(Score);
+            if (coins > 0) DshMobile.PetWallet.Add(coins);
         }
 
-        private void PayOut(bool finished)
-        {
-            int reward = JumpQuestRules.RewardFor(Coins, finished);
-            if (reward > 0) DshMobile.PetWallet.Add(reward);
-            if (Coins > Best) Best = Coins;
-        }
-
-        public int RunReward => JumpQuestRules.RewardFor(Coins, State == Phase.Finished);
+        public int RunCoins => HopRules.CoinsFor(Score);
 
         // ------------------------------------------------------------------ camera
 
@@ -294,192 +368,107 @@ namespace DshMiniGames
             if (_camera == null) return;
             _lastAspect = _camera.aspect;
 
-            // Enough height to see the play area, and enough width that a phone in portrait does
-            // not end up looking at a letterbox slot (the flappy game taught this one).
-            float byHeight = 6.2f;
-            float byWidth = 7.4f / Mathf.Max(0.2f, _camera.aspect);
+            // Two constraints, and the *smaller* one wins for framing: the player only needs to see
+            // the box they are on and the next one or two, so demanding a wide view on a portrait
+            // phone would shrink the whole toy into a strip down the middle of the screen. Five
+            // units of half-width is enough for the next box, and the height covers the arc.
+            float byHeight = 4.4f;
+            float byWidth = 5f / Mathf.Max(0.2f, _camera.aspect);
             _camera.orthographicSize = Mathf.Max(byHeight, byWidth);
         }
 
-        private void FollowPlayer()
+        private void SnapCamera() => FollowCamera(1f);
+
+        private void FollowCamera(float lerp)
         {
             if (_camera == null) return;
 
-            var target = _camera.transform.position;
-            float wantedX = _position.x + 2.6f;
-            float wantedY = Mathf.Max(1.9f, _position.y + 0.9f);
+            var rotation = Quaternion.Euler(28f, -22f, 0f);
+            var offset = rotation * new Vector3(0.9f, 3.4f, -13.5f);
+            var wanted = new Vector3(PositionX + 1.2f, 0.4f, 0f) + offset;
 
-            target.x = Mathf.Lerp(target.x, wantedX, 1f - Mathf.Exp(-6f * Time.deltaTime));
-            target.y = Mathf.Lerp(target.y, wantedY, 1f - Mathf.Exp(-4f * Time.deltaTime));
-            _camera.transform.position = target;
+            _camera.transform.position = Vector3.Lerp(_camera.transform.position, wanted, lerp);
+            _camera.transform.rotation = rotation;
         }
 
         // ------------------------------------------------------------------ loop
 
-        /// <summary>Held direction from the HUD's buttons or the keyboard, -1..1.</summary>
-        public float MoveInput { get; set; }
+        /// <summary>Held input, pushed by the HUD's touch pad.</summary>
+        public bool HoldInput { get; set; }
 
-        /// <summary>True while a jump is being held (button or key).</summary>
-        public bool JumpHeld { get; set; }
+        /// <summary>One-shot "the hold ended", pushed by the HUD when a finger lifts.</summary>
+        public bool ReleaseInput { get; set; }
 
         private void Update()
         {
             if (_camera != null && !Mathf.Approximately(_lastAspect, _camera.aspect)) FitCamera();
 
-            if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.W) ||
-                Input.GetKeyDown(KeyCode.UpArrow))
+            bool mouseHeld = Input.GetMouseButton(0) && !JumpQuestHud.PointerOverPanel;
+            bool keyHeld = Input.GetKey(KeyCode.Space) || Input.GetKey(KeyCode.W);
+            bool held = HoldInput || mouseHeld || keyHeld;
+
+            if (held && !_wasHeld) BeginCharge();
+            else if (!held && _wasHeld) Release();
+            else if (ReleaseInput) Release();
+
+            _wasHeld = held;
+            ReleaseInput = false;
+
+            if (State == Phase.Charging) Held += Time.deltaTime;
+
+            if (State == Phase.Flying)
             {
-                Jump();
-            }
-
-            float keyboard = 0f;
-            if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) keyboard -= 1f;
-            if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) keyboard += 1f;
-
-            bool held = keyboard != 0f || Input.GetKey(KeyCode.Space) ||
-                        Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow);
-
-            float move = Mathf.Abs(keyboard) > 0.01f ? keyboard : MoveInput;
-            if (JumpHeld) held = true;
-
-            if (State == Phase.Dead || State == Phase.Finished)
-            {
-                // Let the result panel breathe, then a tap restarts.
-                if (Input.GetMouseButtonDown(0) && Time.time - _deathAt > 0.8f) ResetRun();
-                return;
-            }
-
-            if (State == Phase.Ready)
-            {
-                if (Mathf.Abs(move) > 0.01f) StartRun();
-            }
-
-            if (State != Phase.Running)
-            {
-                ApplyPlayer();
-                return;
-            }
-
-            bool jumpPressed = false;
-            Tick(Time.deltaTime, move, held, jumpPressed);
-            _heldFor = held ? _heldFor + Time.deltaTime : 0f;
-
-            ApplyPlayer();
-            FollowPlayer();
-            TickEnemies(Time.deltaTime);
-            TickPickups();
-            TickGoal();
-        }
-
-        /// <summary>
-        /// One frame of play. <paramref name="jumpPressed"/> is separate from
-        /// <paramref name="held"/> because they are different things: a press starts a jump, and
-        /// holding it stretches that same jump. <see cref="Jump"/> applies the press directly, so
-        /// the live path passes false here and only a test (or an autopilot) passes true.
-        /// </summary>
-        public void Tick(float dt, float move, bool held, bool jumpPressed)
-        {
-            _grounded = JumpQuestRules.OnGround(_position, _blocks, _settings);
-            if (_grounded && _velocity.y < 0f) _velocity.y = 0f;
-
-            JumpQuestRules.Step(ref _position, ref _velocity, dt, move, held && _grounded,
-                jumpPressed, _heldFor, _settings);
-            JumpQuestRules.Resolve(ref _position, ref _velocity, _blocks, _settings);
-
-            // A pit is a fall out of the world, which the level generator never leaves open but
-            // the player can still find by jumping off the side of a platform.
-            if (_position.y < -14f) Die();
-        }
-
-        private void TickEnemies(float dt)
-        {
-            for (int i = 0; i < _enemies.Count; i++)
-            {
-                var enemy = _enemies[i];
-                if (enemy.Transform == null) continue;
-
-                float x = enemy.Transform.position.x + enemy.Direction * 1.6f * dt;
-                if (Mathf.Abs(x - enemy.Block.X) > enemy.Block.Patrol) enemy.Direction *= -1f;
-                enemy.Transform.position = new Vector3(
-                    Mathf.Clamp(x, enemy.Block.X - enemy.Block.Patrol, enemy.Block.X + enemy.Block.Patrol),
-                    enemy.Block.Y, 0f);
-
-                var rect = new Rect(enemy.Transform.position.x - enemy.Block.Width * 0.5f,
-                    enemy.Block.Y - enemy.Block.Height * 0.5f, enemy.Block.Width, enemy.Block.Height);
-
-                if (!JumpQuestRules.Overlaps(_position, _settings, rect)) continue;
-
-                if (JumpQuestRules.IsStomp(_position, _velocity, rect, _settings))
+                _hopT += Time.deltaTime / Mathf.Max(0.05f, _settings.HopSeconds);
+                if (_hopT >= 1f)
                 {
-                    // Bounced off it: the payoff for jumping well is height, not just survival.
-                    _velocity.y = _settings.JumpSpeed * 0.72f;
-                    _position.y = rect.yMax + _settings.BodyHalfHeight;
-                    DshMobile.MobileHaptics.Medium();
-                    Destroy(enemy.Transform.gameObject);
-                    enemy.Transform = null;
+                    _hopT = 1f;
+                    Land();
                 }
                 else
                 {
-                    Die();
-                    return;
+                    var p = HopRules.ArcPosition(_hopFrom, _hopTo, _hopT, _settings);
+                    ApplyPlayer(p.x, p.y * 0.35f);
                 }
             }
+
+            if (State == Phase.Dead) TickFall();
+
+            if (!string.IsNullOrEmpty(LastPopup) && Time.time > _popupUntil) LastPopup = "";
+
+            FollowCamera(1f - Mathf.Exp(-8f * Time.deltaTime));
         }
 
-        private void TickPickups()
+        private float _fallY;
+
+        /// <summary>
+        /// The miss animation: the figure tips over the edge and drops. Short, and it stops — a
+        /// character that disappears into the void reads as a bug rather than as a loss.
+        /// </summary>
+        private void TickFall()
         {
-            for (int i = 0; i < _blocks.Count; i++)
-            {
-                if (_blocks[i].Kind != BlockKind.Coin) continue;
+            _fallY -= Time.deltaTime * 5.5f;
+            if (_fallY < -3.4f) _fallY = -3.4f;
 
-                // A little forgiveness on the pickup: the coin is a visual, and a player who ran
-                // through one and got nothing would read it as a bug rather than as a near miss.
-                var rect = _blocks[i].Rect;
-                rect.xMin -= 0.12f;
-                rect.xMax += 0.12f;
-                rect.yMin -= 0.12f;
-                rect.yMax += 0.12f;
-                if (!JumpQuestRules.Overlaps(_position, _settings, rect)) continue;
-
-                // Collected: the block becomes inert and the visual disappears.
-                _blocks[i] = Block.Make(BlockKind.Platform, _blocks[i].X, _blocks[i].Y, 0f, 0f);
-                Coins++;
-                DshMobile.MobileHaptics.Light();
-
-                for (int v = _coinVisuals.Count - 1; v >= 0; v--)
-                {
-                    var visual = _coinVisuals[v];
-                    if (visual == null)
-                    {
-                        _coinVisuals.RemoveAt(v);
-                        continue;
-                    }
-
-                    if (Mathf.Abs(visual.transform.position.x - rect.center.x) < 0.01f &&
-                        Mathf.Abs(visual.transform.position.y - rect.center.y) < 0.01f)
-                    {
-                        Destroy(visual);
-                        _coinVisuals.RemoveAt(v);
-                        break;
-                    }
-                }
-            }
+            if (_player == null) return;
+            _player.position = new Vector3(_hopTo, _fallY, 0f);
+            _player.rotation = Quaternion.Euler(0f, 0f, Mathf.Lerp(0f, -70f,
+                Mathf.Clamp01(-_fallY / 3.4f)));
         }
 
-        private void TickGoal()
-        {
-            for (int i = 0; i < _blocks.Count; i++)
-            {
-                if (_blocks[i].Kind != BlockKind.Goal) continue;
-                if (JumpQuestRules.Overlaps(_position, _settings, _blocks[i].Rect)) Finish();
-                return;
-            }
-        }
-
-        private void ApplyPlayer()
+        private void ApplyPlayer(float x, float y)
         {
             if (_player == null) return;
-            _player.position = new Vector3(_position.x, _position.y, 0f);
+            if (State != Phase.Dead) _fallY = 0f;
+
+            var box = _boxes.Count > 0
+                ? _boxes[Mathf.Clamp(_boxIndex, 0, _boxes.Count - 1)]
+                : null;
+            float z = box != null ? box.Drift : 0f;
+            float baseHeight = box != null ? box.Height : 0f;
+
+            _player.position = new Vector3(x, baseHeight + y, z);
+            _player.rotation = Quaternion.Euler(0f, 0f,
+                State == Phase.Flying ? Mathf.Lerp(-12f, 12f, _hopT) : 0f);
         }
 
         /// <summary>Goes home, the same way the other games do.</summary>

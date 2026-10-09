@@ -75,14 +75,28 @@ namespace DshMiniGames
                 $"最高 {_game.Best}　·　🐾 {DshMobile.PetWallet.Coins:N0}",
                 Centered());
 
+            // One "back to the room" button, drawn once. It used to be drawn twice — once inside
+            // the flying branch, which also set PointerOverPanel = true unconditionally, and that
+            // is why tapping the screen never made the bird flap: the game's "did the tap land on
+            // the UI" test was answered by the HUD's own draw call rather than by the pointer's
+            // position. Every panel now owns an explicit rect and the flag is computed from it.
+            var back = new Rect(width - 178f, 16f, 158f, 38f);
+            if (GUI.Button(back, "回到宠物小屋", _button))
+            {
+                _game.ReturnToRoom();
+            }
+            PointerOverPanel |= back.Contains(Event.current.mousePosition);
+
             if (_game.State == FlyBirdGame.Phase.Ready)
             {
-                Panel(new Rect(width * 0.5f - 190f, height * 0.34f, 380f, 116f));
-                GUI.Label(new Rect(width * 0.5f - 170f, height * 0.34f + 12f, 340f, 30f), "小鸟飞行", _title);
-                GUI.Label(new Rect(width * 0.5f - 170f, height * 0.34f + 46f, 340f, 24f),
+                var intro = new Rect(width * 0.5f - 190f, height * 0.34f, 380f, 116f);
+                Panel(intro);
+                GUI.Label(new Rect(intro.x + 20f, intro.y + 12f, intro.width - 40f, 30f), "小鸟飞行", _title);
+                GUI.Label(new Rect(intro.x + 20f, intro.y + 46f, intro.width - 40f, 24f),
                     DshMobile.MobileUi.UseTouchControls ? "点屏幕扇翅膀，钻过管子" : "空格 / 点击 扇翅膀，钻过管子", _small);
-                GUI.Label(new Rect(width * 0.5f - 170f, height * 0.34f + 70f, 340f, 24f),
+                GUI.Label(new Rect(intro.x + 20f, intro.y + 70f, intro.width - 40f, 24f),
                     "每过一根管子赚一个宠物币，撞到就结束。", _small);
+                PointerOverPanel |= intro.Contains(Event.current.mousePosition);
             }
 
             if (_game.State == FlyBirdGame.Phase.Dead)
@@ -109,7 +123,10 @@ namespace DshMiniGames
                     _game.ReturnToRoom();
                 }
 
-                PointerOverPanel = true;
+                // The result panel swallows taps everywhere on it, not just on its buttons: a tap
+                // that lands on the panel and restarts the run *and* flaps is how a player dies
+                // instantly on respawn.
+                PointerOverPanel |= panel.Contains(Event.current.mousePosition);
             }
 
             // A quiet hint along the bottom, and the way home before you crash.
@@ -119,16 +136,26 @@ namespace DshMiniGames
                 style.normal.textColor = new Color(1f, 1f, 1f, 0.55f);
                 GUI.Label(new Rect(width * 0.5f - 150f, height - 46f, 300f, 24f),
                     DshMobile.MobileUi.UseTouchControls ? "点一下扇翅膀" : "空格扇翅膀", style);
+            }
 
-                if (GUI.Button(new Rect(width - 178f, 16f, 158f, 38f), "回到宠物小屋", _button))
+            // The tap target for the bird itself: the whole screen, minus whatever the HUD is
+            // using. A phone's tap does not necessarily arrive as a mouse event, so relying on
+            // Input.GetMouseButtonDown alone is how "点击屏幕不能飞" happens — the game now also
+            // asks the shared touch layer, which is the thing that actually sees fingers.
+            if (_game.State == FlyBirdGame.Phase.Ready || _game.State == FlyBirdGame.Phase.Flying)
+            {
+                if (!PointerOverPanel)
                 {
-                    _game.ReturnToRoom();
+                    DshMobile.MobileTouch.RegisterButton(TapId,
+                        new Rect(safe.x, safe.y, safe.width, safe.height), true, "扇翅膀");
                 }
-                PointerOverPanel = true;
             }
 
             GUI.matrix = previous;
         }
+
+        /// <summary>Id of the full-screen tap target, so the touch layer can own it.</summary>
+        public const string TapId = "fly.tap";
 
         private GUIStyle Centered()
         {

@@ -2226,6 +2226,233 @@ namespace DshPet.Tests
             Assert.IsTrue(pending.Contains("准备中"), pending);
         }
 
+        // ------------------------------------------------------ breeding and selling
+
+        [Test]
+        public void Breeding_NeedsTwoPetsAndSomeWarmth()
+        {
+            var first = PetRecord.Create("cat", "小猫咪", new PetPersonality(), 1);
+            var second = PetRecord.Create("bear", "小熊", new PetPersonality(), 2);
+            float chance;
+
+            Assert.IsFalse(PetBreeding.TryBreed(null, second, 1f, 999f, 0f, out chance),
+                "one pet cannot breed with nobody");
+            Assert.IsFalse(PetBreeding.TryBreed(first, first, 1f, 999f, 0f, out chance),
+                "and not with itself");
+            Assert.IsFalse(PetBreeding.TryBreed(first, second, 0.05f, 999f, 0f, out chance),
+                "a pair that barely knows each other should not produce a family");
+            Assert.IsFalse(PetBreeding.TryBreed(first, second, 1f, 1f, 0f, out chance),
+                "the cooldown has to hold");
+            Assert.AreEqual(0f, chance, 0.0001f, "a refused litter has no chance attached");
+
+            Assert.IsTrue(PetBreeding.TryBreed(first, second, 1f, 999f, 0f, out chance),
+                "a roll of zero always wins once everything else is allowed");
+            Assert.Greater(chance, 0f);
+            Assert.Less(chance, 1f, "but it is never a certainty");
+        }
+
+        [Test]
+        public void Breeding_WarmPairsAreMoreLikelyThanColdOnes()
+        {
+            var warm = PetRecord.Create("cat", "小猫咪", new PetPersonality { Clinginess = 1f }, 1);
+            var alsoWarm = PetRecord.Create("bear", "小熊", new PetPersonality { Clinginess = 1f }, 2);
+            var cold = PetRecord.Create("fox", "小狐狸", new PetPersonality { Clinginess = 0f }, 3);
+
+            float warmChance, coldChance;
+            PetBreeding.TryBreed(warm, alsoWarm, 1f, 999f, 0f, out warmChance);
+            PetBreeding.TryBreed(warm, cold, 1f, 999f, 0f, out coldChance);
+
+            Assert.Greater(warmChance, coldChance, "two clingy pets should be likelier to pair up");
+        }
+
+        [Test]
+        public void Breeding_TheChildBlendsItsParents()
+        {
+            var bold = PetRecord.Create("fox", "小狐狸",
+                new PetPersonality { Liveliness = 1f, Clinginess = 1f, Curiosity = 1f, Neatness = 1f }, 11);
+            var shy = PetRecord.Create("rabbit", "小兔子",
+                new PetPersonality { Liveliness = 0f, Clinginess = 0f, Curiosity = 0f, Neatness = 0f }, 12);
+
+            var child = PetBreeding.Child(bold, shy, 4242);
+            Assert.IsNotNull(child);
+            Assert.IsTrue(child.SpeciesId == "fox" || child.SpeciesId == "rabbit",
+                "the child is one of its parents' species, not a new one");
+
+            // Blended, not copied: every trait sits near the middle of its parents.
+            Assert.That(child.Liveliness, Is.InRange(0.25f, 0.75f), "liveliness should be blended");
+            Assert.That(child.Clinginess, Is.InRange(0.25f, 0.75f));
+            Assert.That(child.Curiosity, Is.InRange(0.25f, 0.75f));
+            Assert.That(child.Neatness, Is.InRange(0.25f, 0.75f));
+
+            Assert.IsFalse(string.IsNullOrEmpty(child.Name), "a baby needs a name");
+            Assert.IsTrue(child.Parents.Contains("小狐狸") && child.Parents.Contains("小兔子"),
+                "and it should know where it came from");
+        }
+
+        [Test]
+        public void Breeding_TheSameSeedGivesTheSameBaby()
+        {
+            // Deterministic, so "my kitten was this" is something a bug report can reproduce.
+            var a = PetRecord.Create("cat", "小猫咪", new PetPersonality { Liveliness = 0.9f }, 21);
+            var b = PetRecord.Create("bear", "小熊", new PetPersonality { Liveliness = 0.2f }, 22);
+
+            var first = PetBreeding.Child(a, b, 777);
+            var second = PetBreeding.Child(a, b, 777);
+
+            Assert.AreEqual(first.SpeciesId, second.SpeciesId);
+            Assert.AreEqual(first.Liveliness, second.Liveliness, 0.0001f);
+            Assert.AreEqual(first.Neatness, second.Neatness, 0.0001f);
+        }
+
+        [Test]
+        public void Selling_PaysLessThanBuyingAndProtectsTheHousehold()
+        {
+            var previous = JsonUtility.ToJson(PetCollection.Data);
+            int original = DshMobile.PetWallet.Coins;
+            try
+            {
+                PetCollection.ReplaceForTests(new PetCollectionData());
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(100000);
+
+                string message;
+                PetCollection.Buy("cat", out message);
+                PetCollection.Buy("rabbit", out message);
+
+                var primary = PetCollection.Primary;
+                Assert.IsNotNull(primary);
+
+                // The pet being looked after is not for sale.
+                int paid;
+                Assert.IsFalse(PetCollection.Sell(primary.Id, out message, out paid),
+                    "the pet you are looking after cannot be sold");
+                Assert.IsTrue(message.Contains("主要照顾"), message);
+
+                // Somebody else can be.
+                var other = PetCollection.Warehouse[1];
+                int before = DshMobile.PetWallet.Coins;
+                int expected = PetCollection.SellPriceFor(other.SpeciesId);
+
+                Assert.IsTrue(PetCollection.Sell(other.Id, out message, out paid));
+                Assert.AreEqual(expected, paid, "the price is stated before the sale and honoured");
+                Assert.AreEqual(before + expected, DshMobile.PetWallet.Coins,
+                    "the coins land in the same wallet the shop spends from");
+                Assert.IsNull(PetCollection.Find(other.Id), "and the pet is gone");
+                Assert.Less(expected, PetCollection.PriceFor(other.SpeciesId),
+                    "a shop that buys back at cost is a bank, not a shop");
+            }
+            finally
+            {
+                PetCollection.ReplaceForTests(JsonUtility.FromJson<PetCollectionData>(previous));
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(original);
+            }
+        }
+
+        [Test]
+        public void Selling_RefusesToEmptyTheRoom()
+        {
+            var previous = JsonUtility.ToJson(PetCollection.Data);
+            try
+            {
+                PetCollection.ReplaceForTests(new PetCollectionData());
+
+                string message;
+                int paid;
+                Assert.AreEqual(1, PetCollection.Warehouse.Count,
+                    "a fresh collection holds exactly one pet");
+
+                // Two guards stand in the way of selling the last pet and either is a correct
+                // answer, so the test asserts the behaviour — the sale is refused and nothing is
+                // removed — rather than which sentence came out.
+                Assert.IsFalse(PetCollection.Sell(PetCollection.Warehouse[0].Id, out message, out paid),
+                    "the last pet cannot be sold");
+                Assert.AreEqual(0, paid, "a refused sale pays nothing");
+                Assert.AreEqual(1, PetCollection.Warehouse.Count, "and nothing was removed");
+                Assert.IsFalse(string.IsNullOrEmpty(message), "and the player is told why");
+            }
+            finally
+            {
+                PetCollection.ReplaceForTests(JsonUtility.FromJson<PetCollectionData>(previous));
+            }
+        }
+
+        [Test]
+        public void SavingPerPet_KeepsTwoOfTheSameSpeciesApart()
+        {
+            // The bug this guards: every save used to be keyed by species, so two cats shared one
+            // name, one pantry and one diary — and the collection could hold two cats.
+            var previous = JsonUtility.ToJson(PetCollection.Data);
+            try
+            {
+                PetCollection.ReplaceForTests(new PetCollectionData());
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(100000);
+
+                string message;
+                var first = PetCollection.Buy("cat", out message);
+                var second = PetCollection.Buy("cat", out message);
+
+                Assert.AreNotEqual(first.Id, second.Id);
+                Assert.AreNotEqual(first.Name, second.Name,
+                    "two cats need two names before anything else can tell them apart");
+
+                PetCollection.SetPrimary(first.Id);
+                Assert.AreEqual(first.Id, PetCollection.Primary.Id);
+
+                PetCollection.SetPrimary(second.Id);
+                Assert.AreEqual(second.Id, PetCollection.Primary.Id, "the hand-over sticks");
+                Assert.AreNotEqual(first.Id, second.Id);
+
+                // And the temperament is the individual's, not the species'.
+                first.SetPersonality(new PetPersonality { Liveliness = 0.1f });
+                second.SetPersonality(new PetPersonality { Liveliness = 0.9f });
+                Assert.AreNotEqual(first.Personality.Liveliness, second.Personality.Liveliness);
+            }
+            finally
+            {
+                PetCollection.ReplaceForTests(JsonUtility.FromJson<PetCollectionData>(previous));
+            }
+        }
+
+        [Test]
+        public void Stt_SaysWhetherItCanListenAtAll()
+        {
+            // Voice input has four ways to be unavailable and the player has to be able to tell
+            // them apart — "I pressed the microphone and nothing happened" is not an answer.
+            string desktop = DshMobile.MobileStt.StatusText(true, false, false, false,
+                int.MinValue, "");
+            Assert.IsTrue(desktop.Contains("只在安卓"), desktop);
+
+            string noPermission = DshMobile.MobileStt.StatusText(true, true, false, false,
+                int.MinValue, "");
+            Assert.IsTrue(noPermission.Contains("麦克风权限"), noPermission);
+
+            string off = DshMobile.MobileStt.StatusText(false, true, true, false, int.MinValue, "");
+            Assert.IsTrue(off.Contains("已关闭"), off);
+
+            string listening = DshMobile.MobileStt.StatusText(true, true, true, true,
+                int.MinValue, "");
+            Assert.IsTrue(listening.Contains("正在听"), listening);
+
+            string silent = DshMobile.MobileStt.StatusText(true, true, true, false, 7, "");
+            Assert.IsTrue(silent.Contains("没听到"), silent);
+            string unclear = DshMobile.MobileStt.StatusText(true, true, true, false, 6, "");
+            Assert.IsTrue(unclear.Contains("没听清"), unclear);
+
+            string unknown = DshMobile.MobileStt.StatusText(true, true, true, false, 42, "");
+            Assert.IsTrue(unknown.Contains("42"), unknown);
+
+            string ready = DshMobile.MobileStt.StatusText(true, true, true, false, int.MinValue, "");
+            Assert.IsTrue(ready.Contains("就绪"), ready);
+
+            // And it is a harmless no-op off-device, like the speech output.
+            Assert.IsFalse(DshMobile.MobileStt.Available, "the editor is not a phone");
+            Assert.IsFalse(DshMobile.MobileStt.StartListening());
+            Assert.DoesNotThrow(DshMobile.MobileStt.Tick);
+            Assert.DoesNotThrow(DshMobile.MobileStt.Cancel);
+        }
+
         // ------------------------------------------------------------ footer geometry
 
         [Test]

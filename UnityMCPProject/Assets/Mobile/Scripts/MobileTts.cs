@@ -50,8 +50,11 @@ namespace DshMobile
 
         private static float _lastAttemptAt = -999f;
         private static string _lastError = "";
+        private static string _engineName = "";
         private static int _initStatus = int.MinValue;
         private static int _languageStatus = int.MinValue;
+        private static int _pitchResult = int.MinValue;
+        private static int _rateResult = int.MinValue;
 
         /// <summary>Seconds between init attempts, so a device without an engine is not hammered.</summary>
         public const float InitRetrySeconds = 6f;
@@ -150,8 +153,14 @@ namespace DshMobile
 
             try
             {
-                _engine.Call("setPitch", Mathf.Clamp(pitch, 0.5f, 2f));
-                _engine.Call("setSpeechRate", Mathf.Clamp(rate, 0.5f, 2f));
+                // Both of these RETURN AN INT (SUCCESS/ERROR), they are not void — and Unity's
+                // AndroidJavaObject.Call resolves an overload by the JNI signature it derives
+                // from the arguments, so Call("setPitch", 1f) looks for "(F)V" and throws
+                // NoSuchMethodError on a device while working nowhere at all. The report from the
+                // phone was exactly that: "no non-static method with name='setPitch'
+                // signature='(F)V'". Everything on this object is interrogated with Call<int>.
+                _pitchResult = _engine.Call<int>("setPitch", Mathf.Clamp(pitch, 0.5f, 2f));
+                _rateResult = _engine.Call<int>("setSpeechRate", Mathf.Clamp(rate, 0.5f, 2f));
 
                 // QUEUE_FLUSH: the newest line wins. A pet that queues four replies and reads them
                 // out one after another long after the conversation moved on is worse than one
@@ -218,8 +227,10 @@ namespace DshMobile
 
             if (languageStatus < 0)
             {
+                // Still worth trying: the engine will read Chinese with whatever voice it has, and
+                // refusing to speak at all would be a worse answer than "it sounds wrong".
                 return "引擎能起来，但这台手机没有中文语音包（语言状态 " + languageStatus +
-                       "）：到系统设置里的「语言与输入 → 文字转语音」装一个中文语音即可。";
+                       "）：点下面的「打开系统语音设置」装一个中文语音，或者先凑合听。";
             }
 
             if (!enabled) return "语音引擎已就绪：打开开关后宠物就会朗读它说的话。";
@@ -232,6 +243,50 @@ namespace DshMobile
             if (!Available) return "不可用";
             if (!_ready) return "未就绪";
             return _languageStatus < 0 ? "缺中文语音包" : "就绪";
+        }
+
+        /// <summary>Which engine Android picked, for the settings panel.</summary>
+        public static string EngineName => _engineName;
+
+        /// <summary>What setPitch/setSpeechRate answered, for the settings panel.</summary>
+        public static string TuningStatus
+        {
+            get
+            {
+                if (_pitchResult == int.MinValue && _rateResult == int.MinValue) return "";
+                return $"音调 {_pitchResult} / 语速 {_rateResult}";
+            }
+        }
+
+        /// <summary>
+        /// Opens the system's text-to-speech settings, so "install a Chinese voice" is one tap
+        /// rather than a scavenger hunt through the settings app.
+        ///
+        /// Returns false when there is nothing to open — the caller says so rather than leaving
+        /// the player staring at an unchanged screen.
+        /// </summary>
+        public static bool OpenSystemSettings()
+        {
+            if (!Available) return false;
+
+            try
+            {
+                using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+                using (var activity = player.GetStatic<AndroidJavaObject>("currentActivity"))
+                using (var intentClass = new AndroidJavaClass("android.content.Intent"))
+                using (var intent = new AndroidJavaObject("android.content.Intent",
+                           intentClass.GetStatic<string>("ACTION_TTS_SETTINGS")))
+                {
+                    activity.Call("startActivity", intent);
+                }
+                return true;
+            }
+            catch (System.Exception e)
+            {
+                _lastError = e.Message;
+                Debug.LogWarning("[DshMobile] Could not open the TTS settings: " + e.Message);
+                return false;
+            }
         }
 
         /// <summary>
@@ -312,20 +367,35 @@ namespace DshMobile
                         _listener = new InitListener();
                         _engine = new AndroidJavaObject("android.speech.tts.TextToSpeech", activity, _listener);
                         _bundle = new AndroidJavaObject("android.os.Bundle");
+
+                        // Which engine the phone actually chose, so a player looking at a silent
+                        // pet can tell "no voice installed" from "the wrong engine is default".
+                        try { _engineName = _engine.Call<string>("getDefaultEngine") ?? ""; }
+                        catch { _engineName = ""; }
                     }
 
-                    // A phone with an English-only engine answers LANG_MISSING_DATA here and then
-                    // plays silence for Chinese text, so the answer is checked and reported rather
-                    // than assumed.
+                    // A phone with an English-only engine answers LANG_MISSING_DATA(-1) or
+                    // LANG_NOT_SUPPORTED(-2) here and then plays silence for Chinese text, so the
+                    // answer is checked and reported rather than assumed.
                     _languageStatus = _engine.Call<int>("setLanguage", china);
                     if (_languageStatus < 0)
                     {
                         // Fall back to whatever the engine does have: it will pronounce Chinese
                         // badly, which is still better than silence, and the settings line tells
-                        // the player what to install to fix it properly.
+                        // the player what to install to fix it properly. Note the fallback is not
+                        // recorded as the status — the player needs to know their Chinese voice is
+                        // missing, not that the engine accepted American English.
                         using (var fallback = locale.CallStatic<AndroidJavaObject>("getDefault"))
+                        using (var us = locale.GetStatic<AndroidJavaObject>("US"))
                         {
-                            _engine.Call<int>("setLanguage", fallback);
+                            if (_engine.Call<int>("isLanguageAvailable", fallback) >= 0)
+                            {
+                                _engine.Call<int>("setLanguage", fallback);
+                            }
+                            else
+                            {
+                                _engine.Call<int>("setLanguage", us);
+                            }
                         }
                     }
                 }

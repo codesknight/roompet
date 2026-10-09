@@ -22,6 +22,12 @@ namespace DshPet
         public PetSpecies Species;
         public PetPersonality Personality;
 
+        /// <summary>
+        /// Which collection record this pet is, so clicking it can hand the room over to it.
+        /// Empty for the primary pet, which already owns the room.
+        /// </summary>
+        public string RecordId = "";
+
         private float _cooldown;
 
         private void Update()

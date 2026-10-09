@@ -28,6 +28,16 @@ namespace DshPet
         /// <summary>Set for the pet the player is currently focused on: it owns the brain and the journal.</summary>
         public bool Primary;
 
+        /// <summary>
+        /// Who the parents were, for a pet that was born in the room rather than bought: "小猫咪 和 小熊".
+        /// Kept so the collection panel can say where a pet came from — a pet with a history is
+        /// worth more to look at than one that appeared from a shop.
+        /// </summary>
+        public string Parents = "";
+
+        /// <summary>When it was born, as a UTC round-trip string. Empty for bought pets.</summary>
+        public string BornAt = "";
+
         public PetPersonality Personality => new PetPersonality
         {
             Liveliness = Liveliness,
@@ -67,7 +77,9 @@ namespace DshPet
             Clinginess = Clinginess,
             Curiosity = Curiosity,
             Neatness = Neatness,
-            Primary = Primary
+            Primary = Primary,
+            Parents = Parents,
+            BornAt = BornAt
         };
     }
 
@@ -129,6 +141,9 @@ namespace DshPet
             EnsureStarters();
             Save();
         }
+
+        /// <summary>Writes the collection to disk. Public so the room can push a change into it.</summary>
+        public static void SaveNow() => Save();
 
         public static void Save()
         {
@@ -206,6 +221,86 @@ namespace DshPet
 
         /// <summary>Cheapest a species can be bought again for.</summary>
         public const int MinRebuyPrice = 120;
+
+        /// <summary>What the shop pays for a pet. Half of what it costs, with a floor.</summary>
+        public const int MinSellPrice = 80;
+
+        /// <summary>
+        /// What selling this pet is worth.
+        ///
+        /// Deliberately less than the purchase price — a shop that buys back at cost is a bank,
+        /// not a shop — but never nothing: a pet the player has stopped wanting is still worth a
+        /// couple of runs.
+        /// </summary>
+        public static int SellPriceFor(string speciesId)
+            => Mathf.Max(MinSellPrice, PriceFor(speciesId) / 2);
+
+        /// <summary>
+        /// Sells a pet back to the shop. Returns false, and changes nothing, when it cannot.
+        ///
+        /// Two refusals, both deliberate: the pet being looked after is not for sale (the player
+        /// would be selling the animal whose memory and diary they are reading), and the last pet
+        /// is not for sale either — a room with nobody in it is not a game any more.
+        /// </summary>
+        public static bool Sell(string recordId, out string message, out int paid)
+        {
+            paid = 0;
+
+            var record = Find(recordId);
+            if (record == null)
+            {
+                message = "没有这只宠物";
+                return false;
+            }
+
+            var primary = Primary;
+            if (primary != null && primary.Id == recordId)
+            {
+                message = "它正在被你照顾，先换一只主要照顾的宠物再卖";
+                return false;
+            }
+
+            if (Data.Pets.Count <= 1)
+            {
+                message = "至少要留一只宠物陪你";
+                return false;
+            }
+
+            paid = SellPriceFor(record.SpeciesId);
+            Data.Pets.Remove(record);
+            Data.Backpack.Remove(recordId);
+
+            // The room always keeps somebody: if the backpack empties, the primary moves in.
+            if (Data.Backpack.Count == 0 && primary != null) Data.Backpack.Add(primary.Id);
+
+            DshMobile.PetWallet.Add(paid);
+            Save();
+            Changed?.Invoke();
+
+            message = $"卖掉了{record.Name}，得到 {paid} 个宠物币";
+            return true;
+        }
+
+        /// <summary>
+        /// Adds a pet that was born in the room rather than bought.
+        ///
+        /// It goes to the warehouse, not straight into the backpack: a birth is not a purchase, and
+        /// filling the last backpack slot with a kitten the player did not ask for would be the
+        /// game deciding who they are looking after.
+        /// </summary>
+        public static PetRecord AddBorn(PetRecord record)
+        {
+            if (record == null) return null;
+
+            record.Name = UniqueName(record.Name);
+            record.BornAt = System.DateTime.UtcNow.ToString("o");
+            Data.Pets.Add(record);
+            if (!Data.UnlockedSpecies.Contains(record.SpeciesId)) Data.UnlockedSpecies.Add(record.SpeciesId);
+
+            Save();
+            Changed?.Invoke();
+            return record;
+        }
 
         public static PetRecord Buy(string speciesId, out string message)
         {
@@ -312,8 +407,7 @@ namespace DshPet
         }
 
         /// <summary>The pet that owns the brain, the journal and the player's attention.</summary>
-        public static PetRecord Primary
-        {
+        public static PetRecord Primary        {
             get
             {
                 for (int i = 0; i < Data.Pets.Count; i++)
@@ -339,8 +433,7 @@ namespace DshPet
         }
 
         /// <summary>The records that get instantiated into the room, primary first.</summary>
-        public static List<PetRecord> Companions()
-        {
+        public static List<PetRecord> Companions()        {
             var list = new List<PetRecord>();
             for (int i = 0; i < Data.Backpack.Count; i++)
             {

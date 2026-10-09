@@ -1813,6 +1813,36 @@ namespace DshPet
                 if (enter) Event.current.Use();
             }
 
+            // The microphone sits just left of the text field, where a thumb already is. It is
+            // offered only where a recogniser exists; pressing it fills the box rather than sending,
+            // so a misheard sentence is something the player can fix instead of something the pet
+            // has already answered.
+            DshMobile.MobileStt.Tick();
+            if (DshMobile.MobileStt.Available && DshMobile.MobileStt.Enabled)
+            {
+                var mic = new Rect(field.x - 46f, field.y, 40f, 38f);
+                bool listening = DshMobile.MobileStt.Listening;
+                GUI.color = listening ? new Color(1f, 0.7f, 0.6f) : Color.white;
+                if (GUI.Button(mic, listening ? "■" : "🎤", _sendButton))
+                {
+                    if (listening) DshMobile.MobileStt.StopListening();
+                    else DshMobile.MobileStt.StartListening();
+                }
+                GUI.color = Color.white;
+
+                string heard = DshMobile.MobileStt.TakeResult();
+                if (!string.IsNullOrEmpty(heard))
+                {
+                    _input = heard;
+                    SetVoiceMessage("听到了：" + heard + "（可以改，再点发送）", false);
+                }
+                else if (!string.IsNullOrEmpty(DshMobile.MobileStt.LastError) &&
+                         !DshMobile.MobileStt.Listening)
+                {
+                    SetVoiceMessage(DshMobile.MobileStt.LastError, true);
+                }
+            }
+
             var actions = new Rect(rect.x, field.yMax + 8f, rect.width, 30f);
             GUILayout.BeginArea(actions);
             GUILayout.BeginHorizontal();
@@ -2427,11 +2457,29 @@ namespace DshPet
                     DshMobile.MobileTts.LastError), _small);
                 GUI.color = Color.white;
 
+                if (!string.IsNullOrEmpty(DshMobile.MobileTts.EngineName))
+                {
+                    GUILayout.Label("引擎：" + DshMobile.MobileTts.EngineName +
+                                    (string.IsNullOrEmpty(DshMobile.MobileTts.TuningStatus)
+                                        ? ""
+                                        : "　·　" + DshMobile.MobileTts.TuningStatus), _small);
+                }
+
                 if (!string.IsNullOrEmpty(_voiceMessage))
                 {
                     GUI.color = _voiceError ? new Color(1f, 0.65f, 0.55f) : new Color(0.7f, 0.95f, 0.75f);
                     GUILayout.Label(_voiceMessage, _small);
                     GUI.color = Color.white;
+                }
+
+                // "Install a Chinese voice" is a scavenger hunt through the settings app, so the
+                // one thing the player needs is a button that lands them on that screen.
+                if (GUILayout.Button("打开系统语音设置（装中文语音）", _buttonSmall, GUILayout.Height(26f)))
+                {
+                    bool opened = DshMobile.MobileTts.OpenSystemSettings();
+                    SetVoiceMessage(opened
+                        ? "已经打开系统的「文字转语音」设置：装一个中文语音包，回来再按「▶ 测试朗读」。"
+                        : "这台设备打不开系统语音设置。", !opened);
                 }
 
                 GUILayout.Label("只朗读说的话，括号里的动作不会念；引擎没起来时会每隔几秒重试一次。", _small);
@@ -2441,7 +2489,32 @@ namespace DshPet
                 GUILayout.Label("这台设备没有系统语音（语音输出只在安卓上可用）。", _small);
             }
 
-            GUILayout.Label("语音输入还没有做：它需要麦克风权限和一套识别界面，半成品比没有更烦人。", _small);
+            GUILayout.Label("语音输入（对着麦克风说）在手机上有麦克风按钮：按一下说话，识别到的字会填进输入框。", _small);
+
+            if (DshMobile.MobileStt.Available)
+            {
+                bool sttOn = GUILayout.Toggle(DshMobile.MobileStt.Enabled, " 显示麦克风按钮", _small);
+                if (sttOn != DshMobile.MobileStt.Enabled)
+                {
+                    DshMobile.MobileStt.Enabled = sttOn;
+                    if (!sttOn) DshMobile.MobileStt.Cancel();
+                }
+
+                GUI.color = DshMobile.MobileStt.HasPermission
+                    ? new Color(0.7f, 0.95f, 0.75f)
+                    : new Color(1f, 0.85f, 0.6f);
+                GUILayout.Label("语音输入：" + DshMobile.MobileStt.StatusText(
+                    DshMobile.MobileStt.Enabled, true, DshMobile.MobileStt.HasPermission,
+                    DshMobile.MobileStt.Listening, DshMobile.MobileStt.LastErrorCode,
+                    DshMobile.MobileStt.LastError), _small);
+                GUI.color = Color.white;
+
+                if (!DshMobile.MobileStt.HasPermission &&
+                    GUILayout.Button("申请麦克风权限", _buttonSmall, GUILayout.Height(26f)))
+                {
+                    DshMobile.MobileStt.RequestPermission();
+                }
+            }
 
             // reroll it — but it is buried here rather than offered at every launch, because
             // "who is this animal" is not a decision to make every time you open the game.
@@ -3020,6 +3093,9 @@ namespace DshPet
         private bool _collectionError;
         private Vector2 _collectionScroll;
 
+        /// <summary>Which pet's sell button is armed, so the second tap really sells it.</summary>
+        private string _armedSell;
+
         private string _voiceMessage = "";
         private bool _voiceError;
 
@@ -3128,9 +3204,45 @@ namespace DshPet
                 GUILayout.Label($"{record.Personality.Archetype}　·　" +
                                 PetCollectionPanel.RoleLabel(inBag, isPrimary), _small);
                 GUILayout.Label("音色：" + PetVoice.Describe(species, record.Personality), _small);
+
+                // Where a pet came from is worth a line: one that was born in the room reads
+                // differently from one that came out of the shop.
+                if (!string.IsNullOrEmpty(record.Parents))
+                {
+                    GUI.color = new Color(0.82f, 0.9f, 1f);
+                    GUILayout.Label("在屋里出生：" + record.Parents, _small);
+                    GUI.color = Color.white;
+                }
                 GUILayout.EndVertical();
 
                 GUILayout.FlexibleSpace();
+
+                // Selling is two taps, like the journal's bulk deletes: there is no undo, and a
+                // pet is not a thing to lose to a mis-tap.
+                string sellId = "sell:" + record.Id;
+                bool armed = _armedSell == sellId;
+                float sellWidth = Mobile ? MobileUi.Touchable(96f) : 96f;
+
+                GUI.enabled = !isPrimary;
+                if (GUILayout.Button(armed ? "真的卖掉？" : "卖掉", _buttonSmall,
+                        GUILayout.Width(sellWidth), GUILayout.Height(30f)))
+                {
+                    if (armed)
+                    {
+                        _armedSell = null;
+                        var result = PetCollectionPanel.Sell(record.Id);
+                        SetCollectionMessage(result.Message, result.Error);
+                        GUIUtility.ExitGUI();
+                    }
+                    else
+                    {
+                        _armedSell = sellId;
+                        SetCollectionMessage(
+                            $"再点一次就把{record.Name}卖掉，能得到 " +
+                            $"{PetCollection.SellPriceFor(record.SpeciesId)} 个宠物币（没法撤销）");
+                    }
+                }
+                GUI.enabled = true;
                 float buttonWidth = Mobile ? MobileUi.Touchable(112f) : 112f;
 
                 if (inBag)

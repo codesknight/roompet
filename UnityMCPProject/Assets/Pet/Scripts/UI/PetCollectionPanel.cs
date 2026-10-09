@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace DshPet
@@ -78,14 +78,48 @@ namespace DshPet
             return new Result { Message = record.Name + " 回仓库了" };
         }
 
+        /// <summary>
+        /// Makes a pet the one being looked after.
+        ///
+        /// The room's own switch (<c>PetGameManager.MakePrimary</c>) is the real hand-over — it
+        /// moves the memory, the diary and the brain. This only handles the case where the panel is
+        /// open in the room scene and the manager is available; the collection itself is updated
+        /// either way, so the drawer and the room agree on who is primary.
+        /// </summary>
         public static Result MakePrimary(string recordId)
         {
             var record = PetCollection.Find(recordId);
             if (record == null) return new Result { Message = "找不到这只宠物", Error = true };
 
+            var manager = PetGameManager.Instance;
+            if (manager != null && manager.MakePrimary(recordId))
+            {
+                return new Result { Message = $"现在主要照顾 {record.Name}（记忆和记事本跟着它走）" };
+            }
+
             PetCollection.SetPrimary(recordId);
             return new Result { Message = $"现在主要照顾 {record.Name}" };
         }
+
+        /// <summary>Sells a pet back to the shop, with the price stated before it happens.</summary>
+        public static Result Sell(string recordId)
+        {
+            var record = PetCollection.Find(recordId);
+            if (record == null) return new Result { Message = "找不到这只宠物", Error = true };
+
+            int price = PetCollection.SellPriceFor(record.SpeciesId);
+            string message;
+            int paid;
+            bool sold = PetCollection.Sell(recordId, out message, out paid);
+
+            if (!sold) return new Result { Message = message, Error = true };
+            _ = price;
+            return new Result { Message = message + "（宠物币可以在地图里换新房间）" };
+        }
+
+        /// <summary>What the shop would pay for this pet, for the button's label.</summary>
+        public static string SellLabel(string speciesId)
+            => "卖掉 " + PetCollection.SellPriceFor(speciesId);
 
         /// <summary>
         /// The advisory the panel shows above the backpack.

@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/FlyBird.unity`（小鸟飞行）、`Assets/MiniGames/Scenes/JumpQuest.unity`（跳跃冒险），四个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **202/202 通过**（虚拟宠物 130 + 跑酷 15 + 手机端 34 + 小游戏 23），EditMode |
+| 测试 | **211/211 通过**（虚拟宠物 140 + 跑酷 15 + 手机端 34 + 小游戏 22），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -132,7 +132,7 @@
 | `Scripts/JumpQuest/JumpQuestGame.cs` | 玩法与场景内容（关卡由数据生成 primitive）、相机跟随、敌人巡逻、金币与终点、三条命 |
 | `Scripts/JumpQuest/JumpQuestHud.cs` | IMGUI：金币/命数、开始与结算面板、**按住式**触屏方向键（借 `MobileTouch`，可同时按走与跳） |
 | `Tests/Editor/FlyBirdRulesTests.cs` | 12 条测试（抬升与下落、帧率无关、长帧钳位、难度封顶、间隙永远可达、碰撞算宽度、金币单调） |
-| `Tests/Editor/JumpQuestRulesTests.cs` | 11 条测试（跳跃弧线、按住跳更高、帧率无关、落到平台上、撞墙停下、踩怪判定、60 个种子的关卡可通过、三种坏关卡被拒、结算与评价） |
+| `Tests/Editor/JumpQuestRulesTests.cs` | 12 条测试（蓄力距离与封顶、充能条与距离一致、完美/落地/落空的判定、方块永远跳得到且留有余量、难度递增、金币单调、飞行弧线与判定一致、偏移不超出一维判定） |
 
 在屋里玩的**拼图**没有独立场景：`DshPet` 里的 `PetPuzzle`（纯状态机）+ `PuzzleArt`（程序化画图）+ `PetHud.DrawPuzzle`（面板）。
 三个玩法的形状是一样的：**一个纯逻辑规则类（全部可单测）+ 一个只负责画矩形/面板的场景或面板 + 一个 IMGUI HUD**。
@@ -537,6 +537,31 @@
     另外两条从这两个游戏里学到的：**按住式的按钮不能用 `GUI.Button`**
     （它在松手时才触发，对"一直往左走"没有用），要用共享触控层注册矩形；
     **相机取景要看两个方向**（竖屏按高度取景会把主角放到屏幕外，见坑 64）。
+
+69. **`AndroidJavaObject.Call` 是按参数去找方法的——返回值不同就是"没有这个方法"。**
+    真机上报回来的错误是
+    `NoSuchMethodError: no non-static method with name='setPitch' signature='(F)V'`。
+    安卓的 `TextToSpeech.setPitch(float)` / `setSpeechRate(float)` **返回 int**，所以 JNI 签名是
+    `(F)I`，而 `Call("setPitch", 1f)` 推导出来的是 `(F)V` —— 于是它去找一个不存在的方法。
+    改成 `Call<int>` 就好了。**同一个对象的每个方法都要确认返回类型**，因为这类错误只在设备上
+    出现（编辑器里根本没有这个方法），而且日志里只有一句 Java 异常。
+70. **"这一下点在 UI 上吗"这个标志，必须由指针位置算出来。** 小鸟飞行的 HUD 在画
+    "回到宠物小屋"按钮时顺手写了 `PointerOverPanel = true`（无条件），而游戏用它决定要不要处理
+    点击——于是**每一次点击都被当成点在 UI 上**，屏幕怎么点都不飞。这类 bug 的可怕之处是：
+    按钮全都正常，只是游戏永远收不到输入。
+71. **分数和下标是两回事。** 跳一跳里"完美落地 +2 分"但只前进 1 个方块，而方块下标当时是拿
+    分数当的——第一次跳中心就会去找一个还不存在的方块（脚本一跑就崩）。**凡是一个数字同时
+    表示"成绩"和"位置"，就是下一次改玩法时会崩的地方。**
+72. **"第一个就是主要的"这种假设，会在功能改变的那一刻变成 bug。** 同伴生成器以前跳过背包
+    第一格（"那是主宠"）。当"主要照顾"可以通过点击切换之后，主宠不再必然是第一格——
+    于是交接之后原来的主宠**根本没有被实例化**，房间里凭空少了一只。改成按记录 id 判断。
+73. **按物种存档在"一个物种只有一只"时是对的。** 名字、需求、记忆、日记全都挂在
+    `dshpet.*.<speciesId>` 上，两只猫于是共用一个名字、一个饭碗和一本日记。宠物成为"个体"
+    （集合里的记录）之后，key 必须换成记录的 id——旧的物种 key 保留为兜底读取，
+    这样老存档仍然能读出来。
+74. **平台服务要三样东西齐了才会工作**：清单里的声明（Android 11 起还要 `<queries>`）、
+    运行时的权限（麦克风）、以及**接口上的每一个回调**（`RecognitionListener` 有十个，
+    少一个就在 Java 线程里抛异常，表现为"结果永远不来"）。三样都齐了才谈得上"功能坏没坏"。
 
 ---
 

@@ -256,10 +256,18 @@ namespace DshMiniGames
             if (_camera != null && !Mathf.Approximately(_lastAspect, _camera.aspect)) FitCamera();
 
             if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.W) ||
-                Input.GetKeyDown(KeyCode.UpArrow) || Input.GetMouseButtonDown(0))
+                Input.GetKeyDown(KeyCode.UpArrow))
             {
-                if (!PointerOverUi()) Flap();
+                Flap();
             }
+
+            // Two ways in, on purpose: the mouse event covers the editor and the desktop, and the
+            // shared touch layer covers a phone — where a tap does not always arrive as a
+            // synthesized mouse click, which is exactly how "点击屏幕不能飞" happens. The tap
+            // target is registered by the HUD, which is the only thing that knows where the
+            // buttons are.
+            if (Input.GetMouseButtonDown(0) && !PointerOverUi()) Flap();
+            if (DshMobile.MobileTouch.Pressed(FlyBirdHud.TapId)) Flap();
 
             if (State == Phase.Dead)
             {

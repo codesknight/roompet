@@ -3,23 +3,26 @@ using UnityEngine;
 namespace DshMiniGames
 {
     /// <summary>
-    /// The platformer's interface: a coin and life count, a start hint, and touch controls.
+    /// The hop game's interface: the score, a charge bar, and a result panel.
     ///
-    /// The on-screen controls exist because this is the first game in the collection that needs
-    /// more than one input: left, right and jump. They are IMGUI buttons registered through
-    /// <see cref="DshMobile.MobileTouch"/> so a thumb can hold left while tapping jump — which a
-    /// single-pointer IMGUI layout cannot express on its own.
+    /// The input is the whole screen, held — which is why this HUD is mostly about *not* eating the
+    /// touch. It registers one big hold target with the shared touch layer, and it stops doing that
+    /// while the pointer is over a button or a panel: a screen where "hold to charge" also presses
+    /// 回到宠物小屋 is a screen that cannot be played.
     /// </summary>
     public class JumpQuestHud : MonoBehaviour
     {
         private JumpQuestGame _game;
         private GUIStyle _title;
         private GUIStyle _small;
+        private GUIStyle _big;
         private GUIStyle _button;
-        private GUIStyle _pad;
 
-        /// <summary>True while the pointer is over a panel, so taps do not also drive the player.</summary>
+        /// <summary>True while the pointer is over a panel, so a hold there is not a charge.</summary>
         public static bool PointerOverPanel { get; private set; }
+
+        /// <summary>Id of the full-screen hold target.</summary>
+        public const string HoldId = "hop.hold";
 
         private void Awake() => _game = GetComponent<JumpQuestGame>();
 
@@ -30,16 +33,22 @@ namespace DshMiniGames
             _title = new GUIStyle(GUI.skin.label) { fontSize = 26, fontStyle = FontStyle.Bold };
             _title.normal.textColor = new Color(1f, 0.98f, 0.9f);
 
+            _big = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 54,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter
+            };
+            _big.normal.textColor = new Color(1f, 0.96f, 0.8f);
+
             _small = new GUIStyle(GUI.skin.label) { fontSize = 15 };
-            _small.normal.textColor = new Color(0.96f, 0.97f, 1f);
+            _small.normal.textColor = new Color(0.94f, 0.95f, 0.98f);
 
             _button = new GUIStyle(GUI.skin.button)
             {
                 fontSize = 17,
                 padding = new RectOffset(14, 14, 8, 8)
             };
-
-            _pad = new GUIStyle(GUI.skin.button) { fontSize = 30, fontStyle = FontStyle.Bold };
         }
 
         private void OnGUI()
@@ -61,50 +70,73 @@ namespace DshMiniGames
 
             PointerOverPanel = false;
 
-            GUI.Label(new Rect(18f, 14f, 320f, 30f),
-                $"🪙 {_game.Coins}　·　❤ {_game.Lives}　·　🐾 {DshMobile.PetWallet.Coins:N0}", _small);
+            // ---- score ----
+            GUI.Label(new Rect(width * 0.5f - 120f, 22f, 240f, 62f), _game.Score.ToString(), _big);
+            var centred = new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter };
+            GUI.Label(new Rect(width * 0.5f - 160f, 84f, 320f, 24f),
+                $"最高 {_game.Best}　·　🐾 {DshMobile.PetWallet.Coins:N0}", centred);
 
-            if (GUI.Button(new Rect(width - 176f, 12f, 158f, 38f), "回到宠物小屋", _button))
+            if (!string.IsNullOrEmpty(_game.LastPopup))
+            {
+                var popup = new GUIStyle(_title) { alignment = TextAnchor.MiddleCenter };
+                popup.normal.textColor = new Color(1f, 0.85f, 0.4f);
+                GUI.Label(new Rect(width * 0.5f - 120f, height * 0.3f, 240f, 34f), _game.LastPopup, popup);
+            }
+
+            // ---- the way out ----
+            var back = new Rect(width - 178f, 16f, 158f, 38f);
+            if (GUI.Button(back, "回到宠物小屋", _button))
             {
                 _game.ReturnToRoom();
             }
-            PointerOverPanel = true;
+            PointerOverPanel |= back.Contains(Event.current.mousePosition);
 
-            if (_game.State == JumpQuestGame.Phase.Ready)
+            // ---- charge bar ----
+            if (_game.State == JumpQuestGame.Phase.Charging)
             {
-                var panel = new Rect(width * 0.5f - 210f, height * 0.3f, 420f, 130f);
-                DshMobile.UiSkin.Panel(panel, 16f, new Color(0.08f, 0.09f, 0.13f, 0.94f),
-                    new Color(1f, 1f, 1f, 0.16f), 1.5f);
-                GUI.Label(new Rect(panel.x + 20f, panel.y + 12f, panel.width - 40f, 32f), "跳跃冒险", _title);
-                GUI.Label(new Rect(panel.x + 20f, panel.y + 48f, panel.width - 40f, 24f),
-                    "捡金币、踩掉紫色小怪，跑到终点的旗子。", _small);
-                GUI.Label(new Rect(panel.x + 20f, panel.y + 74f, panel.width - 40f, 24f),
+                float barWidth = Mathf.Min(420f, width - 80f);
+                var bar = new Rect((width - barWidth) * 0.5f, height - 104f, barWidth, 18f);
+                DshMobile.UiSkin.Panel(bar, 9f, new Color(0f, 0f, 0f, 0.45f),
+                    new Color(1f, 1f, 1f, 0.18f), 1.5f);
+
+                var fill = new Rect(bar.x + 3f, bar.y + 3f,
+                    (bar.width - 6f) * _game.Charge, bar.height - 6f);
+                GUI.color = Color.Lerp(new Color(0.55f, 0.9f, 0.6f), new Color(1f, 0.55f, 0.4f),
+                    _game.Charge);
+                GUI.DrawTexture(fill, Texture2D.whiteTexture);
+                GUI.color = Color.white;
+
+                var hint = new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter };
+                GUI.Label(new Rect(width * 0.5f - 200f, bar.yMax + 6f, 400f, 24f), "松开就跳", hint);
+            }
+            else if (_game.State == JumpQuestGame.Phase.Ready)
+            {
+                var hint = new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter };
+                hint.normal.textColor = new Color(1f, 1f, 1f, 0.75f);
+                GUI.Label(new Rect(width * 0.5f - 220f, height - 96f, 440f, 26f),
                     DshMobile.MobileUi.UseTouchControls
-                        ? "左下角左右走，右下角跳（可以按住跳得更高）"
-                        : "A/D 左右走，空格跳（按住跳得更高）", _small);
-                PointerOverPanel = true;
+                        ? "按住屏幕蓄力，松手跳出去（跳到正中间会 +2）"
+                        : "按住空格蓄力，松手跳出去（跳到正中间会 +2）", hint);
             }
 
-            if (_game.State == JumpQuestGame.Phase.Dead || _game.State == JumpQuestGame.Phase.Finished)
+            if (_game.State == JumpQuestGame.Phase.Dead)
             {
-                bool finished = _game.State == JumpQuestGame.Phase.Finished;
-                var panel = new Rect(width * 0.5f - 200f, height * 0.3f, 400f, 220f);
+                var panel = new Rect(width * 0.5f - 200f, height * 0.3f, 400f, 216f);
                 DshMobile.UiSkin.Panel(panel, 16f, new Color(0.08f, 0.09f, 0.13f, 0.94f),
                     new Color(1f, 1f, 1f, 0.16f), 1.5f);
 
-                GUI.Label(new Rect(panel.x + 20f, panel.y + 14f, panel.width - 40f, 32f),
-                    finished ? "到终点了！" : "摔下来了", _title);
-                GUI.Label(new Rect(panel.x + 20f, panel.y + 54f, panel.width - 40f, 24f),
-                    $"捡到 {_game.Coins} 个金币　·　赚了 {_game.RunReward} 个宠物币", _small);
-                GUI.Label(new Rect(panel.x + 20f, panel.y + 80f, panel.width - 40f, 24f),
-                    JumpQuestRules.RankFor(finished, _game.Coins) + $"　·　最高 {_game.Best} 个", _small);
+                GUI.Label(new Rect(panel.x + 20f, panel.y + 14f, panel.width - 40f, 34f), "没跳上去", _title);
+                GUI.Label(new Rect(panel.x + 20f, panel.y + 56f, panel.width - 40f, 24f),
+                    $"得分 {_game.Score}　·　赚了 {_game.RunCoins} 个宠物币", _small);
+                GUI.Label(new Rect(panel.x + 20f, panel.y + 82f, panel.width - 40f, 24f),
+                    HopRules.RankFor(_game.Score) + $"　·　最高 {_game.Best}", _small);
 
-                if (GUI.Button(new Rect(panel.x + 24f, panel.y + 132f, 168f, 46f), "再来一次", _button))
+                if (GUI.Button(new Rect(panel.x + 24f, panel.y + 136f, 168f, 46f), "再来一次", _button))
                 {
                     _game.ResetRun();
                 }
 
-                if (GUI.Button(new Rect(panel.xMax - 192f, panel.y + 132f, 168f, 46f), "回到宠物小屋", _button))
+                if (GUI.Button(new Rect(panel.xMax - 192f, panel.y + 136f, 168f, 46f), "回到宠物小屋", _button))
                 {
                     _game.ReturnToRoom();
                 }
@@ -112,62 +144,25 @@ namespace DshMiniGames
                 PointerOverPanel = true;
             }
 
-            // Touch controls while playing: held buttons, because a platformer needs to keep
-            // walking while jumping.
-            if (_game.State == JumpQuestGame.Phase.Running ||
-                _game.State == JumpQuestGame.Phase.Ready)
+            // ---- the hold target ----
+            // The whole screen, minus the UI. The shared touch layer is what actually sees fingers,
+            // so charging behaves the same on a phone as it does with a mouse.
+            if (!PointerOverPanel &&
+                (_game.State == JumpQuestGame.Phase.Ready || _game.State == JumpQuestGame.Phase.Charging))
             {
-                float padSize = 78f;
-                float bottom = height - padSize - 24f;
+                DshMobile.MobileTouch.RegisterButton(HoldId,
+                    new Rect(safe.x, safe.y, safe.width, safe.height), true, "蓄力");
 
-                var left = new Rect(24f, bottom, padSize, padSize);
-                var right = new Rect(24f + padSize + 14f, bottom, padSize, padSize);
-                var jump = new Rect(width - padSize - 24f, bottom, padSize, padSize);
-
-                _game.MoveInput = 0f;
-                _game.JumpHeld = false;
-
-                if (Held(LeftId, left, "◀", _pad)) _game.MoveInput = -1f;
-                if (Held(RightId, right, "▶", _pad)) _game.MoveInput = 1f;
-
-                if (Held(JumpId, jump, "跳", _pad))
-                {
-                    _game.JumpHeld = true;
-                    _game.Jump();
-                }
-
-                PointerOverPanel = true;
+                _game.HoldInput = DshMobile.MobileTouch.Held(HoldId);
+                _game.ReleaseInput = DshMobile.MobileTouch.Released(HoldId);
+            }
+            else
+            {
+                _game.HoldInput = false;
+                _game.ReleaseInput = false;
             }
 
             GUI.matrix = previous;
-        }
-
-        /// <summary>Stable ids for the three control pads, so the touch layer can own them.</summary>
-        private const string LeftId = "jq.left";
-        private const string RightId = "jq.right";
-        private const string JumpId = "jq.jump";
-
-        /// <summary>
-        /// A button that reports being held rather than clicked.
-        ///
-        /// <c>GUI.Button</c> fires on release, which is useless for "walk left": by the time it
-        /// returns true the thumb is already up. These register their rect with the shared touch
-        /// layer instead, which reports the state for every frame the finger is down and also
-        /// lets two pads be held at once — the one thing IMGUI cannot do on its own.
-        /// </summary>
-        private static bool Held(string id, Rect rect, string label, GUIStyle style)
-        {
-            DshMobile.MobileTouch.RegisterButton(id, DshMobile.MobileWidgets.ToScreen(rect), true, label);
-            bool down = DshMobile.MobileTouch.Held(id) || DshMobile.MobileTouch.Pressed(id);
-
-            var skin = new GUIStyle(style);
-            skin.normal.textColor = down ? new Color(1f, 0.95f, 0.7f) : Color.white;
-            DshMobile.UiSkin.Panel(rect, 14f,
-                down ? new Color(0.30f, 0.42f, 0.62f, 0.85f) : new Color(0.16f, 0.18f, 0.24f, 0.78f),
-                new Color(1f, 1f, 1f, 0.22f), 1.5f);
-            GUI.Label(rect, label, skin);
-
-            return down;
         }
     }
 }
