@@ -25,6 +25,9 @@ namespace DshMobile
         /// <summary>Collapses/expands the pet status panel.</summary>
         public const string PetStatus = "pet.status";
 
+        /// <summary>The microphone: press to speak instead of typing.</summary>
+        public const string PetMic = "pet.mic";
+
         // ---------------------------------------------------------------- runner
         /// <summary>Left/right lane change, for players who prefer buttons to swipes.</summary>
         public const string RunnerLeft = "runner.left";

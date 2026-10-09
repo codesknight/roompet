@@ -81,6 +81,15 @@ namespace DshPet
                 SceneName = "JumpQuest",
                 ScenePath = "Assets/MiniGames/Scenes/JumpQuest.unity",
                 Icon = "🎯"
+            },
+            new MiniGameDefinition
+            {
+                Id = "catchfruit",
+                DisplayName = "接果子",
+                Blurb = "按住左右移动篮子，接住掉下来的果子；漏三个就结束。",
+                SceneName = "CatchFruit",
+                ScenePath = "Assets/MiniGames/Scenes/CatchFruit.unity",
+                Icon = "🧺"
             }
             // 新增玩法就在这里加一行：填一个已在 Build Settings 里的场景即可。
         };

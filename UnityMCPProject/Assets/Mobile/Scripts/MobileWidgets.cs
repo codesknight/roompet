@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 namespace DshMobile
 {
@@ -58,10 +58,11 @@ namespace DshMobile
 
             _label = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 17,
+                fontSize = 18,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleCenter,
-                wordWrap = true
+                wordWrap = false,
+                clipping = TextClipping.Overflow
             };
 
             _small = new GUIStyle(GUI.skin.label)
@@ -136,6 +137,51 @@ namespace DshMobile
         }
 
         /// <summary>
+        /// A round action button: the shape phones use for "the thing your thumb does".
+        ///
+        /// Round because it is the only shape that reads as a button without a border on a small
+        /// screen, and because a circle of a given diameter is a bigger target than a square of the
+        /// same width where thumbs actually land.
+        ///
+        /// The word goes <b>on</b> the button, not under it with a glyph above. The first version
+        /// drew an icon with a caption, which failed for the reason this project keeps re-learning:
+        /// Unity's built-in IMGUI font has no emoji, so every button came out as an empty coloured
+        /// disc with a tiny label underneath. Two characters of Chinese are an icon here.
+        /// </summary>
+        public static bool CircleButton(string id, Rect rect, string label, Color tint,
+            bool enabled = true)
+        {
+            EnsureStyles();
+            MobileTouch.RegisterButton(id, ToScreen(rect), enabled, label);
+
+            bool held = enabled && MobileTouch.Held(id);
+            float radius = Mathf.Min(rect.width, rect.height) * 0.5f;
+            var circle = new Rect(rect.center.x - radius, rect.center.y - radius, radius * 2f, radius * 2f);
+
+            Color fill = enabled
+                ? (held
+                    ? Color.Lerp(tint, Color.white, 0.35f)
+                    : new Color(tint.r, tint.g, tint.b, 0.86f))
+                : new Color(0.22f, 0.22f, 0.26f, 0.45f);
+
+            // A real circle (the shared skin draws rounded panels), a dark rim so it separates from
+            // a busy room, and a soft highlight along the top so it does not read as a hole.
+            UiSkin.Shadow(circle, radius, 4f, 0.45f);
+            UiSkin.Panel(circle, radius, fill, new Color(0f, 0f, 0f, 0.35f), 3f);
+            UiSkin.Panel(new Rect(circle.x + radius * 0.42f, circle.y + radius * 0.24f,
+                    radius * 1.16f, radius * 0.42f),
+                radius * 0.34f, new Color(1f, 1f, 1f, held ? 0.26f : 0.14f),
+                new Color(1f, 1f, 1f, 0f), 0f);
+
+            var previous = GUI.color;
+            GUI.color = enabled ? Color.white : new Color(1f, 1f, 1f, 0.45f);
+            GUI.Label(circle, label, _label);
+            GUI.color = previous;
+
+            return enabled && MobileTouch.Pressed(id);
+        }
+
+        /// <summary>
         /// Draws the movement stick: base at the touch point, knob on the thumb.
         ///
         /// The touch layer reports positions in real screen pixels, but this runs inside the
@@ -161,22 +207,55 @@ namespace DshMobile
             Panel(knobRect, new Color(1f, 0.93f, 0.72f, 0.75f), new Color(1f, 0.96f, 0.85f, 0.95f));
         }
 
+        /// <summary>How long the stick hint stays at full strength after the room loads.</summary>
+        public const float StickHintSeconds = 9f;
+
+        private static float _stickHintBornAt = -1f;
+        private static bool _stickHintUsed;
+
+        /// <summary>Fades the stick hint out once the player has moved, or after a few seconds.</summary>
+        public static void ResetStickHint()
+        {
+            _stickHintBornAt = Time.realtimeSinceStartup;
+            _stickHintUsed = false;
+        }
+
         /// <summary>
-        /// Hint shown where the stick will appear before the first touch. The zone arrives in
-        /// design pixels, so the ghost is sized in design pixels too and the HUD's matrix
-        /// scales it with everything else.
+        /// Hint shown where the stick will appear, before the player has used it.
+        ///
+        /// Two rules, both from a phone: it must stay <b>inside</b> the zone it describes (the
+        /// first version hung 30px below it and printed "这里拖动移动" across the chat bar's own
+        /// button, which is exactly the "the button does not work" report it earned), and it must
+        /// go away once the player has clearly understood — a permanent ghost stick in the corner
+        /// of the screen is clutter forever after the first ten seconds.
         /// </summary>
         public static void StickHint(Rect zone)
         {
+            if (_stickHintBornAt < 0f) _stickHintBornAt = Time.realtimeSinceStartup;
+            if (MobileTouch.Stick.Active) _stickHintUsed = true;
+            if (_stickHintUsed) return;
+
+            float age = Time.realtimeSinceStartup - _stickHintBornAt;
+            if (age > StickHintSeconds) return;
+
+            float alpha = Mathf.Clamp01(1f - Mathf.InverseLerp(StickHintSeconds * 0.6f, StickHintSeconds, age));
+            if (alpha <= 0.01f) return;
+
             EnsureStyles();
             float radius = MobileTouch.Stick.Radius;
-            var ghost = new Rect(zone.x + zone.width * 0.5f - radius, zone.yMax - radius * 1.35f,
-                radius * 2f, radius * 2f);
-            Panel(ghost, new Color(1f, 1f, 1f, 0.05f), new Color(1f, 1f, 1f, 0.16f));
 
-            var labelRect = new Rect(ghost.x, ghost.center.y - 10f, ghost.width, 22f);
+            // Fully inside the zone: the ghost's bottom edge is the zone's bottom edge. A circle,
+            // not a box — this is the shape the real stick appears in.
+            float diameter = radius * 1.7f;
+            var ghost = new Rect(zone.x + zone.width * 0.5f - diameter * 0.5f,
+                Mathf.Max(zone.y, zone.yMax - diameter), diameter, diameter);
+
+            UiSkin.Panel(ghost, diameter * 0.5f, new Color(1f, 1f, 1f, 0.05f * alpha),
+                new Color(1f, 1f, 1f, 0.22f * alpha), 2f);
+
+            var labelRect = new Rect(ghost.center.x - 70f, ghost.center.y - 11f, 140f, 22f);
             var previous = GUI.color;
-            GUI.color = new Color(1f, 1f, 1f, 0.35f);
+            GUI.color = new Color(1f, 1f, 1f, 0.45f * alpha);
             GUI.Label(labelRect, "这里拖动移动", _small);
             GUI.color = previous;
         }

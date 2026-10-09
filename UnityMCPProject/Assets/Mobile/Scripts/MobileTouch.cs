@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace DshMobile
@@ -52,7 +52,12 @@ namespace DshMobile
             public bool Pressed;     // went down this frame
             public bool Held;        // finger still on it right now
             public bool Released;    // lifted this frame
+
+            /// <summary>Registration order, so "drawn last wins" is decidable when rects tie.</summary>
+            public int Sequence;
         }
+
+        private static int _buttonSequence;
 
         private static readonly Dictionary<string, ButtonState> Buttons =
             new Dictionary<string, ButtonState>();
@@ -81,6 +86,7 @@ namespace DshMobile
 
             state.Rect = rect;
             state.Visible = visible;
+            state.Sequence = ++_buttonSequence;
             if (!string.IsNullOrEmpty(label)) state.Label = label;
         }
 
@@ -355,14 +361,37 @@ namespace DshMobile
             Owners.Clear();
         }
 
+        /// <summary>
+        /// The button under a point.
+        ///
+        /// Two rules, both learned the hard way. <b>Smallest wins</b>: a small button sitting on
+        /// top of a big one has to be the one that reacts, and a dictionary iteration order (which
+        /// is what this used to be) means the big one sometimes won and the small one "did not
+        /// work". <b>Newest breaks ties</b>: the thing drawn last is the thing on top, exactly like
+        /// IMGUI.
+        /// </summary>
         private static string FindButtonAt(Vector2 position)
         {
+            string best = null;
+            float bestArea = float.MaxValue;
+            int bestSequence = -1;
+
             foreach (var pair in Buttons)
             {
                 if (!pair.Value.Visible) continue;
-                if (pair.Value.Rect.Contains(position)) return pair.Key;
+                if (!pair.Value.Rect.Contains(position)) continue;
+
+                float area = pair.Value.Rect.width * pair.Value.Rect.height;
+                bool better = area < bestArea - 0.01f ||
+                              (Mathf.Abs(area - bestArea) <= 0.01f && pair.Value.Sequence > bestSequence);
+                if (!better) continue;
+
+                best = pair.Key;
+                bestArea = area;
+                bestSequence = pair.Value.Sequence;
             }
-            return null;
+
+            return best;
         }
 
         private static bool AnyButtonHeld()

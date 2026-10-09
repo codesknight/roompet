@@ -45,6 +45,24 @@ namespace DshMobile
         public const float TimeoutSeconds = 12f;
 
         public static bool Available => Application.platform == RuntimePlatform.Android;
+
+        /// <summary>
+        /// Editor switch: pretend a recogniser exists, so the microphone button can be laid out and
+        /// looked at without a phone.
+        ///
+        /// The same trick as <see cref="MobileUi.ForceTouchControls"/>, and for the same reason: a
+        /// control that only exists on a device is a control nobody checks until a player reports
+        /// that it is missing — which is what happened to this one, drawn outside the panel and
+        /// never on screen at all.
+        /// </summary>
+        public static bool ForceAvailable;
+
+        /// <summary>True when the microphone button should be offered.</summary>
+        public static bool Offered => (Available || ForceAvailable) && Enabled;
+
+        /// <summary>True when there is a recogniser behind the button right now.</summary>
+        public static bool AvailableNow => Available || ForceAvailable;
+
         public static bool Listening => _listening;
 
         /// <summary>The last thing the recogniser understood. Empty until something is heard.</summary>

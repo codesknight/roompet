@@ -48,6 +48,7 @@ namespace DshPet
         private bool _showJournal;
         private bool _showCollection;
         private bool _showPuzzle;
+        private bool _showMemory;
         private DateTime _journalMonth = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
         private DateTime _selectedDay = DateTime.Now.Date;
         private Vector2 _dayScroll;
@@ -222,6 +223,7 @@ namespace DshPet
 
             if (gm.DoorPromptOpen) DrawMapPanel(gm);
             if (_showPuzzle) DrawPuzzle(gm);
+            if (_showMemory) DrawMemoryMatch(gm);
             if (_showSettings) DrawSettings(gm);
             if (_showPromptPreview) DrawPromptPreview(gm);
             if (_showJournal) DrawJournal(gm);
@@ -558,7 +560,7 @@ namespace DshPet
                 var hud = _instance;
                 if (hud == null) return false;
                 if (hud._showSettings || hud._showJournal || hud._showPromptPreview ||
-                    hud._showCollection || hud._showPuzzle) return true;
+                    hud._showCollection || hud._showPuzzle || hud._showMemory) return true;
                 var gm = PetGameManager.Instance;
                 return gm != null && gm.DoorPromptOpen;
             }
@@ -1417,12 +1419,50 @@ namespace DshPet
                 // inside an area are relative to that area — nesting the two offset every
                 // rect by another bar height and pushed the whole bar off the bottom of the
                 // screen, which is why the collapsed bar rendered as an empty strip.
-                var inner = new Rect(rect.x + 10f, rect.y + 8f, rect.width - 20f, rect.height - 16f);
-                float buttonWidth = MobileUi.Touchable(132f);
+                MobileWidgets.BeginFrame(Scale, SafeOffset);
 
-                if (MobileWidgets.Button(MobileButtonIds.PetChat,
-                        new Rect(inner.x, inner.y, buttonWidth, inner.height),
-                        "和它说说话", new Color(0.30f, 0.60f, 0.86f)))
+                var inner = new Rect(rect.x + 10f, rect.y + 8f, rect.width - 20f, rect.height - 16f);
+
+                // The microphone belongs here, in the bar, where the thumb already is: a separate
+                // corner button would be a second way to do the same thing, and the first version
+                // put it to the left of the input *outside* the panel, where it was simply not on
+                // screen. Space is reserved for it instead of hoped for.
+                bool micHere = DshMobile.MobileStt.Offered;
+                DshMobile.MobileStt.Tick();
+                float micSize = MobileUi.Touchable(52f);
+                var micRect = new Rect(inner.x, inner.y + (inner.height - micSize) * 0.5f, micSize, micSize);
+
+                if (micHere)
+                {
+                    bool listening = DshMobile.MobileStt.Listening;
+                    if (MobileWidgets.CircleButton(MobileButtonIds.PetMic, micRect,
+                            listening ? "停" : "说",
+                            listening ? new Color(0.90f, 0.42f, 0.36f) : new Color(0.34f, 0.60f, 0.86f)))
+                    {
+                        // Speaking is a conversation, so tapping the microphone opens the
+                        // transcript as well: the recognised words have to land somewhere visible,
+                        // and a player who has to tap twice to be heard will not bother.
+                        _chatExpanded = true;
+                        FillEditConfig(gm);
+                        DshMobile.MobileStt.StartListening();
+                        _unreadMark = gm.Memory.Recent.Count;
+                        return;
+                    }
+
+                    string heard = DshMobile.MobileStt.TakeResult();
+                    if (!string.IsNullOrEmpty(heard))
+                    {
+                        _chatExpanded = true;
+                        _input = heard;
+                    }
+                }
+
+                float sayX = micHere ? micRect.xMax + 8f : inner.x;
+                float sayWidth = MobileUi.Touchable(124f);
+                var sayRect = new Rect(sayX, inner.y, sayWidth, inner.height);
+
+                if (MobileWidgets.Button(MobileButtonIds.PetChat, sayRect, "和它说说话",
+                        new Color(0.30f, 0.60f, 0.86f)))
                 {
                     _chatExpanded = true;
                     FillEditConfig(gm);
@@ -1430,8 +1470,8 @@ namespace DshPet
 
                 // The pet's last line gets a bubble of its own, at transcript size: this is the
                 // thing that has to catch the eye from across the room.
-                var lineRect = new Rect(inner.x + buttonWidth + 10f, inner.y,
-                    Mathf.Max(0f, inner.xMax - inner.x - buttonWidth - 10f), inner.height);
+                var lineRect = new Rect(sayRect.xMax + 10f, inner.y,
+                    Mathf.Max(0f, inner.xMax - sayRect.xMax - 10f), inner.height);
                 if (lineRect.width > 60f)
                 {
                     UiSkin.Panel(lineRect, 12f, new Color(0.98f, 0.93f, 0.84f, 0.95f),
@@ -1505,6 +1545,7 @@ namespace DshPet
             public Rect Action;
             public Rect Throw;
             public Rect Chat;
+            public Rect Mic;
         }
 
         /// <summary>Height of the collapsed chat bar on a phone.</summary>
@@ -1514,56 +1555,66 @@ namespace DshPet
         /// Geometry for the touch controls.
         ///
         /// The rules encoded here: everything is at least <see cref="MobileUi.MinTouchTarget"/>
-        /// across, the action buttons are bottom-right where a right thumb rests, the stick
-        /// zone is the bottom-left, and none of them overlap the collapsed chat bar or each
-        /// other — overlapping touch targets is how a UI ends up feeling broken on a phone.
-        /// (An earlier version put the buttons at the panel's very bottom edge and landed them
-        /// right on top of the chat bar; the layout test caught it.)
+        /// across, the action buttons are a stack in the bottom-right where a right thumb rests,
+        /// the stick zone is the bottom-left, and none of them overlap the collapsed chat bar or
+        /// each other — overlapping touch targets is how a UI ends up feeling broken on a phone.
         ///
-        /// They anchor to the viewport, not to the chat panel. With the transcript in a side
-        /// column the chat panel is nowhere near the thumbs, and anchoring to it put the
-        /// movement stick under the right hand.
+        /// The shape is the one phone games converged on: one big primary button, secondary
+        /// buttons stacked above it (not beside it — a row of equal squares to the left of the
+        /// primary is a desktop toolbar, and it crowds the middle of the screen where the room
+        /// is), and the chat pill above the stack, out of the way of both thumbs.
         /// </summary>
         public static MobileControls ComputeMobileControls(HudLayout layout)
         {
             var view = layout.Viewport;
-            float size = MobileUi.Touchable(96f);
-            float gap = 14f;
+            float primary = MobileUi.Touchable(104f);
+            float secondary = MobileUi.Touchable(84f);
+            float gap = 12f;
+            float margin = 18f;
 
             // The right thumb's resting place: the bottom-right of the room, which is the
             // viewport's corner or the edge of the sidebar when there is one.
-            float right = (layout.ChatOnSide ? Mathf.Min(layout.FreeBand.xMax, view.xMax) : view.xMax) - 16f;
+            float right = (layout.ChatOnSide ? Mathf.Min(layout.FreeBand.xMax, view.xMax) : view.xMax) - margin;
 
             // Sit above the collapsed chat bar, not on it — but only where the bar really does
             // own that strip.
             float bottom = layout.ChatOnSide
-                ? view.yMax - 20f
-                : layout.Chat.yMax - MobileChatBarHeight - 14f;
+                ? view.yMax - margin
+                : layout.Chat.yMax - MobileChatBarHeight - 10f;
 
-            var action = new Rect(right - size, bottom - size, size, size);
-            var throwRect = new Rect(action.x - size - gap, bottom - size, size, size);
-            var chat = new Rect(right - MobileUi.Touchable(132f),
-                action.y - gap - MobileUi.Touchable(56f),
-                MobileUi.Touchable(132f), MobileUi.Touchable(56f));
+            var action = new Rect(right - primary, bottom - primary, primary, primary);
+            var throwRect = new Rect(right - secondary, action.y - gap - secondary, secondary, secondary);
+
+            // The chat pill above the stack, wide enough to read as "say something" rather than as
+            // another action button.
+            var chat = new Rect(right - MobileUi.Touchable(124f),
+                throwRect.y - gap - MobileUi.Touchable(50f),
+                MobileUi.Touchable(124f), MobileUi.Touchable(50f));
+
+            // The mic lives in the chat bar itself (see DrawMobileChat): a thumb reaching for
+            // "talk to the pet" is already there, and a separate button in the corner would be a
+            // second way to do the same thing.
+            var mic = new Rect(0f, 0f, 0f, 0f);
 
             // The stick owns the lower-left quadrant, stopping just above the chat bar so a
             // thumb resting near the middle does not grab it by accident.
-            float stickTop = bottom - size * 2f;
-            var stick = new Rect(view.x, stickTop, view.width * 0.42f, Mathf.Max(size, bottom - stickTop));
+            float stickTop = bottom - primary * 1.8f;
+            var stick = new Rect(view.x, stickTop, view.width * 0.42f, Mathf.Max(primary, bottom - stickTop));
 
             return new MobileControls
             {
                 StickZone = stick,
                 Action = action,
                 Throw = throwRect,
-                Chat = chat
+                Chat = chat,
+                Mic = mic
             };
         }
 
         /// <summary>
-        /// The touch controls: a floating movement stick on the left, action buttons on the
-        /// right. Drawn through <see cref="MobileWidgets"/>, which registers each rect with
-        /// the touch layer so several fingers can be used at once.
+        /// The touch controls: a floating movement stick on the left, a stack of round action
+        /// buttons on the right. Drawn through <see cref="MobileWidgets"/>, which registers each
+        /// rect with the touch layer so several fingers can be used at once.
         /// </summary>
         private void DrawMobileControls(PetGameManager gm, HudLayout layout)
         {
@@ -1581,23 +1632,46 @@ namespace DshPet
             var player = gm.Player;
             bool holdingBall = player != null && player.Ball != null && player.Ball.State == BallState.Held;
 
-            MobileWidgets.Button(MobileButtonIds.PetAction, controls.Action,
-                ActionLabel(gm), new Color(0.35f, 0.70f, 0.45f));
-
-            if (holdingBall)
-            {
-                bool charging = MobileTouch.Held(MobileButtonIds.PetThrow);
-                MobileWidgets.Button(MobileButtonIds.PetThrow, controls.Throw,
-                    charging ? "松手扔出" : "按住蓄力",
-                    charging ? new Color(0.95f, 0.55f, 0.25f) : new Color(0.85f, 0.45f, 0.25f));
-            }
-
-            if (MobileWidgets.Button(MobileButtonIds.PetChat, controls.Chat,
-                    "聊天", new Color(0.35f, 0.62f, 0.85f)))
+            // Registered in bottom-up draw order, and the touch layer prefers the smallest rect
+            // under the finger — so the chat pill never swallows the action button below it.
+            if (MobileWidgets.CircleButton(MobileButtonIds.PetChat, controls.Chat, "聊天",
+                    new Color(0.28f, 0.54f, 0.84f)))
             {
                 _chatExpanded = true;
                 FillEditConfig(gm);
             }
+
+            // The throw button keeps its slot whether or not there is a ball in hand. It used to be
+            // drawn only while holding one, which made the whole stack jump up the moment the player
+            // picked the ball up — a control that moves under the thumb is a control that gets
+            // mis-tapped.
+            bool charging = holdingBall && MobileTouch.Held(MobileButtonIds.PetThrow);
+            MobileWidgets.CircleButton(MobileButtonIds.PetThrow, controls.Throw,
+                charging ? "扔出" : "蓄力",
+                charging ? new Color(0.94f, 0.52f, 0.24f) : new Color(0.80f, 0.42f, 0.22f),
+                enabled: holdingBall);
+
+            MobileWidgets.CircleButton(MobileButtonIds.PetAction, controls.Action,
+                ActionLabel(gm), ActionTint(gm));
+        }
+
+        /// <summary>Colour for the primary action, so the button says what it will do.</summary>
+        private static Color ActionTint(PetGameManager gm)
+        {
+            var player = gm.Player;
+            if (player == null) return new Color(0.35f, 0.68f, 0.46f);
+
+            if (player.Ball != null && player.Ball.IsAtRest && player.IsNear(player.Ball.transform.position))
+            {
+                return new Color(0.90f, 0.62f, 0.28f);   // 拿球
+            }
+
+            if (player.Nearby != null && player.Nearby.Kind == InteractableKind.Bed)
+            {
+                return new Color(0.48f, 0.46f, 0.78f);   // 睡觉
+            }
+
+            return new Color(0.35f, 0.68f, 0.46f);
         }
 
         /// <summary>Label for the context action button, so the player knows what it will do.</summary>
@@ -1789,8 +1863,42 @@ namespace DshPet
                 GUI.color = Color.white;
             }
 
-            var field = new Rect(rect.x, rect.y + 20f, rect.width - 92f, 38f);
+            // The microphone takes its space OUT of the input row rather than being drawn beside
+            // it: the first version put it at `field.x - 46`, which on a phone is off the left edge
+            // of the panel — a button that was never on screen, while the settings happily reported
+            // that voice input was ready.
+            DshMobile.MobileStt.Tick();
+            bool micHere = DshMobile.MobileStt.Offered;
+            float micWidth = micHere ? 46f : 0f;
+
+            var field = new Rect(rect.x + micWidth, rect.y + 20f, rect.width - 92f - micWidth, 38f);
             UiSkin.Panel(field, 10f, new Color(1f, 1f, 1f, 0.10f), new Color(1f, 1f, 1f, 0.22f), 1.5f);
+
+            if (micHere)
+            {
+                var mic = new Rect(rect.x, field.y, 40f, 38f);
+                bool listening = DshMobile.MobileStt.Listening;
+                MobileWidgets.BeginFrame(Scale, SafeOffset);
+                if (MobileWidgets.CircleButton(MobileButtonIds.PetMic, mic,
+                        listening ? "停" : "说",
+                        listening ? new Color(0.90f, 0.42f, 0.36f) : new Color(0.34f, 0.60f, 0.86f)))
+                {
+                    if (listening) DshMobile.MobileStt.StopListening();
+                    else DshMobile.MobileStt.StartListening();
+                }
+
+                string heard = DshMobile.MobileStt.TakeResult();
+                if (!string.IsNullOrEmpty(heard))
+                {
+                    _input = heard;
+                    SetVoiceMessage("听到了：" + heard + "（可以改，再点发送）", false);
+                }
+                else if (!string.IsNullOrEmpty(DshMobile.MobileStt.LastError) &&
+                         !DshMobile.MobileStt.Listening)
+                {
+                    SetVoiceMessage(DshMobile.MobileStt.LastError, true);
+                }
+            }
 
             GUI.SetNextControlName("PetInput");
             bool enter = Event.current.type == EventType.KeyDown &&
@@ -1813,35 +1921,9 @@ namespace DshPet
                 if (enter) Event.current.Use();
             }
 
-            // The microphone sits just left of the text field, where a thumb already is. It is
-            // offered only where a recogniser exists; pressing it fills the box rather than sending,
-            // so a misheard sentence is something the player can fix instead of something the pet
-            // has already answered.
-            DshMobile.MobileStt.Tick();
-            if (DshMobile.MobileStt.Available && DshMobile.MobileStt.Enabled)
-            {
-                var mic = new Rect(field.x - 46f, field.y, 40f, 38f);
-                bool listening = DshMobile.MobileStt.Listening;
-                GUI.color = listening ? new Color(1f, 0.7f, 0.6f) : Color.white;
-                if (GUI.Button(mic, listening ? "■" : "🎤", _sendButton))
-                {
-                    if (listening) DshMobile.MobileStt.StopListening();
-                    else DshMobile.MobileStt.StartListening();
-                }
-                GUI.color = Color.white;
-
-                string heard = DshMobile.MobileStt.TakeResult();
-                if (!string.IsNullOrEmpty(heard))
-                {
-                    _input = heard;
-                    SetVoiceMessage("听到了：" + heard + "（可以改，再点发送）", false);
-                }
-                else if (!string.IsNullOrEmpty(DshMobile.MobileStt.LastError) &&
-                         !DshMobile.MobileStt.Listening)
-                {
-                    SetVoiceMessage(DshMobile.MobileStt.LastError, true);
-                }
-            }
+            // The microphone sits inside the input row (see above), so there is nothing to draw
+            // beside the field — the duplicate button that used to live here was the one that fell
+            // off the left edge of the panel.
 
             var actions = new Rect(rect.x, field.yMax + 8f, rect.width, 30f);
             GUILayout.BeginArea(actions);
@@ -1875,7 +1957,184 @@ namespace DshPet
             GUILayout.EndArea();
         }
 
-        // -------------------------------------------------------------------- puzzle
+        // -------------------------------------------------------------- memory match
+
+        private PetMemoryMatch _memory;
+        private bool _memoryPaid;
+        private float _memoryOpenedAt;
+        private float _memoryFlipAt;
+        private string _memoryMessage = "";
+        private int _memoryWins;
+        private int _memoryBestMoves;
+
+        /// <summary>
+        /// Opens 记忆配对 — the second game that lives indoors, and the one that is pure UI.
+        ///
+        /// A card game needs no scene, no physics and no camera: it is a grid of buttons and a rule
+        /// about two of them. Building it as a panel means it can be opened from the map while the
+        /// pet is walking around behind it, which is exactly where a quiet game belongs.
+        /// </summary>
+        public void OpenMemoryMatch(PetGameManager gm)
+        {
+            _showMemory = !_showMemory;
+            if (!_showMemory) return;
+
+            // Six pairs: enough to need attention, few enough to finish in a minute or two.
+            _memory = PetMemoryMatch.Start(6, UnityEngine.Random.Range(0, 1 << 28));
+            _memoryPaid = false;
+            _memoryOpenedAt = Time.realtimeSinceStartup;
+            SetMemoryMessage("翻开两张一样的就留下，不一样会自己盖回去。");
+        }
+
+        private void DrawMemoryMatch(PetGameManager gm)
+        {
+            if (_memory == null) OpenMemoryMatch(gm);
+            if (_memory == null) return;
+
+            float w = Mathf.Min(640f, DesignWidth - 32f);
+            float h = Mathf.Min(700f, DesignHeight - 32f);
+            var rect = OverlayRect(w, h);
+            ModalBackdrop(rect);
+
+            var inner = new Rect(rect.x + 18f, rect.y + 14f, rect.width - 36f, rect.height - 28f);
+
+            GUI.Label(new Rect(inner.x, inner.y, inner.width * 0.5f, 32f), "记忆配对", _title);
+
+            var balance = new GUIStyle(_title) { alignment = TextAnchor.MiddleRight };
+            GUI.color = new Color(1f, 0.9f, 0.6f);
+            GUI.Label(new Rect(inner.x + inner.width * 0.5f, inner.y, inner.width * 0.5f - 84f, 32f),
+                $"🐾 {DshMobile.PetWallet.Coins:N0}", balance);
+            GUI.color = Color.white;
+
+            if (GUI.Button(new Rect(inner.xMax - 76f, inner.y + 2f, 76f, 30f), "关闭", _button))
+            {
+                _showMemory = false;
+                return;
+            }
+
+            GUI.Label(new Rect(inner.x, inner.y + 36f, inner.width, 22f),
+                $"配成 {_memory.Matched}/{_memory.Pairs} 对　·　{_memory.Moves} 步　·　" +
+                $"{(int)(Time.realtimeSinceStartup - _memoryOpenedAt)} 秒", _small);
+
+            if (!string.IsNullOrEmpty(_memoryMessage))
+            {
+                GUI.color = _memory.IsSolved ? new Color(0.7f, 0.95f, 0.75f) : new Color(0.85f, 0.88f, 0.95f);
+                GUI.Label(new Rect(inner.x, inner.y + 58f, inner.width, 22f), _memoryMessage, _small);
+                GUI.color = Color.white;
+            }
+
+            // A mismatched pair stays visible for a moment before it goes back: the pause is the
+            // whole memory part of the game.
+            if (_memory.WaitingToHide && Time.realtimeSinceStartup - _memoryFlipAt > 0.85f)
+            {
+                _memory.HideMismatch();
+            }
+
+            // ---- the board ----
+            const float footer = 78f;
+            float boardTop = inner.y + 86f;
+            float boardRoom = inner.yMax - footer - boardTop;
+
+            int columns = PetMemoryMatch.Columns;
+            int rows = Mathf.CeilToInt(_memory.Count / (float)columns);
+            float cell = Mathf.Min((inner.width - (columns - 1) * 8f) / columns,
+                (boardRoom - (rows - 1) * 8f) / Mathf.Max(1, rows));
+            cell = Mathf.Max(52f, cell);
+
+            float boardWidth = columns * cell + (columns - 1) * 8f;
+            float boardHeight = rows * cell + (rows - 1) * 8f;
+            float boardX = inner.x + (inner.width - boardWidth) * 0.5f;
+            float boardY = boardTop + Mathf.Max(0f, (boardRoom - boardHeight) * 0.5f);
+
+            for (int i = 0; i < _memory.Count; i++)
+            {
+                int row = i / columns, column = i % columns;
+                var card = new Rect(boardX + column * (cell + 8f), boardY + row * (cell + 8f), cell, cell);
+
+                bool faceUp = _memory.IsFaceUp(i) || _memory.IsTaken(i);
+                var tint = faceUp
+                    ? new Color(0.98f, 0.94f, 0.86f, 1f)
+                    : new Color(0.28f, 0.36f, 0.55f, 1f);
+
+                UiSkin.Panel(card, 12f, tint,
+                    _memory.IsTaken(i)
+                        ? new Color(0.55f, 0.85f, 0.6f, 0.9f)
+                        : new Color(1f, 1f, 1f, 0.2f), 2f);
+
+                if (faceUp)
+                {
+                    var face = new GUIStyle(_title)
+                    {
+                        fontSize = Mathf.RoundToInt(cell * 0.42f),
+                        alignment = TextAnchor.MiddleCenter
+                    };
+                    face.normal.textColor = new Color(0.16f, 0.14f, 0.18f);
+                    GUI.Label(card, PetMemoryMatch.Label(_memory.FaceAt(i)), face);
+                }
+                else if (!_memory.IsSolved && _memory.CanFlip(i))
+                {
+                    if (GUI.Button(card, GUIContent.none, GUIStyle.none))
+                    {
+                        if (_memory.Flip(i))
+                        {
+                            _memoryFlipAt = Time.realtimeSinceStartup;
+                            PetAudioDirector.Instance?.Play(SfxId.PickUp);
+                            DshMobile.MobileHaptics.Light();
+                            if (_memory.LastFlipMatched) FinishMemoryPair(gm);
+                        }
+                    }
+                }
+            }
+
+            // ---- footer ----
+            var footerArea = new Rect(inner.x, inner.yMax - footer + 8f, inner.width, footer - 8f);
+            GUILayout.BeginArea(footerArea);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("重开一局", _button, GUILayout.Height(34f)))
+            {
+                _memory = PetMemoryMatch.Start(6, UnityEngine.Random.Range(0, 1 << 28));
+                _memoryPaid = false;
+                _memoryOpenedAt = Time.realtimeSinceStartup;
+                SetMemoryMessage("重新洗牌了。");
+            }
+
+            GUILayout.FlexibleSpace();
+            GUILayout.Label($"玩成 {_memoryWins} 次　·　最少 {(_memoryBestMoves > 0 ? _memoryBestMoves.ToString() : "-")} 步", _small);
+            GUILayout.EndHorizontal();
+            GUILayout.EndArea();
+
+            DrawModalEscape();
+        }
+
+        private void SetMemoryMessage(string message) => _memoryMessage = message;
+
+        /// <summary>Pays out when the last pair is found, once per board.</summary>
+        private void FinishMemoryPair(PetGameManager gm)
+        {
+            if (!_memory.IsSolved) return;
+
+            _memoryWins++;
+            if (_memoryBestMoves == 0 || _memory.Moves < _memoryBestMoves) _memoryBestMoves = _memory.Moves;
+
+            if (_memoryPaid)
+            {
+                SetMemoryMessage("又配对完了。");
+                return;
+            }
+
+            _memoryPaid = true;
+            int coins = _memory.PendingReward;
+            DshMobile.PetWallet.Add(coins);
+            DshMobile.MobileHaptics.Medium();
+
+            gm.Memory.AddPet($"（和你玩记忆配对，{_memory.Moves} 步就全找齐了）");
+            gm.Journal.Add(MemoryKind.Play, "玩记忆配对",
+                $"{_memory.Moves} 步配完 {_memory.Pairs} 对，赚了 {coins} 个宠物币", 0.45f);
+            gm.AnnounceChat();
+
+            SetMemoryMessage($"全配上了！赚了 {coins} 个宠物币（{PetMemoryMatch.RankFor(_memory.Pairs, _memory.Moves)}）");
+        }
+
 
         private PetPuzzle _puzzle;
         private Texture2D _puzzleArt;
@@ -2168,7 +2427,7 @@ namespace DshPet
             }
 
             GUILayout.Space(4f);
-            GUILayout.Label("出去走走（赚宠物币）", _label);
+            GUILayout.Label("在屋里玩（也赚宠物币）", _label);
             if (GUILayout.Button("🧩  拼图", _button, GUILayout.Height(38f)))
             {
                 gm.CloseDoorPrompt();
@@ -2176,6 +2435,14 @@ namespace DshPet
                 GUIUtility.ExitGUI();
             }
             GUILayout.Label("　　把这间屋子的画拼回去，步数越少宠物币越多。", _small);
+
+            if (GUILayout.Button("🃏  记忆配对", _button, GUILayout.Height(38f)))
+            {
+                gm.CloseDoorPrompt();
+                OpenMemoryMatch(gm);
+                GUIUtility.ExitGUI();
+            }
+            GUILayout.Label("　　翻开两张一样的卡片就留下，全配完给宠物币。", _small);
 
             GUILayout.EndScrollView();
             GUILayout.EndArea();
@@ -2491,7 +2758,7 @@ namespace DshPet
 
             GUILayout.Label("语音输入（对着麦克风说）在手机上有麦克风按钮：按一下说话，识别到的字会填进输入框。", _small);
 
-            if (DshMobile.MobileStt.Available)
+            if (DshMobile.MobileStt.AvailableNow)
             {
                 bool sttOn = GUILayout.Toggle(DshMobile.MobileStt.Enabled, " 显示麦克风按钮", _small);
                 if (sttOn != DshMobile.MobileStt.Enabled)
@@ -2739,6 +3006,7 @@ namespace DshPet
             _showJournal = false;
             _showCollection = false;
             _showPuzzle = false;
+            _showMemory = false;
             var gm = PetGameManager.Instance;
             if (gm != null && gm.DoorPromptOpen) gm.CloseDoorPrompt();
             e.Use();

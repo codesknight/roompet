@@ -2453,6 +2453,140 @@ namespace DshPet.Tests
             Assert.DoesNotThrow(DshMobile.MobileStt.Cancel);
         }
 
+        // -------------------------------------------------------------- memory match
+
+        [Test]
+        public void Memory_TheDeckIsPairsAndNothingElse()
+        {
+            for (int seed = 1; seed <= 30; seed++)
+            {
+                var game = PetMemoryMatch.Start(6, seed * 977);
+                Assert.AreEqual(12, game.Count, "six pairs is twelve cards");
+
+                var counts = new int[PetMemoryMatch.SafeFaces.Length];
+                for (int i = 0; i < game.Count; i++) counts[game.FaceAt(i)]++;
+
+                int pairs = 0;
+                for (int face = 0; face < counts.Length; face++)
+                {
+                    if (counts[face] == 0) continue;
+                    Assert.AreEqual(2, counts[face], $"face {face} appears {counts[face]} times");
+                    pairs++;
+                }
+                Assert.AreEqual(6, pairs);
+                Assert.IsFalse(game.IsSolved, "a fresh deck is not already solved");
+            }
+        }
+
+        [Test]
+        public void Memory_TheSameSeedGivesTheSameLayout()
+        {
+            var first = PetMemoryMatch.Start(6, 4242);
+            var second = PetMemoryMatch.Start(6, 4242);
+            for (int i = 0; i < first.Count; i++)
+            {
+                Assert.AreEqual(first.FaceAt(i), second.FaceAt(i), $"card {i} differs");
+            }
+        }
+
+        [Test]
+        public void Memory_AMatchIsBankedAndAMismatchWaitsToBeHidden()
+        {
+            var game = PetMemoryMatch.Start(4, 11);
+
+            int a = -1, b = -1;
+            for (int i = 0; i < game.Count && b < 0; i++)
+            {
+                for (int j = i + 1; j < game.Count; j++)
+                {
+                    if (game.FaceAt(i) == game.FaceAt(j)) { a = i; b = j; break; }
+                }
+            }
+
+            Assert.IsTrue(game.Flip(a));
+            Assert.IsTrue(game.IsFaceUp(a));
+            Assert.AreEqual(0, game.Moves, "one card is not a move yet");
+
+            Assert.IsTrue(game.Flip(b));
+            Assert.IsTrue(game.LastFlipMatched);
+            Assert.IsTrue(game.IsTaken(a) && game.IsTaken(b), "a pair stays on the table");
+            Assert.AreEqual(1, game.Matched);
+            Assert.AreEqual(1, game.Moves, "a move is two cards");
+
+            // Now a pair that does not match.
+            int x = -1, y = -1;
+            for (int i = 0; i < game.Count && y < 0; i++)
+            {
+                if (game.IsTaken(i)) continue;
+                for (int j = i + 1; j < game.Count; j++)
+                {
+                    if (game.IsTaken(j)) continue;
+                    if (game.FaceAt(i) != game.FaceAt(j)) { x = i; y = j; break; }
+                }
+            }
+
+            Assert.IsTrue(game.Flip(x));
+            Assert.IsTrue(game.Flip(y));
+            Assert.IsFalse(game.LastFlipMatched);
+            Assert.IsTrue(game.WaitingToHide, "a mismatch stays visible for the player to see");
+            Assert.IsFalse(game.IsTaken(x), "and is not banked");
+            Assert.IsTrue(game.HideMismatch());
+            Assert.IsFalse(game.IsFaceUp(x) && game.IsFaceUp(y), "then it goes back face down");
+        }
+
+        [Test]
+        public void Memory_SolvingItIsRewardedAndFewerMovesPayMore()
+        {
+            var game = PetMemoryMatch.Start(3, 99);
+            var known = new System.Collections.Generic.Dictionary<int, int>();
+            int guard = 0;
+
+            while (!game.IsSolved && guard++ < 200)
+            {
+                int first = -1;
+                for (int i = 0; i < game.Count; i++)
+                {
+                    if (!game.CanFlip(i)) continue;
+                    if (known.ContainsKey(game.FaceAt(i))) { first = i; break; }
+                    if (first < 0) first = i;
+                }
+                if (first < 0) break;
+
+                game.Flip(first);
+                known[game.FaceAt(first)] = first;
+
+                int second = -1;
+                for (int i = 0; i < game.Count; i++)
+                {
+                    if (!game.CanFlip(i)) continue;
+                    if (game.FaceAt(i) == game.FaceAt(first)) { second = i; break; }
+                    if (second < 0) second = i;
+                }
+                if (second >= 0) game.Flip(second);
+                if (game.WaitingToHide) game.HideMismatch();
+            }
+
+            Assert.IsTrue(game.IsSolved, "the game has to be solvable by playing it");
+            Assert.AreEqual(3, game.Matched);
+
+            Assert.AreEqual(30, PetMemoryMatch.Reward(6, 12), "a perfect game pays the most");
+            Assert.Greater(PetMemoryMatch.Reward(6, 12), PetMemoryMatch.Reward(6, 20));
+            Assert.GreaterOrEqual(PetMemoryMatch.Reward(6, 500), 10, "finishing always pays something");
+            Assert.Greater(game.PendingReward, 0, "a solved board is worth something");
+            Assert.IsFalse(string.IsNullOrEmpty(PetMemoryMatch.RankFor(6, game.Moves)));
+        }
+
+        [Test]
+        public void Memory_LabelNeverComesBackEmpty()
+        {
+            // The emoji in the "nice" list do not render in Unity's IMGUI font — which is why the
+            // safe list exists, and why an out-of-range face must still print something.
+            for (int face = -2; face < PetMemoryMatch.SafeFaces.Length + 3; face++)
+            {
+                Assert.IsFalse(string.IsNullOrEmpty(PetMemoryMatch.Label(face)), $"face {face} is blank");
+            }
+        }
+
         // ------------------------------------------------------------ footer geometry
 
         [Test]

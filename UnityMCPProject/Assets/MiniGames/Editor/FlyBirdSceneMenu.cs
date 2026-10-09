@@ -16,6 +16,7 @@ namespace DshMiniGames.EditorTools
     {
         public const string ScenePath = "Assets/MiniGames/Scenes/FlyBird.unity";
         public const string JumpQuestScenePath = "Assets/MiniGames/Scenes/JumpQuest.unity";
+        public const string CatchFruitScenePath = "Assets/MiniGames/Scenes/CatchFruit.unity";
 
         [MenuItem("Tools/DSH Mini/Build FlyBird Scene")]
         public static void BuildScene()
@@ -47,6 +48,21 @@ namespace DshMiniGames.EditorTools
             Debug.Log($"[DshMini] JumpQuest scene built at {JumpQuestScenePath}.");
         }
 
+        [MenuItem("Tools/DSH Mini/Build CatchFruit Scene")]
+        public static void BuildCatchFruitScene()
+        {
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+            var root = new GameObject("CatchFruit");
+            root.AddComponent<CatchFruitGame>();
+            root.AddComponent<CatchFruitHud>();
+
+            EditorSceneManager.SaveScene(scene, CatchFruitScenePath);
+
+            RegisterInBuildSettings();
+            Debug.Log($"[DshMini] CatchFruit scene built at {CatchFruitScenePath}.");
+        }
+
         [MenuItem("Tools/DSH Mini/Add Mini Game Scenes To Build Settings")]
         public static void RegisterInBuildSettings()
         {
@@ -55,6 +71,7 @@ namespace DshMiniGames.EditorTools
 
             AddIfPresent(scenes, ScenePath);
             AddIfPresent(scenes, JumpQuestScenePath);
+            AddIfPresent(scenes, CatchFruitScenePath);
 
             // The room and the runner are registered by their own menus; keeping them here as well
             // means a fresh clone can be made playable by running the menus in any order.

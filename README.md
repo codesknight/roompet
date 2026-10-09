@@ -221,8 +221,8 @@ github.com 凭据，脚本里不存任何 token）。
 
 ## 测试与验证
 
-单元测试在 Unity 里跑：**Window → General → Test Runner → EditMode → Run All**，应 **211/211 通过**
-（宠物 140 + 跑酷 15 + 手机端 34 + 小游戏 22）。
+单元测试在 Unity 里跑：**Window → General → Test Runner → EditMode → Run All**，应 **225/225 通过**
+（宠物 145 + 跑酷 15 + 手机端 34 + 小游戏 31）。
 
 工程里还带了两个自检菜单（比手写脚本快）：
 
