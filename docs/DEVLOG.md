@@ -21,7 +21,7 @@
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
-| 安卓包 | `UnityMCPProject/Builds/RoomPet.apk`（约 16 MB，开发版；被 git 忽略），发布在 GitHub release `v0.2.0-mobile.1` |
+| 安卓包 | `Tools/DSH Mobile/Build APK` 默认写 `UnityMCPProject/Builds/Android/RoomPet.apk`（约 16 MB，开发版；两个 `Builds/` 都被 git 忽略）。第 14 轮的包是直接调 MCP 构建、指定输出到仓库根的 `Builds/RoomPet.apk`，发布在 GitHub release `v0.2.0-mobile.1` |
 | 回归证据图 | `docs/evidence/*.png`（随文档一起提交，便于复盘） |
 
 **两个场景一句话说明**
@@ -646,7 +646,7 @@ Tools/DSH Mobile/Report Mobile Status          # 平台/触控/缩放/安全区/
 Tools/DSH Mobile/Toggle Touch Preview          # 编辑器里用手机布局（鼠标当手指），Ctrl+Shift+T
 Tools/DSH Mobile/Preview/Phone Portrait 1080x2400   # 把 Game 视图切成真机尺寸，Ctrl+Shift+1..4
 Tools/DSH Mobile/Preview/Report Current Viewport    # 打印当前视口 / 方向 / 缩放 / 设计尺寸
-Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\RoomPet.apk
+Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
 EditMode，期望 235/235
