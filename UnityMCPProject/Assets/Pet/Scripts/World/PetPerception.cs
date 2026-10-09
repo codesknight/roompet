@@ -71,6 +71,12 @@ namespace DshPet
                 case InteractableKind.Bath: return "澡盆";
                 case InteractableKind.Mess: return "地上的水渍";
                 case InteractableKind.HidingSpot: return "灌木丛";
+                case InteractableKind.AppleTree: return "苹果树";
+                case InteractableKind.Pond: return "小池塘";
+                case InteractableKind.GrassHeap: return "草堆";
+                case InteractableKind.Swing: return "秋千";
+                case InteractableKind.Telescope: return "望远镜";
+                case InteractableKind.RockingChair: return "摇椅";
                 default: return "东西";
             }
         }

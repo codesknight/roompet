@@ -1042,6 +1042,11 @@ namespace DshPet
                 if (item.IsFood || !item.Kind.HasValue) continue;
                 if (!placed.ContainsKey(item.Id)) continue;
 
+                // Furniture belongs to its place: an apple tree placed in the garden stays in
+                // the garden, and simply is not built when the pet lives elsewhere. Moving back
+                // brings it back, exactly where it was.
+                if (!item.AllowedIn(Theme)) continue;
+
                 BuildProp(item);
             }
         }
@@ -1058,6 +1063,12 @@ namespace DshPet
                 case InteractableKind.Toilet: return BuildToilet(at);
                 case InteractableKind.Bath: return BuildBath(at);
                 case InteractableKind.Toy: return BuildToy(at);
+                case InteractableKind.AppleTree: return BuildAppleTree(at);
+                case InteractableKind.Pond: return BuildPond(at);
+                case InteractableKind.GrassHeap: return BuildGrassHeap(at);
+                case InteractableKind.Swing: return BuildSwing(at);
+                case InteractableKind.Telescope: return BuildTelescope(at);
+                case InteractableKind.RockingChair: return BuildRockingChair(at);
                 default: return null;
             }
         }
@@ -1304,6 +1315,196 @@ namespace DshPet
             interactable.Label = "玩具（点它让宠物去玩）";
             interactable.ItemId = "toy";
             interactable.ApproachPoint = new Vector3(at.x, 0f, at.y + 1.2f);
+            return interactable;
+        }
+
+        /// <summary>An apple tree: trunk, crown, and a <see cref="PetAppleTree"/> that bears fruit.</summary>
+        private Interactable BuildAppleTree(Vector2 at)
+        {
+            var go = new GameObject("AppleTree");
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(at.x, 0f, at.y);
+
+            var trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            trunk.name = "Trunk";
+            trunk.transform.SetParent(go.transform, false);
+            trunk.transform.localScale = new Vector3(0.34f, 1.2f, 0.34f);
+            trunk.transform.localPosition = new Vector3(0f, 1.2f, 0f);
+            SetColor(trunk, new Color(0.42f, 0.28f, 0.16f), 0.35f);
+
+            var crown = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            crown.name = "Crown";
+            crown.transform.SetParent(go.transform, false);
+            crown.transform.localScale = new Vector3(1.9f, 1.5f, 1.9f);
+            crown.transform.localPosition = new Vector3(0f, 2.6f, 0f);
+            SetColor(crown, new Color(0.24f, 0.50f, 0.22f), 0.5f);
+
+            for (int i = 0; i < 3; i++)
+            {
+                float angle = i * 2.1f;
+                var apple = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                apple.name = "Apple" + i;
+                apple.transform.SetParent(crown.transform, false);
+                apple.transform.localScale = Vector3.one * 0.20f;
+                apple.transform.localPosition = new Vector3(Mathf.Cos(angle) * 0.7f, 0.35f, Mathf.Sin(angle) * 0.7f);
+                SetColor(apple, new Color(0.92f, 0.26f, 0.22f), 0.7f);
+            }
+
+            var hit = go.AddComponent<BoxCollider>();
+            hit.size = new Vector3(1.2f, 3.2f, 1.2f);
+            hit.center = new Vector3(0f, 1.8f, 0f);
+
+            var interactable = go.AddComponent<Interactable>();
+            interactable.Kind = InteractableKind.AppleTree;
+            interactable.Label = "苹果树";
+            interactable.ItemId = "apple_tree";
+            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y - 1.4f);
+
+            go.AddComponent<PetAppleTree>();
+            return interactable;
+        }
+
+        /// <summary>A little pond: a shallow stone basin of water, with a <see cref="PetPond"/>.</summary>
+        private Interactable BuildPond(Vector2 at)
+        {
+            var go = new GameObject("Pond");
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(at.x, 0f, at.y);
+
+            var rim = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            rim.name = "Rim";
+            rim.transform.SetParent(go.transform, false);
+            rim.transform.localScale = new Vector3(2.4f, 0.18f, 1.7f);
+            rim.transform.localPosition = new Vector3(0f, 0.10f, 0f);
+            SetColor(rim, new Color(0.62f, 0.62f, 0.66f), 0.3f);
+
+            var water = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            water.name = "Water";
+            water.transform.SetParent(go.transform, false);
+            water.transform.localScale = new Vector3(2.1f, 0.12f, 1.4f);
+            water.transform.localPosition = new Vector3(0f, 0.16f, 0f);
+            SetColor(water, new Color(0.34f, 0.62f, 0.86f), 0.85f);
+
+            var hit = go.AddComponent<BoxCollider>();
+            hit.size = new Vector3(2.4f, 0.5f, 1.7f);
+            hit.center = new Vector3(0f, 0.22f, 0f);
+
+            var interactable = go.AddComponent<Interactable>();
+            interactable.Kind = InteractableKind.Pond;
+            interactable.Label = "小池塘";
+            interactable.ItemId = "pond";
+            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y + 1.2f);
+
+            go.AddComponent<PetPond>();
+            return interactable;
+        }
+
+        /// <summary>A soft heap of straw the pet sleeps in — the garden's own bed.</summary>
+        private Interactable BuildGrassHeap(Vector2 at)
+        {
+            var go = new GameObject("GrassHeap");
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(at.x, 0f, at.y);
+
+            var heap = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            heap.name = "Heap";
+            heap.transform.SetParent(go.transform, false);
+            heap.transform.localScale = new Vector3(1.7f, 0.7f, 1.4f);
+            heap.transform.localPosition = new Vector3(0f, 0.35f, 0f);
+            SetColor(heap, new Color(0.82f, 0.72f, 0.40f), 0.5f);
+
+            var hit = go.AddComponent<BoxCollider>();
+            hit.size = new Vector3(1.7f, 0.7f, 1.4f);
+            hit.center = new Vector3(0f, 0.35f, 0f);
+
+            var interactable = go.AddComponent<Interactable>();
+            interactable.Kind = InteractableKind.GrassHeap;
+            interactable.Label = "草堆";
+            interactable.ItemId = "grass_heap";
+            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y + 1.4f);
+            return interactable;
+        }
+
+        /// <summary>A swing: two posts, a beam, and a seat that sways.</summary>
+        private Interactable BuildSwing(Vector2 at)
+        {
+            var go = new GameObject("Swing");
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(at.x, 0f, at.y);
+
+            BoxUnder(go.transform, "PostL", new Vector3(-0.55f, 1.15f, 0f), new Vector3(0.14f, 2.3f, 0.14f),
+                new Color(0.55f, 0.40f, 0.26f), 0.45f);
+            BoxUnder(go.transform, "PostR", new Vector3(0.55f, 1.15f, 0f), new Vector3(0.14f, 2.3f, 0.14f),
+                new Color(0.55f, 0.40f, 0.26f), 0.45f);
+            BoxUnder(go.transform, "Beam", new Vector3(0f, 2.30f, 0f), new Vector3(1.4f, 0.12f, 0.14f),
+                new Color(0.60f, 0.44f, 0.30f), 0.45f);
+            BoxUnder(go.transform, "Seat", new Vector3(0f, 0.75f, 0f), new Vector3(0.75f, 0.10f, 0.5f),
+                new Color(0.72f, 0.52f, 0.30f), 0.5f);
+
+            var hit = go.AddComponent<BoxCollider>();
+            hit.size = new Vector3(1.4f, 2.4f, 0.8f);
+            hit.center = new Vector3(0f, 1.2f, 0f);
+
+            var interactable = go.AddComponent<Interactable>();
+            interactable.Kind = InteractableKind.Swing;
+            interactable.Label = "秋千";
+            interactable.ItemId = "swing";
+            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y - 1.3f);
+            return interactable;
+        }
+
+        /// <summary>A brass telescope on a tripod, pointing at the night sky.</summary>
+        private Interactable BuildTelescope(Vector2 at)
+        {
+            var go = new GameObject("Telescope");
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(at.x, 0f, at.y);
+
+            BoxUnder(go.transform, "Leg", new Vector3(0f, 0.55f, 0f), new Vector3(0.5f, 1.1f, 0.5f),
+                new Color(0.30f, 0.28f, 0.30f), 0.3f);
+            var tube = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            tube.name = "Tube";
+            tube.transform.SetParent(go.transform, false);
+            tube.transform.localScale = new Vector3(0.22f, 0.9f, 0.22f);
+            tube.transform.localPosition = new Vector3(0f, 1.5f, 0f);
+            tube.transform.localRotation = Quaternion.Euler(35f, 0f, 0f);
+            SetColor(tube, new Color(0.78f, 0.62f, 0.30f), 0.55f);
+
+            var hit = go.AddComponent<BoxCollider>();
+            hit.size = new Vector3(0.8f, 2.4f, 0.8f);
+            hit.center = new Vector3(0f, 1.2f, 0f);
+
+            var interactable = go.AddComponent<Interactable>();
+            interactable.Kind = InteractableKind.Telescope;
+            interactable.Label = "天文望远镜";
+            interactable.ItemId = "telescope";
+            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y - 1.3f);
+            return interactable;
+        }
+
+        /// <summary>A rocking chair on curved runners, for the terrace.</summary>
+        private Interactable BuildRockingChair(Vector2 at)
+        {
+            var go = new GameObject("RockingChair");
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(at.x, 0f, at.y);
+
+            BoxUnder(go.transform, "Seat", new Vector3(0f, 0.45f, 0f), new Vector3(0.8f, 0.10f, 0.7f),
+                new Color(0.52f, 0.34f, 0.22f), 0.45f);
+            BoxUnder(go.transform, "Back", new Vector3(0f, 0.95f, -0.32f), new Vector3(0.8f, 0.95f, 0.10f),
+                new Color(0.52f, 0.34f, 0.22f), 0.45f);
+            BoxUnder(go.transform, "Runner", new Vector3(0f, 0.18f, 0f), new Vector3(0.9f, 0.10f, 0.16f),
+                new Color(0.40f, 0.26f, 0.16f), 0.4f);
+
+            var hit = go.AddComponent<BoxCollider>();
+            hit.size = new Vector3(0.9f, 1.2f, 0.8f);
+            hit.center = new Vector3(0f, 0.6f, 0f);
+
+            var interactable = go.AddComponent<Interactable>();
+            interactable.Kind = InteractableKind.RockingChair;
+            interactable.Label = "摇椅";
+            interactable.ItemId = "rocking_chair";
+            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y + 1.4f);
             return interactable;
         }
 

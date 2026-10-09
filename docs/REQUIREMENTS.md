@@ -368,6 +368,21 @@
 | R25.7 | 饭碗空了会挨饿、要去补货 | 粮食是消耗品：`PetInventory.Food`，宠物每吃一顿 `TryConsumeMeal()`；吃空后 `UsePending` 不喂食并触发 `BowlsEmpty`。行为表 `eat` 新增 `NeedsFood` 门槛 + 上下文 `FoodAvailable`——**宠物不会再去空碗** | 单测：`TryConsumeMeal` 三顿吃完返回 false；`eat` 在 `FoodAvailable=false` 时不触发、在 true 时触发 ✅ |
 | R25.8 | 玩具是新的可交互道具 | 新 `InteractableKind.Toy` 的 `BuildToy`（毛线球），`UsePending` 的 `Toy` 分支 `Needs.Play(0.45, true)` + 扑玩动画 | 目录里 `toy` 映射到 `InteractableKind.Toy`，单测覆盖 ✅ |
 
+---
+
+## 阶段 26：背包与场景闭环——果园、池塘、秋千、铲子
+
+| 编号 | 需求 | 实现 | 验收证据 |
+|---|---|---|---|
+| R26.1 | 商品分三类：道具 / 食品 / 家具 | `ShopCategory { Food, Tool, Furniture }` + `ItemScene { Anywhere, Garden, Terrace }`。商城按三类分栏，每件有介绍和价格；食品（宠物粮/水/肉）可堆叠、苹果/鱼是"世界产出"（能卖不能买） | 单测：每件商品类别自洽（食品无 Kind、道具无 Kind、家具有 Kind）、`Produced` 食品整价卖 ✅ |
+| R26.2 | 背包 3 个道具栏 + 仓库 99 格 | `PetBackpack`：3 个道具栏（装备/取下、满 3 拒绝）、`BucketFull`（打水状态）；`PetInventory.WarehouseSlots = 99`。宠物栏仍是 `PetCollection.Backpack`（3 格） | 单测：装备铲子/水桶、FreeSlots、装备中的道具不能卖、水桶打水→浇水 ✅ 截图 `round26_backpack.png` |
+| R26.3 | 苹果树闭环（结果→吃/摘→卖→浇水） | `PetAppleTree`（最多 3 果、90 秒长一个）+ `GardenRules`。宠物饿了 `eat_apple` 行为走到树下吃一个（不经过仓库）；主人点树 `HarvestAppleTree` 摘果进仓库；苹果可卖（8）；**水桶打水→浇水 `Water()` 立刻 +1 果** | 单测：`AfterWatering` 封顶、`ClampApples` 夹取、苹果可堆叠可卖 ✅ 实测（运行中）：浇水后果数 1→2 ✅ |
+| R26.4 | 小池塘：喝水 + 钓鱼 | `PetPond`（甩竿 8 秒上钩）+ `UsePond`：有水桶先打水、没打水就钓鱼/收竿；宠物 `drink_pond` 行为渴了来喝（`GiveWater` + 2 币） | 单测：`PetPond` 状态机；实测（运行中）构建出池塘 ✅ 钓鱼手感待真机 |
+| R26.5 | 草堆睡觉、秋千荡、露台望远镜/摇椅 | 新 `InteractableKind.GrassHeap/Swing/Telescope/RockingChair` + 对应构建与 `UsePending`（草堆/摇椅=睡眠、秋千=玩、望远镜=好奇）；行为 `sleep_grass`、`swing`、`stargaze`（露台夜） | 单测：行为目标与 `OnlyInPlace` 门槛 ✅ |
+| R26.6 | 排泄物需铲子清理 | `PetGameManager.CleanMess` 先查 `PetBackpack.CanCleanMess`（背包装备铲子），没有则 Toast 提示、不清理 | 实测（运行中）：有铲子 +5 币并移除、无铲子 +0 且污渍仍在 ✅ |
+| R26.7 | 场景专属摆放 | 花园家具（苹果树/池塘/草堆/秋千）`Scene = Garden`、露台（望远镜/摇椅）`Scene = Terrace`；`PetInventory.Place(id, place)` 校验 `AllowedIn`，`BuildPurchasedProps` 只建当前地点允许的家具（搬走留下、回来还在） | 单测：苹果树在 Cabin 摆不了、在 Garden 能摆；露台家具反之 ✅ |
+| R26.8 | 感知新物体 | `PetPerception.NameOf` 加苹果树/池塘/草堆/秋千/望远镜/摇椅；这些 `Interactable` 自然进方位感知与系统提示 | 编译 + 单测覆盖枚举 ✅ |
+
 
 ## 非功能需求 / 设计约束
 

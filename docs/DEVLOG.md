@@ -898,6 +898,15 @@
     （打扫 +5、猫砂盆 +3、半价回收、粮食三顿一袋）全部落在 `PetInventory`（纯状态机，PlayerPrefs 存取）和
     两个 `const` 上，9 条单测覆盖：买、只能买一次、摆、收、卖、碗不能卖、位置钳在房间内、粮吃完、
     `eat` 在有粮/无粮下的门槛。**"每个商品都有特殊交互"这句话，只有变成"每条规则都有测试"才是真的。**
+136. **"场景专属物品"要真的按场景过滤，而不是"全摆上再看合不合适"。** 苹果树、池塘、草堆、秋千只属于
+    花园，望远镜、摇椅只属于露台。关键不是"画出来不像"，而是**状态**：家具的位置存在存档里，宠物搬去
+    小屋时苹果树不该消失（它只是不在这个场景显示），搬回花园时它要还在原位。实现上 `BuildPurchasedProps`
+    只建 `item.AllowedIn(当前主题)` 的家具，`Place` 校验场景——**"独立场景"的最小实现，是每件家具都知道
+    自己属于哪个地方。**
+137. **"背包装备了才能用"这种门槛，要放在动作发生之前、并且说清楚缺什么。** 排泄物清理改成必须有
+    `PetBackpack.CanCleanMess`（装备铲子）——否则铲子就只是仓库里一件能卖钱的摆设。门槛要落在
+    `CleanMess` 开头，没装备时**明说**"需要装备铲子（商城买铲子 → 背包装备）"，而不是默默不清。
+    **凡是"为什么点了没反应"，都该在代码里变成一句"你缺了 X"。**
 
 ---
 
@@ -944,7 +953,7 @@ Tools/DSH Mobile/Preview/Report Current Viewport    # 打印当前视口 / 方�
 Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
-EditMode，期望 345/345
+EditMode，期望 351/351
 
 # 存档
 %USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\

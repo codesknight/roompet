@@ -1712,16 +1712,104 @@ namespace DshPet
                 return;
             }
 
+            // The apple tree is the owner's to harvest, not the pet's: picking and watering
+            // happen on the spot, eating is what the pet does on its own when it is hungry.
+            if (target.Kind == InteractableKind.AppleTree)
+            {
+                HarvestAppleTree(target);
+                return;
+            }
+
+            // The pond offers two owner actions: fish (always) and draw water (with the bucket).
+            if (target.Kind == InteractableKind.Pond)
+            {
+                UsePond(target);
+                return;
+            }
+
             if (Controller != null) Controller.GoTo(target);
         }
 
         /// <summary>
-        /// Wipes up an accident. The pet notices and is quietly grateful — cleaning up after
-        /// someone is a caring act, and the affection system should read it as one.
+        /// The owner harvests the apple tree: pick its apples, or water it with a full bucket.
+        /// </summary>
+        private void HarvestAppleTree(Interactable target)
+        {
+            var tree = target != null ? target.GetComponent<PetAppleTree>() : null;
+            if (tree == null) return;
+
+            if (PetBackpack.HasBucket && PetBackpack.BucketFull)
+            {
+                PetBackpack.BucketFull = false;
+                tree.Water();
+                PetHud.SetToast("用水桶浇了苹果树，它马上多结了一个苹果。");
+                DshMobile.MobileHaptics.Light();
+                return;
+            }
+
+            int picked = tree.PickAll();
+            if (picked <= 0)
+            {
+                PetHud.SetToast("树上还没有苹果，等等就有了" +
+                                  (PetBackpack.HasBucket ? "（背包装备水桶、在池塘打水再浇，结得更快）" : "。"));
+                return;
+            }
+
+            PetInventory.Add("apple", picked);
+            PetHud.SetToast($"摘了 {picked} 个苹果，放进了仓库（能吃也能卖钱）。");
+            DshMobile.MobileHaptics.Light();
+        }
+
+        /// <summary>The owner uses the pond: fish, or fill the bucket.</summary>
+        private void UsePond(Interactable target)
+        {
+            var pond = target != null ? target.GetComponent<PetPond>() : null;
+            if (pond == null) return;
+
+            if (PetBackpack.HasBucket && !PetBackpack.BucketFull)
+            {
+                PetBackpack.BucketFull = true;
+                PetHud.SetToast("用水桶从池塘打了水，去浇苹果树吧。");
+                DshMobile.MobileHaptics.Light();
+                return;
+            }
+
+            if (pond.FishReady)
+            {
+                if (pond.TryCatch())
+                {
+                    PetInventory.Add("fish", 1);
+                    PetHud.SetToast("钓上了一条鱼！放进了仓库（能吃也能卖钱）。");
+                    DshMobile.MobileHaptics.Medium();
+                }
+                return;
+            }
+
+            if (pond.IsFishing)
+            {
+                PetHud.SetToast("鱼漂动了……再等等。");
+                return;
+            }
+
+            pond.Cast();
+            PetHud.SetToast("把鱼线甩进了池塘，等鱼上钩。");
+            DshMobile.MobileHaptics.Light();
+        }
+
+        /// <summary>
+        /// Wipes up an accident — but only with a shovel equipped. The pet notices and is quietly
+        /// grateful. Without the tool the player is told what is missing, which is the shovel's
+        /// whole reason for being a backpack item rather than a free hand gesture.
         /// </summary>
         public void CleanMess(Interactable mess)
         {
             if (mess == null || Room == null) return;
+
+            if (!PetBackpack.CanCleanMess)
+            {
+                PetHud.SetToast("需要装备铲子才能清理排泄物（商城买铲子 → 背包装备）。");
+                return;
+            }
 
             Room.RemoveMess(mess);
             Needs.Clean(0.12f);
@@ -1735,7 +1823,7 @@ namespace DshPet
             PetAudioDirector.Instance?.Play(SfxId.Brush);
             DshMobile.MobileHaptics.Light();
 
-            Memory.AddPet("（主人把地上的污渍擦干净了，你有点不好意思地蹭了蹭她的腿）");
+            Memory.AddPet("（主人用铲子把地上的污渍铲干净了，你有点不好意思地蹭了蹭她的腿）");
             Journal.Add(MemoryKind.Care, "主人帮我收拾", "", 0.35f);
             ChatChanged?.Invoke();
         }

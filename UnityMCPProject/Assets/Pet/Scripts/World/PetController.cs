@@ -801,6 +801,44 @@ namespace DshPet
                     Needs.Play(0.30f, true);
                     Avatar.PlayAction(PetAction.Sit, 4.4f);
                     break;
+                case InteractableKind.AppleTree:
+                    // The pet eats straight off the branch when it is hungry; the owner picks
+                    // into the warehouse. An apple is a meal the garden grew itself.
+                    var tree = target.GetComponent<PetAppleTree>();
+                    if (tree != null && tree.EatOne())
+                    {
+                        Needs.Feed(0.4f);
+                        Avatar.PlayAction(PetAction.Eat, 2.4f);
+                    }
+                    else
+                    {
+                        Avatar.PlayAction(PetAction.Curious, 2f);
+                    }
+                    break;
+                case InteractableKind.Pond:
+                    // The pond is a water source: the pet drinks from it, and the owner fishes.
+                    bool thirsty = Needs.Hunger < 0.9f;
+                    Needs.GiveWater();
+                    Avatar.PlayAction(PetAction.Drink, 2.4f);
+                    if (thirsty) DshMobile.PetWallet.Add(DshPet.GardenRules.DrinkCoinReward);
+                    break;
+                case InteractableKind.GrassHeap:
+                case InteractableKind.RockingChair:
+                    // A nap, whether in the garden's straw or the terrace's rocker.
+                    CurrentMode = Mode.Sleep;
+                    _sleepTimer = 0f;
+                    Avatar.PlayAction(PetAction.Sleep, 900f);
+                    target.MarkUsed();
+                    Interacted?.Invoke(target);
+                    return;
+                case InteractableKind.Swing:
+                    Needs.Play(0.5f, true);
+                    Avatar.PlayAction(PetAction.Play, 3.2f);
+                    break;
+                case InteractableKind.Telescope:
+                    Needs.Pet(0.15f);
+                    Avatar.PlayAction(PetAction.Curious, 3f);
+                    break;
                 default:
                     Needs.Pet(0.1f);
                     Avatar.PlayAction(PetAction.Happy, 1.6f);

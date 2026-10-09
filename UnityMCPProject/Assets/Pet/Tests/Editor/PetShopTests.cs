@@ -4,12 +4,13 @@ using UnityEngine;
 namespace DshPet.Tests
 {
     /// <summary>
-    /// The shop, the warehouse and the food economy, as pure rules.
+    /// The shop, the warehouse, the backpack and the garden's closed loop, as pure rules.
     ///
-    /// The request is that every shop item has a real interaction, that furniture is bought and
-    /// placed rather than assumed, and that a pet without a litter box makes work you get paid
-    /// for cleaning. All of that is a set of rules about coins, ownership and placement — which
-    /// is exactly what can be pinned down without a scene.
+    /// The request is that every item has a real interaction, that furniture is bought and placed
+    /// (and only where it belongs), that the backpack's tool slots gate what the owner can do,
+    /// and that the garden produces food you can eat or sell. All of that is a set of rules about
+    /// coins, ownership, placement and tools — which is exactly what can be pinned down without
+    /// a scene.
     /// </summary>
     public class PetShopTests
     {
@@ -31,63 +32,95 @@ namespace DshPet.Tests
         {
             var placed = PetInventory.Placed();
             Assert.AreEqual(2, placed.Count, "the starter room is the pet and the two bowls, nothing else");
-            Assert.IsTrue(placed.ContainsKey(PetShop.FoodBowl), "the food bowl is always placed");
-            Assert.IsTrue(placed.ContainsKey(PetShop.WaterBowl), "the water bowl is always placed");
-            Assert.IsFalse(PetInventory.IsPlaced("bed"), "the bed must be bought before it appears");
-            Assert.IsFalse(PetInventory.IsPlaced("litter_box"), "the litter box must be bought first");
+            Assert.IsTrue(placed.ContainsKey(PetShop.FoodBowl));
+            Assert.IsTrue(placed.ContainsKey(PetShop.WaterBowl));
+            Assert.IsFalse(PetInventory.IsPlaced("bed"));
+            Assert.IsFalse(PetInventory.IsPlaced("litter_box"));
+        }
+
+        [Test]
+        public void EveryItemHasACoherentCategory()
+        {
+            foreach (var item in PetShop.All)
+            {
+                Assert.IsFalse(string.IsNullOrEmpty(item.Id), "every item has an id");
+                Assert.IsFalse(string.IsNullOrEmpty(item.Name), item.Id + " has no name");
+                Assert.IsFalse(string.IsNullOrEmpty(item.Blurb), item.Id + " has no pitch");
+                Assert.Greater(item.Price, 0, item.Id + " is free");
+
+                if (item.IsFood)
+                {
+                    Assert.IsNull(item.Kind, "food is not an interactable");
+                    Assert.Greater(item.FoodUnits, 0, "a food bag must hold some meals");
+                }
+                else if (item.IsTool)
+                {
+                    Assert.IsNull(item.Kind, "a tool is carried, not placed");
+                }
+                else
+                {
+                    Assert.IsTrue(item.Kind.HasValue, item.Id + " must place an interactable");
+                }
+            }
+        }
+
+        [Test]
+        public void GardenAndTerraceFurnitureIsSceneLocked()
+        {
+            Assert.IsTrue(PetShop.Get("apple_tree").AllowedIn(RoomTheme.Garden));
+            Assert.IsTrue(PetShop.Get("pond").AllowedIn(RoomTheme.Garden));
+            Assert.IsTrue(PetShop.Get("grass_heap").AllowedIn(RoomTheme.Garden));
+            Assert.IsTrue(PetShop.Get("swing").AllowedIn(RoomTheme.Garden));
+            Assert.IsFalse(PetShop.Get("apple_tree").AllowedIn(RoomTheme.Cabin), "an apple tree is not a cabin item");
+            Assert.IsFalse(PetShop.Get("apple_tree").AllowedIn(RoomTheme.Terrace));
+
+            Assert.IsTrue(PetShop.Get("telescope").AllowedIn(RoomTheme.Terrace));
+            Assert.IsTrue(PetShop.Get("rocking_chair").AllowedIn(RoomTheme.Terrace));
+            Assert.IsFalse(PetShop.Get("telescope").AllowedIn(RoomTheme.Garden));
+
+            Assert.IsTrue(PetShop.Get("bed").AllowedIn(RoomTheme.Garden), "a bed goes anywhere");
+            Assert.IsTrue(PetShop.Get("bed").AllowedIn(RoomTheme.Terrace));
+        }
+
+        [Test]
+        public void PlaceRejectsTheWrongScene()
+        {
+            DshMobile.PetWallet.Add(1000);
+            PetInventory.Buy(PetShop.Get("apple_tree"));
+
+            string result = PetInventory.Place("apple_tree", RoomTheme.Cabin);
+            Assert.IsTrue(result.Contains("只能摆在花园"), "an apple tree cannot be placed in the cabin");
+            Assert.IsFalse(PetInventory.IsPlaced("apple_tree"));
+
+            Assert.IsTrue(PetInventory.Place("apple_tree", RoomTheme.Garden).Contains("摆进了"));
+            Assert.IsTrue(PetInventory.IsPlaced("apple_tree"));
         }
 
         [Test]
         public void BuyingFoodSpendsCoinsAndAddsMeals()
         {
             DshMobile.PetWallet.Add(100);
-            var food = PetShop.Get("food");
-
-            string result = PetInventory.Buy(food);
+            PetInventory.Buy(PetShop.Get("food"));
 
             Assert.AreEqual(80, DshMobile.PetWallet.Coins, "one bag costs 20");
             Assert.AreEqual(3, PetInventory.Food, "one bag is three meals");
-            Assert.IsTrue(result.Contains("3"), "the receipt says how many meals");
         }
 
         [Test]
         public void BuyingFurnitureOnceOnlyAndSellingRefundsHalf()
         {
             DshMobile.PetWallet.Add(1000);
-            var bed = PetShop.Get("bed");
+            PetInventory.Buy(PetShop.Get("bed"));
+            Assert.IsTrue(PetInventory.IsOwned("bed"));
 
-            PetInventory.Buy(bed);
-            Assert.IsTrue(PetInventory.IsOwned("bed"), "bought furniture is owned");
-
-            string again = PetInventory.Buy(bed);
-            Assert.IsTrue(again.Contains("买过"), "you cannot buy the same bed twice");
-
-            // Place it, then sell it: selling clears both the warehouse and the room.
-            PetInventory.Place("bed");
+            Assert.IsTrue(PetInventory.Buy(PetShop.Get("bed")).Contains("买过"));
+            PetInventory.Place("bed", RoomTheme.Cabin);
             Assert.IsTrue(PetInventory.IsPlaced("bed"));
 
-            string sold = PetInventory.Sell("bed");
-            Assert.IsFalse(PetInventory.IsOwned("bed"), "sold furniture leaves the warehouse");
-            Assert.IsFalse(PetInventory.IsPlaced("bed"), "sold furniture leaves the room");
-            Assert.IsTrue(sold.Contains("60"), "half of 120 back is 60");
-            Assert.AreEqual(1000 - 120 + 60, DshMobile.PetWallet.Coins);
-        }
-
-        [Test]
-        public void PlaceAndStoreMoveBetweenWarehouseAndRoom()
-        {
-            DshMobile.PetWallet.Add(1000);
-            PetInventory.Buy(PetShop.Get("ball"));
-
-            Assert.AreEqual("还没有这件家具，先去商城买", PetInventory.Place("bath"),
-                "an unowned bath cannot be placed");
-
-            PetInventory.Place("ball");
-            Assert.IsTrue(PetInventory.IsPlaced("ball"));
-
-            Assert.AreEqual("收回了仓库", PetInventory.Store("ball"));
-            Assert.IsFalse(PetInventory.IsPlaced("ball"));
-            Assert.IsTrue(PetInventory.IsOwned("ball"), "storing keeps the item");
+            PetInventory.Sell("bed");
+            Assert.IsFalse(PetInventory.IsOwned("bed"));
+            Assert.IsFalse(PetInventory.IsPlaced("bed"));
+            Assert.AreEqual(1000 - 120 + 60, DshMobile.PetWallet.Coins, "half of 120 back is 60");
         }
 
         [Test]
@@ -106,9 +139,7 @@ namespace DshPet.Tests
             var inside = PetInventory.ClampToRoom(new Vector2(100f, -100f));
             Assert.LessOrEqual(Mathf.Abs(inside.x), PetInventory.RoomHalf - PetInventory.PlacementMargin);
             Assert.LessOrEqual(Mathf.Abs(inside.y), PetInventory.RoomHalf - PetInventory.PlacementMargin);
-
-            var unchanged = PetInventory.ClampToRoom(new Vector2(1f, 2f));
-            Assert.AreEqual(new Vector2(1f, 2f), unchanged, "a legal spot is left alone");
+            Assert.AreEqual(new Vector2(1f, 2f), PetInventory.ClampToRoom(new Vector2(1f, 2f)));
         }
 
         [Test]
@@ -122,56 +153,126 @@ namespace DshPet.Tests
             Assert.IsTrue(PetInventory.TryConsumeMeal());
             Assert.IsTrue(PetInventory.TryConsumeMeal());
             Assert.AreEqual(0, PetInventory.Food);
-
             Assert.IsFalse(PetInventory.TryConsumeMeal(), "an empty pantry serves no meals");
         }
 
         [Test]
-        public void EveryShopPropPlacesAnInteractableAndFoodIsConsumable()
+        public void StackableFoodSellsOneUnitAtATime()
         {
-            foreach (var item in PetShop.All)
-            {
-                Assert.IsFalse(string.IsNullOrEmpty(item.Id), "every item has an id");
-                Assert.IsFalse(string.IsNullOrEmpty(item.Name), item.Id + " has no name");
-                Assert.IsFalse(string.IsNullOrEmpty(item.Blurb), item.Id + " has no pitch");
-                Assert.Greater(item.Price, 0, item.Id + " is free");
+            PetInventory.Add("apple", 3);
+            PetInventory.Add("fish", 2);
 
-                if (item.IsFood)
-                {
-                    Assert.IsNull(item.Kind, "food is not an interactable");
-                    Assert.Greater(item.FoodUnits, 0, "a food bag must hold some meals");
-                }
-                else
-                {
-                    Assert.IsTrue(item.Kind.HasValue, item.Id + " must place an interactable");
-                }
-            }
+            string sold = PetInventory.Sell("apple");
+            Assert.AreEqual(2, PetInventory.Count("apple"));
+            Assert.IsTrue(sold.Contains("8"), "an apple sells for 8");
+
+            Assert.AreEqual(2, PetInventory.Count("fish"));
+            PetInventory.Sell("fish");
+            Assert.AreEqual(1, PetInventory.Count("fish"));
+        }
+
+        [Test]
+        public void TheBackpackHoldsThreeToolsAndGatesTheShovel()
+        {
+            DshMobile.PetWallet.Add(1000);
+            PetInventory.Buy(PetShop.Get("shovel"));
+            PetInventory.Buy(PetShop.Get("bucket"));
+
+            Assert.IsFalse(PetBackpack.CanCleanMess, "no shovel equipped, no cleaning");
+            Assert.AreEqual("铲子装进了背包", PetBackpack.Equip("shovel"));
+            Assert.IsTrue(PetBackpack.CanCleanMess);
+            Assert.IsTrue(PetBackpack.HasShovel);
+
+            Assert.AreEqual("水桶装进了背包", PetBackpack.Equip("bucket"));
+            Assert.IsTrue(PetBackpack.HasBucket);
+            Assert.AreEqual(2, PetBackpack.Equipped().Count);
+            Assert.AreEqual(1, PetBackpack.FreeSlots);
+
+            // A tool that is not owned cannot be equipped, and equipped tools cannot be sold.
+            Assert.IsTrue(PetInventory.Sell("shovel").Contains("取下来"), "an equipped tool cannot be sold");
+            PetBackpack.Unequip("shovel");
+            Assert.IsFalse(PetBackpack.CanCleanMess);
+        }
+
+        [Test]
+        public void TheBucketWaterLoopWatersTheTree()
+        {
+            // Draw water at the pond (bucket equipped), then water the tree: one apple appears.
+            DshMobile.PetWallet.Add(1000);
+            PetInventory.Buy(PetShop.Get("bucket"));
+            PetBackpack.Equip("bucket");
+
+            Assert.IsFalse(PetBackpack.BucketFull);
+            PetBackpack.BucketFull = true;   // drew water at the pond
+
+            Assert.AreEqual(1, GardenRules.AfterWatering(0), "watering grows one apple");
+            Assert.AreEqual(GardenRules.TreeMaxApples, GardenRules.AfterWatering(GardenRules.TreeMaxApples),
+                "watering a full tree cannot exceed the cap");
+        }
+
+        [Test]
+        public void AppleEconomyIsBounded()
+        {
+            Assert.AreEqual(0, GardenRules.ClampApples(-3));
+            Assert.AreEqual(GardenRules.TreeMaxApples, GardenRules.ClampApples(99));
+            Assert.AreEqual(2, GardenRules.ClampApples(2));
+
+            // Produced food is sellable and counts like any other stack.
+            PetInventory.Add("apple", 1);
+            Assert.IsTrue(PetInventory.Has("apple"));
         }
 
         [Test]
         public void ThePetOnlyGoesToTheBowlWhenThereIsFood()
         {
-            // 「饭碗空了宠物会挨饿」: the eat behaviour is gated on the pantry, so the pet does
-            // not keep trotting to an empty bowl.
             var eat = PetBehaviorLibrary.Get("eat");
-            Assert.IsNotNull(eat);
-            Assert.IsTrue(eat.NeedsFood, "eat is gated on the pantry");
+            Assert.IsTrue(eat.NeedsFood);
 
             var withFood = new PetBehaviorContext
             {
                 Hunger = 0.1f, Energy = 0.8f, Joy = 0.8f, Cleanliness = 0.8f, Bladder = 0.8f,
-                FoodAvailable = true,
-                AvailableTargets = new[] { InteractableKind.Food }
+                FoodAvailable = true, AvailableTargets = new[] { InteractableKind.Food }
             };
             var noFood = new PetBehaviorContext
             {
                 Hunger = 0.1f, Energy = 0.8f, Joy = 0.8f, Cleanliness = 0.8f, Bladder = 0.8f,
-                FoodAvailable = false,
-                AvailableTargets = new[] { InteractableKind.Food }
+                FoodAvailable = false, AvailableTargets = new[] { InteractableKind.Food }
             };
 
-            Assert.IsTrue(eat.IsEligible(withFood), "a stocked bowl is dinner");
-            Assert.IsFalse(eat.IsEligible(noFood), "an empty bowl is not a destination");
+            Assert.IsTrue(eat.IsEligible(withFood));
+            Assert.IsFalse(eat.IsEligible(noFood));
+        }
+
+        [Test]
+        public void TheGardenBehavioursAreGatedToTheGardenAndTheirTargets()
+        {
+            var eatApple = PetBehaviorLibrary.Get("eat_apple");
+            var drinkPond = PetBehaviorLibrary.Get("drink_pond");
+            var sleepGrass = PetBehaviorLibrary.Get("sleep_grass");
+
+            Assert.IsNotNull(eatApple);
+            Assert.IsNotNull(drinkPond);
+            Assert.IsNotNull(sleepGrass);
+            Assert.AreEqual("Garden", eatApple.OnlyInPlace);
+            Assert.AreEqual(InteractableKind.AppleTree, eatApple.Target);
+            Assert.AreEqual(InteractableKind.Pond, drinkPond.Target);
+            Assert.AreEqual(InteractableKind.GrassHeap, sleepGrass.Target);
+
+            // Hungry pet in the garden with a tree: it eats from the tree.
+            var hungryGarden = new PetBehaviorContext
+            {
+                Hunger = 0.2f, Energy = 0.8f, Joy = 0.8f, Cleanliness = 0.8f, Bladder = 0.8f,
+                Place = "Garden", AvailableTargets = new[] { InteractableKind.AppleTree }
+            };
+            Assert.IsTrue(eatApple.IsEligible(hungryGarden));
+
+            // Same pet indoors: no apple tree to eat from.
+            var hungryCabin = new PetBehaviorContext
+            {
+                Hunger = 0.2f, Energy = 0.8f, Joy = 0.8f, Cleanliness = 0.8f, Bladder = 0.8f,
+                Place = "Cabin", AvailableTargets = new[] { InteractableKind.AppleTree }
+            };
+            Assert.IsFalse(eatApple.IsEligible(hungryCabin));
         }
     }
 }

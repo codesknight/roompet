@@ -50,7 +50,25 @@ namespace DshPet
         /// A shrub, a hedge, the back of a tree: somewhere to hide. Not furniture — it exists so
         /// the pet can play hide-and-seek, which is the garden's own game.
         /// </summary>
-        HidingSpot
+        HidingSpot,
+
+        /// <summary>Garden furniture: bears apples the pet or the owner can take.</summary>
+        AppleTree,
+
+        /// <summary>Garden furniture: the pet drinks from it; the owner fishes in it.</summary>
+        Pond,
+
+        /// <summary>Garden furniture: a soft heap the pet sleeps in.</summary>
+        GrassHeap,
+
+        /// <summary>Garden furniture: the pet swings on it for joy.</summary>
+        Swing,
+
+        /// <summary>Terrace furniture: the pet peers through it at the stars.</summary>
+        Telescope,
+
+        /// <summary>Terrace furniture: a chair the pet dozes off in.</summary>
+        RockingChair
     }
 
     /// <summary>One turn of the conversation.</summary>

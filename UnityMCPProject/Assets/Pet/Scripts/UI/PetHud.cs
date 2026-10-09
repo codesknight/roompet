@@ -54,6 +54,8 @@ namespace DshPet
         private int _furnishTab;
         private Vector2 _furnishScroll;
         private string _furnishMessage = "";
+        private string _toast = "";
+        private float _toastUntil;
         private DateTime _journalMonth = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
         private DateTime _selectedDay = DateTime.Now.Date;
         private Vector2 _dayScroll;
@@ -71,6 +73,18 @@ namespace DshPet
 
         /// <summary>Set by hoverable world objects; shown near the cursor.</summary>
         public static void SetCursorHint(string hint) => _cursorHint = hint;
+
+        /// <summary>
+        /// A short message over the top of the room, for the in-world interactions that are not a
+        /// panel: "摘了 3 个苹果", "钓上了一条鱼", "需要装备铲子". Fades after a few seconds.
+        /// </summary>
+        public static void SetToast(string message)
+        {
+            var hud = _instance;
+            if (hud == null) return;
+            hud._toast = message;
+            hud._toastUntil = Time.realtimeSinceStartup + 3.2f;
+        }
 
         /// <summary>True while the chat box has keyboard focus, so WASD can be typed instead
         /// of walking the character around.</summary>
@@ -228,6 +242,7 @@ namespace DshPet
             else ShowMobileAimGuide(gm);
             DrawOverlays(gm, layout);
             GUI.enabled = true;
+            DrawToast();
 
             // Controls sit above the room but below any modal panel.
             if (Mobile) DrawMobileControls(gm, layout);
@@ -2981,7 +2996,7 @@ namespace DshPet
 
             var inner = new Rect(rect.x + 18f, rect.y + 14f, rect.width - 36f, rect.height - 28f);
 
-            GUI.Label(new Rect(inner.x, inner.y, inner.width * 0.5f, 32f), "家具", _title);
+            GUI.Label(new Rect(inner.x, inner.y, inner.width * 0.5f, 32f), "商城 · 仓库 · 背包", _title);
 
             var balance = new GUIStyle(_title) { alignment = TextAnchor.MiddleRight };
             GUI.Label(new Rect(inner.x + inner.width * 0.4f, inner.y, inner.width * 0.6f - 84f, 32f),
@@ -2993,16 +3008,18 @@ namespace DshPet
                 return;
             }
 
-            // Tabs.
-            float tabWidth = 96f;
+            // Tabs: 商城 / 背包 / 仓库.
+            float tabWidth = 72f;
             GUI.enabled = _furnishTab != 0;
             if (GUI.Button(new Rect(inner.x, inner.y + 34f, tabWidth, 34f), "商城", _button)) _furnishTab = 0;
             GUI.enabled = _furnishTab != 1;
-            if (GUI.Button(new Rect(inner.x + tabWidth + 8f, inner.y + 34f, tabWidth, 34f), "仓库", _button)) _furnishTab = 1;
+            if (GUI.Button(new Rect(inner.x + tabWidth + 8f, inner.y + 34f, tabWidth, 34f), "背包", _button)) _furnishTab = 1;
+            GUI.enabled = _furnishTab != 2;
+            if (GUI.Button(new Rect(inner.x + tabWidth * 2f + 16f, inner.y + 34f, tabWidth, 34f), "仓库", _button)) _furnishTab = 2;
             GUI.enabled = true;
 
-            GUI.Label(new Rect(inner.x + tabWidth * 2f + 24f, inner.y + 38f, inner.width - tabWidth * 2f - 24f, 26f),
-                "粮食 " + PetInventory.Food + " 顿", _small);
+            GUI.Label(new Rect(inner.x + tabWidth * 3f + 28f, inner.y + 38f, inner.width - tabWidth * 3f - 28f, 26f),
+                "粮 " + PetInventory.Food + " · 背包 " + PetBackpack.Equipped().Count + "/" + PetBackpack.ToolSlots, _small);
 
             var messageColor = _furnishMessage.StartsWith("还差") || _furnishMessage.Contains("没有")
                 ? new Color(1f, 0.72f, 0.60f)
@@ -3016,6 +3033,7 @@ namespace DshPet
             _furnishScroll = GUILayout.BeginScrollView(_furnishScroll);
 
             if (_furnishTab == 0) DrawShopTab();
+            else if (_furnishTab == 1) DrawBackpackTab();
             else DrawWarehouseTab(gm);
 
             GUILayout.EndScrollView();
@@ -3026,9 +3044,32 @@ namespace DshPet
 
         private void DrawShopTab()
         {
+            var currentPlace = PetWorldMap.Current;
+            DrawShopSection("🍖 食品", ShopCategory.Food, currentPlace);
+            DrawShopSection("🧰 道具", ShopCategory.Tool, currentPlace);
+            DrawShopSection("🛋️ 家具", ShopCategory.Furniture, currentPlace);
+        }
+
+        private void DrawShopSection(string header, ShopCategory category, RoomTheme place)
+        {
+            GUILayout.Label(header, _label);
+            GUILayout.Space(2f);
+
             for (int i = 0; i < PetShop.All.Length; i++)
             {
                 var item = PetShop.All[i];
+                if (item.Category != category) continue;
+
+                // Produced food (apple, fish) is not bought; it comes from the garden. The shop
+                // shows it greyed so the player knows it *can* be sold later.
+                if (item.Produced)
+                {
+                    GUILayout.Label($"　{item.Emoji} {item.Name} —— 世界里获得（能卖 ¥{item.SellPrice}）", _small);
+                    GUILayout.Label("　" + item.Blurb, _small);
+                    GUILayout.Space(6f);
+                    continue;
+                }
+
                 GUILayout.BeginHorizontal();
                 GUILayout.Label($"{item.Emoji} {item.Name}", _label, GUILayout.Width(150f));
                 GUILayout.Label($"¥{item.Price}", _label, GUILayout.Width(70f));
@@ -3037,7 +3078,7 @@ namespace DshPet
                 bool owned = item.IsFood ? false : PetInventory.IsOwned(item.Id);
                 GUI.enabled = !owned;
                 string buyLabel = item.IsFood
-                    ? "购买（+3 顿）"
+                    ? (item.FoodUnits > 1 ? $"购买（+{item.FoodUnits}）" : "购买")
                     : (owned ? "已拥有" : "购买");
                 if (GUILayout.Button(buyLabel, _button, GUILayout.Width(110f), GUILayout.Height(34f)))
                 {
@@ -3048,15 +3089,100 @@ namespace DshPet
                 GUILayout.EndHorizontal();
 
                 GUILayout.Label("　" + item.Blurb, _small);
-                GUILayout.Space(10f);
+
+                if (item.IsFurniture && item.Scene != ItemScene.Anywhere)
+                {
+                    bool here = item.AllowedIn(place);
+                    GUILayout.Label(here
+                        ? "　（这里可以摆放）"
+                        : "　（只能摆在" + PetInventory.PlaceName(item.Scene) + "）", _small);
+                }
+                GUILayout.Space(8f);
             }
+            GUILayout.Space(6f);
+        }
+
+        /// <summary>The backpack: three tool slots, and the pet slots it shares a screen with.</summary>
+        private void DrawBackpackTab()
+        {
+            GUILayout.Label("道具栏（" + PetBackpack.Equipped().Count + "/" + PetBackpack.ToolSlots + "）", _label);
+
+            var equipped = PetBackpack.Equipped();
+            for (int i = 0; i < PetBackpack.ToolSlots; i++)
+            {
+                string id = i < equipped.Count ? equipped[i] : "";
+                var item = string.IsNullOrEmpty(id) ? null : PetShop.Get(id);
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("第 " + (i + 1) + " 格：", _small, GUILayout.Width(60f));
+                GUILayout.Label(item != null ? $"{item.Emoji} {item.Name}" : "空", _label, GUILayout.Width(150f));
+                GUILayout.FlexibleSpace();
+
+                if (item != null && GUILayout.Button("取下", _buttonSmall, GUILayout.Height(28f)))
+                {
+                    _furnishMessage = PetBackpack.Unequip(item.Id);
+                    DshMobile.MobileHaptics.Light();
+                }
+                GUILayout.EndHorizontal();
+            }
+
+            GUILayout.Space(4f);
+            if (PetBackpack.BucketFull) GUILayout.Label("水桶里装满了水，去浇苹果树吧。", _small);
+
+            GUILayout.Space(8f);
+            GUILayout.Label("没装备上的道具", _label);
+            bool anyTool = false;
+            foreach (var item in PetShop.All)
+            {
+                if (!item.IsTool || !PetInventory.IsOwned(item.Id)) continue;
+                if (PetBackpack.IsEquipped(item.Id)) continue;
+                anyTool = true;
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Label($"{item.Emoji} {item.Name}", _label, GUILayout.Width(150f));
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button("装备", _buttonSmall, GUILayout.Height(28f)))
+                {
+                    _furnishMessage = PetBackpack.Equip(item.Id);
+                    DshMobile.MobileHaptics.Light();
+                }
+                GUILayout.EndHorizontal();
+            }
+            if (!anyTool) GUILayout.Label("还没有没装备的道具。商城买水桶、铲子，再来这里装备。", _small);
+
+            GUILayout.Space(10f);
+            GUILayout.Label("宠物栏（随身 " + PetCollection.Backpack.Count + "/" + PetCollection.BackpackSlots + "）", _label);
+            GUILayout.Label("　宠物在「宠物」面板的背包页管理；道具在这里管理。", _small);
+            GUILayout.Label("仓库容量：" + PetInventory.WarehouseSlots + " 格（多余的道具、家具和宠物都放这里）。", _small);
         }
 
         private void DrawWarehouseTab(PetGameManager gm)
         {
-            GUILayout.Label("粮食存量：" + PetInventory.Food + " 顿（宠物每吃一顿少一份，去商城补货）", _small);
-            GUILayout.Space(8f);
+            var currentPlace = PetWorldMap.Current;
+            GUILayout.Label("粮食 " + PetInventory.Food + " 顿　·　苹果 " + PetInventory.Count("apple") + " 个　·　鱼 " +
+                            PetInventory.Count("fish") + " 条　·　水 " + PetInventory.Count("water") + " 瓶　·　肉 " +
+                            PetInventory.Count("meat") + " 份", _small);
+            GUILayout.Space(4f);
 
+            // Edible / sellable stock, one line each.
+            foreach (var item in PetShop.All)
+            {
+                if (!item.IsFood) continue;
+                int n = PetInventory.Count(item.Id);
+                if (n <= 0) continue;
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Label($"{item.Emoji} {item.Name} ×{n}", _label, GUILayout.Width(170f));
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button($"卖 1 个 ¥{item.SellPrice}", _buttonSmall, GUILayout.Height(28f)))
+                {
+                    _furnishMessage = PetInventory.Sell(item.Id);
+                    DshMobile.MobileHaptics.Light();
+                }
+                GUILayout.EndHorizontal();
+            }
+
+            GUILayout.Space(10f);
             var placed = PetInventory.Placed();
 
             GUILayout.Label("已摆进房间", _label);
@@ -3085,7 +3211,7 @@ namespace DshPet
             bool any = false;
             foreach (var item in PetShop.All)
             {
-                if (item.IsFood) continue;
+                if (!item.IsFurniture) continue;
                 if (!PetInventory.IsOwned(item.Id) || placed.ContainsKey(item.Id)) continue;
                 any = true;
 
@@ -3093,18 +3219,27 @@ namespace DshPet
                 GUILayout.Label($"{item.Emoji} {item.Name}", _label, GUILayout.Width(150f));
                 GUILayout.FlexibleSpace();
 
+                bool allowed = item.AllowedIn(currentPlace);
+                GUI.enabled = allowed;
                 if (GUILayout.Button("摆放", _buttonSmall, GUILayout.Height(30f)))
                 {
-                    _furnishMessage = PetInventory.Place(item.Id);
+                    _furnishMessage = PetInventory.Place(item.Id, currentPlace);
                     DshMobile.MobileHaptics.Light();
                     gm.RebuildRoom();
                 }
+                GUI.enabled = true;
+
                 if (GUILayout.Button($"卖掉 ¥{item.SellPrice}", _buttonSmall, GUILayout.Height(30f)))
                 {
                     _furnishMessage = PetInventory.Sell(item.Id);
                     DshMobile.MobileHaptics.Light();
                 }
                 GUILayout.EndHorizontal();
+
+                if (!allowed)
+                {
+                    GUILayout.Label("　只能摆在" + PetInventory.PlaceName(item.Scene) + "。", _small);
+                }
             }
             if (!any) GUILayout.Label("仓库空空的。去商城看看，家具买回来才能摆进房间。", _small);
 
@@ -3122,6 +3257,23 @@ namespace DshPet
         {
             _placeMode = true;
             PlacementDragger.SetActive(true);
+        }
+
+        /// <summary>The short toast from <see cref="SetToast"/>, if it is still fresh.</summary>
+        private void DrawToast()
+        {
+            if (string.IsNullOrEmpty(_toast)) return;
+            if (Time.realtimeSinceStartup > _toastUntil)
+            {
+                _toast = "";
+                return;
+            }
+
+            var width = 420f;
+            var bar = new Rect(DesignWidth * 0.5f - width * 0.5f, 70f, width, 40f);
+            DshMobile.UiSkin.Panel(bar, 12f, new Color(0.08f, 0.09f, 0.13f, 0.92f),
+                new Color(1f, 0.85f, 0.4f, 0.5f), 1.4f);
+            GUI.Label(bar, _toast, _small);
         }
 
         private void DrawPlacementHud(PetGameManager gm)

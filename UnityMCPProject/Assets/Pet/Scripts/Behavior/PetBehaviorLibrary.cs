@@ -152,6 +152,48 @@ namespace DshPet
                     }
                 },
 
+                // ---- 花园的家具也进行为表：饿了吃树上的苹果、渴了喝池塘、困了睡草堆 ----
+                new PetBehavior
+                {
+                    Id = "eat_apple", Label = "捡地上的苹果吃", Drive = BehaviorDrive.Proactive,
+                    Action = PetAction.Eat, Duration = 2.6f, Cooldown = 45f, Weight = 1.5f,
+                    RequiresNeed = "Hunger", NeedBelow = 0.45f,
+                    OnlyInPlace = "Garden", TargetKind = "AppleTree",
+                    Lines = new[] { "（在苹果树下仰着头，踮起脚）", "树上有个苹果……我的！" }
+                },
+                new PetBehavior
+                {
+                    Id = "drink_pond", Label = "去池塘喝水", Drive = BehaviorDrive.Proactive,
+                    Action = PetAction.Drink, Duration = 2.4f, Cooldown = 70f, Weight = 0.8f,
+                    RequiresNeed = "Hunger", NeedBelow = 0.7f,
+                    OnlyInPlace = "Garden", TargetKind = "Pond",
+                    Lines = new[] { "渴了，去池塘边喝口水。" }
+                },
+                new PetBehavior
+                {
+                    Id = "sleep_grass", Label = "钻进草堆睡觉", Drive = BehaviorDrive.Proactive,
+                    Action = PetAction.Sleep, Duration = 8f, Cooldown = 60f, Weight = 1.0f,
+                    RequiresNeed = "Energy", NeedBelow = 0.35f,
+                    OnlyInPlace = "Garden", TargetKind = "GrassHeap",
+                    Lines = new[] { "（钻进了松软的草堆里，只露出鼻子）" }
+                },
+                new PetBehavior
+                {
+                    Id = "swing", Label = "去荡秋千", Drive = BehaviorDrive.Proactive,
+                    Action = PetAction.Play, Duration = 3.5f, Cooldown = 75f, Weight = 1.2f,
+                    RequiresNeed = "Joy", NeedBelow = 0.8f,
+                    OnlyInPlace = "Garden", TargetKind = "Swing",
+                    Lines = new[] { "（坐上了秋千，越荡越高）", "荡秋千咯！" }
+                },
+                new PetBehavior
+                {
+                    Id = "stargaze", Label = "看星星", Drive = BehaviorDrive.Proactive,
+                    Action = PetAction.Curious, Duration = 4f, Cooldown = 90f, Weight = 0.7f,
+                    OnlyInPlace = "Terrace", TargetKind = "Telescope",
+                    MinHour = 20f, MaxHour = 24f,
+                    Lines = new[] { "（凑到望远镜前看星星）", "那颗最亮的，是我们家吗？" }
+                },
+
                 // ------------------------------------------------------- 被动 / ambient quirks
 
                 new PetBehavior

@@ -6,42 +6,100 @@ using UnityEngine;
 namespace DshPet
 {
     /// <summary>
-    /// What the player owns and where it is: the warehouse.
+    /// What the player owns and where it is: the warehouse, the pantry and the room's layout.
     ///
-    /// Three pieces of state, all in PlayerPrefs like every other save in the project:
-    ///  - <see cref="Food"/>: meals in the pantry, bought in bags and consumed one per feed;
-    ///  - the owned furniture (the warehouse proper);
-    ///  - which owned furniture is placed, and where (the room's layout).
+    /// State, all in PlayerPrefs like every other save in the project:
+    ///  - a *count* per stackable item (food, water, meat, apple, fish);
+    ///  - the owned tools and furniture (one of each);
+    ///  - which furniture is placed, where, and whether it belongs in the current place.
     ///
-    /// A pure state machine with a string-backed persistence, so buying, selling, placing and
-    /// the food economy can all be unit tested without a scene — which is the point of the
-    /// request that every shop item do something: the *something* has to be a rule, not a hope.
+    /// A pure state machine with string-backed persistence, so the whole economy — buying,
+    /// selling, placing, eating, watering — is unit testable without a scene.
     /// </summary>
     public static class PetInventory
     {
-        public const string FoodKey = "dshpet.furnish.food";
         public const string OwnedKey = "dshpet.furnish.owned";
         public const string PlacedKey = "dshpet.furnish.placed";
+        public const string CountKey = "dshpet.items.count";
+
+        /// <summary>How many slots the warehouse holds. Reported, and enforced lightly.</summary>
+        public const int WarehouseSlots = 99;
 
         /// <summary>Raised when the warehouse changes, so an open panel can refresh.</summary>
         public static event Action Changed;
 
-        // ------------------------------------------------------------------- food
+        // ------------------------------------------------------------------- stackable items
 
+        /// <summary>How many of a stackable item are held (food, water, meat, apple, fish).</summary>
+        public static int Count(string id)
+        {
+            string raw = PlayerPrefs.GetString(CountKey, "");
+            foreach (string entry in raw.Split(';'))
+            {
+                int colon = entry.IndexOf(':');
+                if (colon <= 0) continue;
+                if (entry.Substring(0, colon) != id) continue;
+                int value;
+                if (int.TryParse(entry.Substring(colon + 1), out value)) return Mathf.Max(0, value);
+            }
+            return 0;
+        }
+
+        public static void SetCount(string id, int amount)
+        {
+            var counts = AllCounts();
+            counts[id] = Mathf.Max(0, amount);
+            SaveCounts(counts);
+        }
+
+        public static void Add(string id, int amount)
+        {
+            if (amount <= 0) return;
+            SetCount(id, Count(id) + amount);
+        }
+
+        private static Dictionary<string, int> AllCounts()
+        {
+            var counts = new Dictionary<string, int>();
+            string raw = PlayerPrefs.GetString(CountKey, "");
+            if (!string.IsNullOrEmpty(raw))
+            {
+                foreach (string entry in raw.Split(';'))
+                {
+                    int colon = entry.IndexOf(':');
+                    if (colon <= 0) continue;
+                    int value;
+                    if (int.TryParse(entry.Substring(colon + 1), out value) && value > 0)
+                    {
+                        counts[entry.Substring(0, colon)] = value;
+                    }
+                }
+            }
+            return counts;
+        }
+
+        private static void SaveCounts(Dictionary<string, int> counts)
+        {
+            var parts = new List<string>();
+            foreach (var pair in counts)
+            {
+                if (pair.Value > 0) parts.Add(pair.Key + ":" + pair.Value);
+            }
+            parts.Sort();
+            PlayerPrefs.SetString(CountKey, string.Join(";", parts.ToArray()));
+            PlayerPrefs.Save();
+            Changed?.Invoke();
+        }
+
+        /// <summary>Meals of kibble in the pantry, for the food bowl.</summary>
         public static int Food
         {
-            get => Mathf.Max(0, PlayerPrefs.GetInt(FoodKey, 0));
-            private set
-            {
-                PlayerPrefs.SetInt(FoodKey, Mathf.Max(0, value));
-                PlayerPrefs.Save();
-                Changed?.Invoke();
-            }
+            get => Count("food");
+            private set => SetCount("food", value);
         }
 
         public static void AddFood(int units) { if (units > 0) Food += units; }
 
-        /// <summary>True while there is at least one meal left for the bowl.</summary>
         public static bool HasFood => Food > 0;
 
         /// <summary>Spends one meal, or fails and leaves the pantry alone.</summary>
@@ -52,9 +110,12 @@ namespace DshPet
             return true;
         }
 
+        /// <summary>True when the player holds at least one of a food item.</summary>
+        public static bool Has(string id) => Count(id) > 0;
+
         // ------------------------------------------------------------------- owned
 
-        /// <summary>The ids of the furniture in the warehouse (food is not furniture).</summary>
+        /// <summary>The ids of the tools and furniture in the warehouse.</summary>
         public static List<string> Owned()
         {
             var list = new List<string>();
@@ -73,8 +134,7 @@ namespace DshPet
         {
             if (string.IsNullOrEmpty(id)) return false;
             if (PetShop.IsStarter(id)) return true;
-            var owned = Owned();
-            return owned.Contains(id);
+            return Owned().Contains(id);
         }
 
         private static void AddOwned(string id)
@@ -100,7 +160,7 @@ namespace DshPet
 
         // ------------------------------------------------------------------- placed
 
-        /// <summary>The placed items and their positions, as a map.</summary>
+        /// <summary>The placed furniture and its positions, as a map.</summary>
         public static Dictionary<string, Vector2> Placed()
         {
             var map = new Dictionary<string, Vector2>();
@@ -113,8 +173,7 @@ namespace DshPet
                     int colon = entry.IndexOf(':');
                     if (colon <= 0) continue;
                     string id = entry.Substring(0, colon);
-                    string coords = entry.Substring(colon + 1);
-                    string[] parts = coords.Split('|');
+                    string[] parts = entry.Substring(colon + 1).Split('|');
                     if (parts.Length != 2) continue;
 
                     float x, z;
@@ -124,7 +183,6 @@ namespace DshPet
                 }
             }
 
-            // The two starter bowls are always placed; only their position is remembered.
             if (!map.ContainsKey(PetShop.FoodBowl)) map[PetShop.FoodBowl] = new Vector2(3.4f, 3.2f);
             if (!map.ContainsKey(PetShop.WaterBowl)) map[PetShop.WaterBowl] = new Vector2(4.6f, 3.2f);
             return map;
@@ -147,33 +205,16 @@ namespace DshPet
 
         public static bool IsPlaced(string id) => Placed().ContainsKey(id);
 
-        /// <summary>The room position of a placed item, or its default if never moved.</summary>
         public static Vector2 PositionOf(string id)
         {
-            var map = Placed();
             Vector2 at;
+            var map = Placed();
             if (map.TryGetValue(id, out at)) return at;
 
             var item = PetShop.Get(id);
             return item != null ? item.DefaultPosition : Vector2.zero;
         }
 
-        /// <summary>Where the pet stands to use a placed item.</summary>
-        public static Vector2 ApproachPointOf(string id)
-        {
-            var item = PetShop.Get(id);
-            Vector2 offset = item != null ? item.ApproachOffset : Vector2.zero;
-            if (PetShop.IsStarter(id))
-            {
-                offset = new Vector2(0f, -1.2f);
-            }
-            return PositionOf(id) + offset;
-        }
-
-        /// <summary>
-        /// The room's walkable half-extent, minus a margin so a placed item cannot end up inside
-        /// a wall or behind the fence.
-        /// </summary>
         public const float RoomHalf = 7f;
         public const float PlacementMargin = 0.9f;
 
@@ -185,7 +226,6 @@ namespace DshPet
                 Mathf.Clamp(position.y, -limit, limit));
         }
 
-        /// <summary>Sets a placed item down in the room. Starter bowls can also be moved.</summary>
         public static void MoveItem(string id, Vector2 position)
         {
             if (!IsPlaced(id)) return;
@@ -205,7 +245,7 @@ namespace DshPet
             {
                 if (!DshMobile.PetWallet.TrySpend(item.Price))
                     return $"还差 {item.Price - DshMobile.PetWallet.Coins} 个宠物币";
-                AddFood(item.FoodUnits);
+                Add(item.Id, item.FoodUnits);
                 return $"买了一袋{item.Name}（够吃 {item.FoodUnits} 顿）";
             }
 
@@ -214,21 +254,26 @@ namespace DshPet
                 return $"还差 {item.Price - DshMobile.PetWallet.Coins} 个宠物币";
 
             AddOwned(item.Id);
-            return "买下了" + item.Name + "，去仓库把它摆进房间吧";
+            return item.IsTool
+                ? $"买下了{item.Name}，去背包把它装备上"
+                : $"买下了{item.Name}，去仓库把它摆进房间吧";
         }
 
-        /// <summary>Puts owned furniture into the room at its default spot.</summary>
-        public static string Place(string id)
+        /// <summary>Puts owned furniture into the room, if it belongs in this place.</summary>
+        public static string Place(string id, RoomTheme place)
         {
             if (PetShop.IsStarter(id)) return "这是基础家具，一直都在房间里";
+            var item = PetShop.Get(id);
+            if (item == null) return "没有这件商品";
+            if (!item.IsFurniture) return item.Name + "不是家具，不用摆放";
             if (!IsOwned(id)) return "还没有这件家具，先去商城买";
             if (IsPlaced(id)) return "已经摆在房间里了";
+            if (!item.AllowedIn(place)) return item.Name + "只能摆在" + PlaceName(item.Scene);
 
             var map = Placed();
-            var item = PetShop.Get(id);
-            map[id] = item != null ? item.DefaultPosition : Vector2.zero;
+            map[id] = item.DefaultPosition;
             SavePlaced(map);
-            return item != null ? item.Name + "摆进了房间" : "摆好了";
+            return item.Name + "摆进了房间";
         }
 
         /// <summary>Picks furniture up off the floor and returns it to the warehouse.</summary>
@@ -243,14 +288,34 @@ namespace DshPet
             return "收回了仓库";
         }
 
-        /// <summary>Sells owned furniture for half its price. Starter bowls cannot be sold.</summary>
+        /// <summary>
+        /// Sells one unit of a stackable food, or a whole tool / furniture. Starter bowls and an
+        /// equipped tool cannot be sold (the tool has to come out of the backpack first).
+        /// </summary>
         public static string Sell(string id)
         {
             if (PetShop.IsStarter(id)) return "基础家具不能卖";
             var item = PetShop.Get(id);
             if (item == null) return "没有这件商品";
-            if (!IsOwned(id)) return "还没有这件家具";
 
+            if (item.IsFood)
+            {
+                if (Count(id) <= 0) return "没有多余的" + item.Name + "可以卖";
+                SetCount(id, Count(id) - 1);
+                DshMobile.PetWallet.Add(item.SellPrice);
+                return $"卖掉了{item.Name}，赚了 {item.SellPrice} 个宠物币";
+            }
+
+            if (item.IsTool)
+            {
+                if (PetBackpack.IsEquipped(id)) return "先把" + item.Name + "从背包里取下来再卖";
+                if (!IsOwned(id)) return "还没有" + item.Name;
+                RemoveOwned(id);
+                DshMobile.PetWallet.Add(item.SellPrice);
+                return $"卖掉了{item.Name}，返还 {item.SellPrice} 个宠物币";
+            }
+
+            if (!IsOwned(id)) return "还没有这件家具";
             var map = Placed();
             map.Remove(id);
             SavePlaced(map);
@@ -259,13 +324,25 @@ namespace DshPet
             return $"卖掉了{item.Name}，返还 {item.SellPrice} 个宠物币";
         }
 
+        /// <summary>The Chinese name of a place, for "only allowed in …" messages.</summary>
+        public static string PlaceName(ItemScene scene)
+        {
+            switch (scene)
+            {
+                case ItemScene.Garden: return "花园";
+                case ItemScene.Terrace: return "夜晚露台";
+                default: return "任何地方";
+            }
+        }
+
         // ------------------------------------------------------------------- tests
 
         public static void ResetForTests()
         {
-            PlayerPrefs.DeleteKey(FoodKey);
             PlayerPrefs.DeleteKey(OwnedKey);
             PlayerPrefs.DeleteKey(PlacedKey);
+            PlayerPrefs.DeleteKey(CountKey);
+            PetBackpack.ResetForTests();
         }
     }
 }
