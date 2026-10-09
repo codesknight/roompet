@@ -1,4 +1,4 @@
-﻿using NUnit.Framework;
+using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
 
@@ -177,6 +177,23 @@ namespace DshPet.Tests
 
             Assert.Greater(tallFrom.z * -1f, wideFrom.z * -1f,
                 "a portrait screen has to stand further back than a landscape one");
+        }
+
+        [Test]
+        public void SettingsSwitch_TappingTurnsItOffAndBackOn()
+        {
+            // The reported bug: music, once switched off, could not be switched back on. The pill
+            // returned the *tap* (true on the click frame) as the new state, so the caller read
+            // "tapped" instead of "the value after the tap" — and a switch whose new state is
+            // always "tapped" can only ever land on off. The decision is now a pure function.
+            Assert.IsFalse(StartMenuHud.Toggled(true, true),
+                "tapping an ON switch must turn it off");
+            Assert.IsTrue(StartMenuHud.Toggled(false, true),
+                "tapping an OFF switch must turn it on — this is what the report said never happened");
+            Assert.IsTrue(StartMenuHud.Toggled(true, false),
+                "no tap means the switch stays exactly as it was (on)");
+            Assert.IsFalse(StartMenuHud.Toggled(false, false),
+                "no tap means the switch stays exactly as it was (off)");
         }
     }
 }

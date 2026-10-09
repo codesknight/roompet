@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 namespace DshPet
 {
@@ -290,8 +290,18 @@ namespace DshPet
             GUI.color = Color.white;
 
             y += 68f;
-            return GUI.Button(row, GUIContent.none, Invisible);
+            return Toggled(value, GUI.Button(row, GUIContent.none, Invisible));
         }
+
+        /// <summary>
+        /// What a switch becomes when tapped: on → off, off → on, untapped → unchanged.
+        ///
+        /// A value rather than inline code because the first version returned the *tap* itself,
+        /// and a switch that reads a tap as its new state flips to "off" and then cannot be turned
+        /// back on — the tap is a transient, not a state. This is the whole of a switch's logic,
+        /// so it is the whole of what needs to be right.
+        /// </summary>
+        public static bool Toggled(bool wasOn, bool tapped) => tapped ? !wasOn : wasOn;
 
         // ------------------------------------------------------------------ how to play
 

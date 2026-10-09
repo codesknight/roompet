@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -362,6 +362,14 @@ namespace DshMobile
             {
                 StopAll();
                 return;
+            }
+
+            // Turning back on with nothing targeted — the track was never requested while the
+            // switch was off, or the scene came up unmapped — must not leave the switch doing
+            // nothing. Re-derive the track from the scene, then fall through to the crossfade.
+            if (MobileMusic.Current == MusicId.None)
+            {
+                MobileMusic.PlayForScene(SceneManager.GetActiveScene().name);
             }
 
             if (_to != MobileMusic.Current)
