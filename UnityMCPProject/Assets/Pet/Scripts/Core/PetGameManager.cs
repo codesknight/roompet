@@ -1117,7 +1117,11 @@ namespace DshPet
                 BallLoose = Room != null && Room.Ball != null && Room.Ball.IsLoose,
                 MessPresent = Room != null && Room.HasMess,
                 AvailableTargets = targets.ToArray(),
-                Personality = Personality
+                Personality = Personality,
+
+                // Read from the map rather than from the room's serialized theme: the theme on a
+                // restored scene object is whatever it was built for, and the save is the truth.
+                Place = PetWorldMap.Current.ToString()
             };
         }
 

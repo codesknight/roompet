@@ -49,6 +49,18 @@ namespace DshPet
         /// </summary>
         public PetPersonality Personality;
 
+        /// <summary>
+        /// Where the pet is. Carried as a name rather than as the <see cref="RoomTheme"/> enum so
+        /// the behaviour table stays a plain data table that a test can fill in with one word —
+        /// and so a new place does not have to touch this file to be allowed to have its own
+        /// behaviour.
+        /// </summary>
+        public string Place;
+
+        public bool InPlace(string name)
+            => !string.IsNullOrEmpty(Place) &&
+               string.Equals(Place, name, StringComparison.OrdinalIgnoreCase);
+
         public float Need(string name)
         {
             switch (name)
@@ -117,6 +129,15 @@ namespace DshPet
         public float MinHour = -1f;
         public float MaxHour = -1f;
 
+        /// <summary>
+        /// Restrict to one place: "Garden", "Terrace", "Cabin". Empty means anywhere.
+        ///
+        /// This is what lets a place have its own behaviour rather than its own palette. Hopping
+        /// about the garden and hiding behind a shrub are the two things a pet does outdoors that
+        /// it cannot do in a room, and they are gated here rather than by rewriting the scheduler.
+        /// </summary>
+        public string OnlyInPlace = "";
+
         /// <summary>Lines the pet may say when this fires. Empty means silent.</summary>
         public string[] Lines = Array.Empty<string>();
 
@@ -125,6 +146,12 @@ namespace DshPet
 
         /// <summary>When true the row runs the ball retrieve loop instead of a plain action.</summary>
         public bool Fetch;
+
+        /// <summary>
+        /// When true the pet actually leaves the ground — repeated little jumps, not a jump
+        /// animation played in place. The avatar does the bouncing; this is the switch.
+        /// </summary>
+        public bool Hop;
 
         /// <summary>When true the row fires only while a mess is on the floor.</summary>
         public bool NeedsMess;
@@ -149,6 +176,8 @@ namespace DshPet
         /// </summary>
         public bool IsEligible(PetBehaviorContext ctx)
         {
+            if (!string.IsNullOrEmpty(OnlyInPlace) && !ctx.InPlace(OnlyInPlace)) return false;
+
             if (MinHour >= 0f && MaxHour >= 0f)
             {
                 bool inside = MinHour <= MaxHour

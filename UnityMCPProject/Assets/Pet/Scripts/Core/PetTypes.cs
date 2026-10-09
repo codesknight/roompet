@@ -42,7 +42,16 @@ namespace DshPet
 
     public enum TailStyle { Bushy, Curly, Puff, Short }
 
-    public enum InteractableKind { Food, Water, Ball, Bed, Brush, Toy, Door, Toilet, Bath, Mess }
+    public enum InteractableKind
+    {
+        Food, Water, Ball, Bed, Brush, Toy, Door, Toilet, Bath, Mess,
+
+        /// <summary>
+        /// A shrub, a hedge, the back of a tree: somewhere to hide. Not furniture — it exists so
+        /// the pet can play hide-and-seek, which is the garden's own game.
+        /// </summary>
+        HidingSpot
+    }
 
     /// <summary>One turn of the conversation.</summary>
     [Serializable]

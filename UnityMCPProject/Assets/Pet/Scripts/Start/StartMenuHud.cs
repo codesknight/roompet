@@ -199,13 +199,18 @@ namespace DshPet
 
         private void DrawSettings(float width, float height)
         {
-            var panel = new Rect(width * 0.5f - 250f, height * 0.16f, 500f, Mathf.Min(480f, height * 0.66f));
+            var panel = new Rect(width * 0.5f - 250f, height * 0.12f, 500f, Mathf.Min(600f, height * 0.78f));
             DshMobile.UiSkin.Panel(panel, 18f, new Color(0.10f, 0.11f, 0.16f, 0.94f),
                 new Color(1f, 1f, 1f, 0.16f), 1.5f);
 
             GUI.Label(new Rect(panel.x + 22f, panel.y + 16f, panel.width - 44f, 36f), "设置", _title);
 
             float y = panel.y + 68f;
+
+            bool music = Toggle(panel, ref y, "背景音乐", DshMobile.MobileMusic.Enabled,
+                "每个场景一首循环曲子；关掉它不影响音效和宠物的叫声。");
+            if (music != DshMobile.MobileMusic.Enabled) DshMobile.MobileMusic.Enabled = music;
+            MusicVolume(panel, ref y);
 
             bool speech = Toggle(panel, ref y, "朗读宠物的话", DshMobile.MobileTts.Enabled,
                 "宠物说的话会用手机自带的语音念出来（只在安卓上有）。");
@@ -232,10 +237,34 @@ namespace DshPet
                 "这些开关在房间里随时都能改（设置面板里也有）；这里只是让你在进门之前就能调好。",
                 _small);
 
+            GUI.Label(new Rect(panel.x + 22f, y + 40f, panel.width - 44f, 40f),
+                DshMobile.MobileMusic.NowPlayingText, _small);
+
             if (GUI.Button(new Rect(panel.x + 24f, panel.yMax - 62f, 180f, 44f), "返回", _button))
             {
                 _menu.Cancel();
             }
+        }
+
+        /// <summary>
+        /// The music volume, under its switch.
+        ///
+        /// A slider rather than only on/off: the right level for music is a matter of taste and of
+        /// where the phone is (a pocket, a quiet room, a train), so the setting people actually
+        /// reach for is "quieter", not "off" — and a game that only offers off gets muted forever.
+        /// </summary>
+        private void MusicVolume(Rect panel, ref float y)
+        {
+            float volume = DshMobile.MobileMusic.Volume;
+
+            GUI.Label(new Rect(panel.x + 26f, y, 140f, 26f),
+                "音量 " + Mathf.RoundToInt(volume * 100f) + "%", _small);
+
+            var slider = new Rect(panel.x + 170f, y + 4f, panel.width - 200f, 24f);
+            float next = GUI.HorizontalSlider(slider, volume, 0f, 1f);
+            if (!Mathf.Approximately(next, volume)) DshMobile.MobileMusic.Volume = next;
+
+            y += 40f;
         }
 
         /// <summary>

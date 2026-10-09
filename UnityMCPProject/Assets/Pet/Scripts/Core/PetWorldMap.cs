@@ -13,6 +13,26 @@ namespace DshPet
     }
 
     /// <summary>
+    /// What kind of boundary a place has, which is most of what makes one place look unlike
+    /// another.
+    ///
+    /// The first version of the garden and the terrace was the cabin's four walls painted green
+    /// and blue, and it read exactly like that: the same room, twice. A garden is *enclosed* by a
+    /// fence and a terrace is *railed* at the edge of a drop, and neither of those is a wall.
+    /// </summary>
+    public enum RoomShell
+    {
+        /// <summary>Four walls, the original dollhouse room.</summary>
+        Cabin = 0,
+
+        /// <summary>No walls: a picket fence around a lawn, open sky above.</summary>
+        Fenced = 1,
+
+        /// <summary>No walls: a stone deck with a balustrade and a city beyond it.</summary>
+        Railed = 2
+    }
+
+    /// <summary>
     /// Everything that makes one place different from another.
     ///
     /// Three .unity files would be the obvious way to do "more scenes", and it is the wrong one
@@ -40,11 +60,26 @@ namespace DshPet
         public Color Rug;
         public Color Light;      // ambient tint, so the whole place reads differently
 
+        /// <summary>How this place is enclosed: walls, a fence, or a railing.</summary>
+        public RoomShell Shell = RoomShell.Cabin;
+
+        /// <summary>Fence pickets, railing balusters, pergola beams — the place's joinery.</summary>
+        public Color Wood = new Color(0.55f, 0.42f, 0.30f);
+
+        /// <summary>Height of the boundary, in metres.</summary>
+        public float BoundaryHeight = 3.2f;
+
         // how the place treats the pet
         public float JoyDrainScale = 1f;
         public float EnergyDrainScale = 1f;
         public float CleanDrainScale = 1f;
         public bool Outdoors;
+
+        /// <summary>
+        /// True in the places a pet can be let off the leash: it will hop about and play
+        /// hide-and-seek there when it is happy. The garden's whole point.
+        /// </summary>
+        public bool Playful;
 
         public string Effects()
         {
@@ -74,26 +109,33 @@ namespace DshPet
             new RoomThemeInfo
             {
                 Theme = RoomTheme.Garden, DisplayName = "花园", Emoji = "🌿", Price = 500,
-                Blurb = "草地、花草和石头。宠物在这里更开心，但也更容易玩脏。",
-                Floor = new Color(0.42f, 0.62f, 0.36f),
+                Blurb = "栅栏围起来的草地，花坛里种满五颜六色的花。宠物在这里更开心、也更爱闹，但更容易玩脏。",
+                Floor = new Color(0.36f, 0.58f, 0.30f),
                 Wall = new Color(0.58f, 0.72f, 0.55f),
                 AccentWall = new Color(0.72f, 0.80f, 0.62f),
                 Rug = new Color(0.86f, 0.78f, 0.52f),
                 Light = new Color(1f, 1f, 0.92f),
+                Shell = RoomShell.Fenced,
+                Wood = new Color(0.90f, 0.88f, 0.80f),   // 白漆栅栏
+                BoundaryHeight = 1.05f,
                 JoyDrainScale = 0.78f,
                 CleanDrainScale = 1.45f,
                 EnergyDrainScale = 1.12f,
-                Outdoors = true
+                Outdoors = true,
+                Playful = true
             },
             new RoomThemeInfo
             {
                 Theme = RoomTheme.Terrace, DisplayName = "夜晚露台", Emoji = "🌙", Price = 900,
-                Blurb = "灯笼、夜色和凉风。宠物在这里更容易犯困。",
-                Floor = new Color(0.30f, 0.32f, 0.42f),
+                Blurb = "石板露台、栏杆和串灯，下面是城市的灯。宠物在这里更容易犯困。",
+                Floor = new Color(0.34f, 0.36f, 0.44f),
                 Wall = new Color(0.34f, 0.36f, 0.50f),
                 AccentWall = new Color(0.24f, 0.26f, 0.38f),
                 Rug = new Color(0.52f, 0.42f, 0.66f),
                 Light = new Color(0.78f, 0.82f, 1f),
+                Shell = RoomShell.Railed,
+                Wood = new Color(0.28f, 0.26f, 0.30f),   // 深色锻铁
+                BoundaryHeight = 1.10f,
                 EnergyDrainScale = 1.30f,
                 JoyDrainScale = 0.92f,
                 Outdoors = true

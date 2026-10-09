@@ -70,6 +70,7 @@ namespace DshPet
                 case InteractableKind.Toilet: return "猫砂盆";
                 case InteractableKind.Bath: return "澡盆";
                 case InteractableKind.Mess: return "地上的水渍";
+                case InteractableKind.HidingSpot: return "灌木丛";
                 default: return "东西";
             }
         }

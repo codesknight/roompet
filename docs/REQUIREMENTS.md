@@ -337,6 +337,22 @@
 | R23.7 | 开始界面 · 取景要按画幅算 | `FrameDoorway(aspect, fov)` 从"框住 5.6 × 3.1 米的门厅"反解距离（竖屏站得更远），并新增 `RefreshFraming()`：**画幅一变就重算**——`Awake` 里 `Camera.main.aspect` 是**编辑器自己猜的**，第一版因此按横屏取景、在手机竖屏上整扇门顶满屏幕 | 单测：0.45~2.4 的画幅下门厅都框得住、竖屏站得比横屏远 ✅ 截图（竖屏 1080×2400）：门、脚垫、吊灯、宠物都在画面内 ✅ |
 | R23.8 | 开始界面 · 画面本身的三个"看着不对" | ① 地面只有 20 米深，竖屏下近处能看到地的边，**四个按钮其实画在黑底上** → 地面加长到相机身后；② 吊灯是一颗**悬在空中的石头** → 加了一根从画面外垂下来的灯绳；③ 门缝的光太白太满 → 改成暖色（1, 0.90, 0.70）并且半透明；另外补了环境光与一盏背光，否则镜头附近的脚垫和宠物脚是全黑的 | 截图 `round23_start_menu.png`（底部是地面、吊灯有灯绳、标题有底板可读）✅ |
 
+---
+
+## 阶段 24：花园与露台的真正差异化，以及全游戏背景音乐
+
+| 编号 | 需求 | 实现 | 验收证据 |
+|---|---|---|---|
+| R24.1 | 花园 · 用栅栏围起来 | 没有墙：一圈**白漆栅栏**（`BuildFence`）。板条用 `RoomTextures.Pickets()` 生成的**镂空纹理**贴四块面板（每块半米重复一次），立柱和顶横梁是真 3D 方块。密栅栏若全用方块会要几百个对象，纹理 + 立柱是同一个外观、四十分之一的代价 | 单测：`Perimeter` 四边立柱数 = 4×段数、都在边界上、间距被整除、首尾相接闭环；`Pickets` 纹理板条缝是透明的、板条是实的 ✅ 截图 `round24_garden.png` |
+| R24.2 | 花园 · 种满五颜六色的花 | 七个花坛（`RoomDecor.Beds`）+ 每坛按种子确定性撒 9 朵花（`RoomDecor.Flowers`：拒绝落在**家具禁入圈**里、拒绝彼此太近、八种颜色轮转）。花是 `RoomTextures.Flower(colour, petals)` 生成的**交叉双板**（一块纹理一朵花，颜色/高矮/花瓣数各不相同），栅栏外再种大树与灌木、草地上撒草簇和石板小径 | 单测：同一种子两次结果一致、都在坛内、不进禁入圈、彼此不重叠、整园颜色 ≥ 4 种；`Flower` 纹理有实的花瓣 ✅ 截图 `round24_garden.png` |
+| R24.3 | 花园 · 心情好会上窜下跳 | 新行为 `garden_zoomies`（`OnlyInPlace = "Garden"`、`RequiresNeed = Joy`、`NeedAbove = 0.58`、`Hop = true`）：`PetAvatar.StartHopping` 用**抛物线**把整个身体抬离地面（一上一下连蹦，不是原地播 `Jump` 动画），transform 不动，所以位置与判定不受影响 | 单测：花园+开心→可触发；屋里→不触发；不开心→不触发 ✅ |
+| R24.4 | 花园 · 玩捉迷藏 | 三丛灌木是新的 `InteractableKind.HidingSpot`，`ApproachPoint` 在灌木**背对花园中心**的一侧（宠物走到灌木后面躲起来，灌木在它和镜头之间）；新行为 `hide_and_seek`（`OnlyInPlace = "Garden"`、`TargetKind = "HidingSpot"`）躲 4.6 秒并进对话「我躲好了，你快来找我！」 | 单测：有灌木才触发、没灌木不触发、屋里不触发 ✅ `UsePending` 里 `HidingSpot` 分支：`Needs.Play(0.3)` + 蹲下 4.4 秒 |
+| R24.5 | 露台 · 高级、不再是"蓝房间" | **没有墙**，四周是**石栏杆**（`BuildRailing`：立柱 + 扶手 + 雕花栏杆纹理），远处三块**天际线画板**（`RoomTextures.Skyline`：夜空、楼群、亮窗）；北边一条**藤架**（柱 + 梁 + 能透光的木条），下挂**两串暖黄串灯**（`RoomDecor.StringLights` 按抛物线下垂 + 灯泡发光）；两张躺椅 + 矮桌、四个花箱修剪球、中间一个火盆（点光源） | 单测：串灯两端对称、中间最低、真的下垂；`Skyline` 纹理天顶比地平线暗 ✅ 截图 `round24_terrace.png` |
+| R24.6 | 地面有质感 | 花园草地用 `RoomTextures.Grass()`（带叶片的斑驳绿）、露台用 `RoomTextures.Deck()`（石板 + 勾缝），`Standard` 材质带 `mainTextureScale` 平铺，接受场景环境光 | 单测：两张纹理都是 128² 且不是纯色 ✅ |
+| R24.7 | 背景音乐 · 每个场景一首 | `DshMobile.MobileMusic`（在共享程序集 DshMobile，所有场景都够得到）：11 首 **CC0 1.0**（OpenGameArt，逐首许可见 `docs/MUSIC_SOURCES.md`），`TrackForScene` 按场景名映射、`TrackForTheme` 按地点映射（小屋/花园/露台三首），`[RuntimeInitializeOnLoadMethod]` 在场景加载后自动接线——小游戏与跑酷**一行都不用改**。两路 `AudioSource` 交叉淡入淡出 | 单测：场景名→曲目表、地点→曲目表、每首都有资源路径 ✅ 实测（编辑器）：搬家后 `MobileMusic.Current` 跟着变成 Garden/Terrace ✅ |
+| R24.8 | 背景音乐 · 设置开关 + 音量 | 开始界面与房间内设置面板各加「背景音乐」开关（默认开）+ **音量滑条**（0–100%，默认 45%），持久化到 PlayerPrefs；与音效静音互不影响；关掉立刻停、开回来立刻重播。面板显示「现在放的是：曲名（作者）」 | 单测：开关与音量持久化、音量钳到 0..1、默认开、`ResetForTests` 清空 ✅ |
+| R24.9 | 音频导入 | `MusicImportPostprocessor` 对 `Resources/Music/` 下的音频自动设 **Streaming + Vorbis(0.7) + 不预载**（两分钟的歌不该整首解进内存），逐平台设置 | 实测：11 首都导入成功、时长 47.6–248.4 秒、全部 Streaming ✅ |
+
 
 ## 非功能需求 / 设计约束
 

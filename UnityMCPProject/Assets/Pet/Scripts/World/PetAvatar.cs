@@ -383,6 +383,51 @@ namespace DshPet
         /// <summary>0 = standing still, 1 = full walking speed.</summary>
         public void SetLocomotion(float amount) => _locomotion = Mathf.Clamp01(amount);
 
+        // ------------------------------------------------------------------ hopping
+
+        private float _hopUntil;
+        private float _hopPhase;
+
+        /// <summary>How high the pet leaves the ground when it is bounding about.</summary>
+        public const float HopHeight = 0.42f;
+
+        /// <summary>Hops per second. Fast enough to read as 上窜下跳, slow enough to see.</summary>
+        public const float HopsPerSecond = 2.3f;
+
+        /// <summary>
+        /// Bouncing off the ground, repeatedly, for a while.
+        ///
+        /// The pet's *transform* does not move: this is an offset on the rig, like the breathing
+        /// and the walk bob, so the controller keeps owning the position the simulation reasons
+        /// about. A pet that hopped by moving its transform would break every test that asks
+        /// where it actually is.
+        /// </summary>
+        public void StartHopping(float seconds)
+        {
+            _hopUntil = Time.time + Mathf.Max(0.2f, seconds);
+            _hopPhase = 0f;
+        }
+
+        public void StopHopping() => _hopUntil = 0f;
+
+        /// <summary>True while the pet is in the air on purpose.</summary>
+        public bool IsHopping => Time.time < _hopUntil;
+
+        /// <summary>
+        /// The height above the floor this frame: a sequence of parabolas, each landing before
+        /// the next one starts, because a sine wave reads as floating rather than as jumping.
+        /// </summary>
+        private float HopOffset()
+        {
+            if (!IsHopping) return 0f;
+
+            _hopPhase += Time.deltaTime * HopsPerSecond;
+            float t = _hopPhase - Mathf.Floor(_hopPhase);      // 0..1 within one hop
+
+            // A parabola that touches zero at both ends: 4t(1-t) peaks at 1 when t = 0.5.
+            return HopHeight * 4f * t * (1f - t);
+        }
+
         // ------------------------------------------------------------------ dirtiness
 
         private Transform[] _mudSpots;
@@ -500,7 +545,7 @@ namespace DshPet
 
             // Absolute placement, not accumulated deltas: the idle breath term used to be
             // summed frame after frame, which floated the whole pet ~1.1 m into the air.
-            float rigOffset = breath + _bob - crouch * _actionWeight;
+            float rigOffset = breath + _bob - crouch * _actionWeight + HopOffset();
             _rig.localPosition = _rigBase + new Vector3(0f, rigOffset, 0f);
 
             if (_body != null)

@@ -252,7 +252,7 @@ namespace DshPet.Tests
 
         private static PetBehaviorContext Context(float hunger = 0.9f, float energy = 0.9f,
             float joy = 0.9f, float clean = 0.9f, float affection = 0.5f, float hour = 12f,
-            bool ballLoose = false, params InteractableKind[] targets)
+            bool ballLoose = false, string place = "", params InteractableKind[] targets)
         {
             return new PetBehaviorContext
             {
@@ -265,7 +265,8 @@ namespace DshPet.Tests
                 HourOfDay = hour,
                 PlayerPresent = true,
                 BallLoose = ballLoose,
-                AvailableTargets = targets
+                AvailableTargets = targets,
+                Place = place
             };
         }
 
@@ -340,6 +341,44 @@ namespace DshPet.Tests
 
             Assert.GreaterOrEqual(PetBehaviorLibrary.ProactiveCount, 5, "proactive table is too thin");
             Assert.GreaterOrEqual(PetBehaviorLibrary.PassiveCount, 5, "passive table is too thin");
+        }
+
+        [Test]
+        public void Behavior_GardenPlayIsGatedToTheGardenAndAGoodMood()
+        {
+            // 「在花园心情好会上窜下跳、玩捉迷藏」: the two garden rows exist, they only fire in the
+            // garden, they need a happy pet, and hide-and-seek needs a shrub to hide behind.
+            var zoomies = PetBehaviorLibrary.Get("garden_zoomies");
+            var hide = PetBehaviorLibrary.Get("hide_and_seek");
+            Assert.IsNotNull(zoomies, "garden_zoomies missing");
+            Assert.IsNotNull(hide, "hide_and_seek missing");
+            Assert.AreEqual("Garden", zoomies.OnlyInPlace);
+            Assert.AreEqual("Garden", hide.OnlyInPlace);
+            Assert.IsTrue(zoomies.Hop, "上窜下跳 has to actually leave the ground");
+            Assert.AreEqual(InteractableKind.HidingSpot, hide.Target, "hide-and-seek needs a spot");
+
+            // In the garden, happy: both eligible.
+            var gardenHappy = Context(joy: 0.9f, place: "Garden",
+                targets: new[] { InteractableKind.HidingSpot });
+            Assert.IsTrue(zoomies.IsEligible(gardenHappy), "happy garden pet should bound about");
+            Assert.IsTrue(hide.IsEligible(gardenHappy), "happy garden pet should hide");
+
+            // Same mood, same targets, but indoors: neither.
+            var indoors = Context(joy: 0.9f, place: "Cabin",
+                targets: new[] { InteractableKind.HidingSpot });
+            Assert.IsFalse(zoomies.IsEligible(indoors), "the cabin pet must not bound about");
+            Assert.IsFalse(hide.IsEligible(indoors), "the cabin pet must not hide-and-seek");
+
+            // In the garden but miserable: neither.
+            var sad = Context(joy: 0.1f, place: "Garden",
+                targets: new[] { InteractableKind.HidingSpot });
+            Assert.IsFalse(zoomies.IsEligible(sad), "a sad pet does not celebrate the garden");
+            Assert.IsFalse(hide.IsEligible(sad), "a sad pet does not play hide-and-seek");
+
+            // In the garden, happy, but no shrub: hide is off the table, zoomies is not.
+            var noShrub = Context(joy: 0.9f, place: "Garden", targets: new InteractableKind[0]);
+            Assert.IsFalse(hide.IsEligible(noShrub), "no shrub means no hide-and-seek");
+            Assert.IsTrue(zoomies.IsEligible(noShrub), "bounding about needs no prop");
         }
 
         [Test]
@@ -459,7 +498,7 @@ namespace DshPet.Tests
             // Hungry for play, a bit grubby, a bit short on attention — the ordinary state in
             // which several activities compete and the ball should win.
             var context = Context(0.75f, 0.75f, 0.40f, 0.40f, 0.45f, 12f, true,
-                new[]
+                targets: new[]
                 {
                     InteractableKind.Food, InteractableKind.Water, InteractableKind.Ball,
                     InteractableKind.Bed, InteractableKind.Brush
@@ -479,7 +518,7 @@ namespace DshPet.Tests
             // Deliberate exception: a ball in the air is not worth more than the pet's own
             // survival, so exhaustion and hunger still outrank the retrieve.
             var context = Context(0.05f, 0.05f, 0.05f, 0.05f, 0.05f, 12f, true,
-                new[]
+                targets: new[]
                 {
                     InteractableKind.Food, InteractableKind.Water, InteractableKind.Ball,
                     InteractableKind.Bed, InteractableKind.Brush

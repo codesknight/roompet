@@ -854,6 +854,30 @@
     虚线是否是那条抛物线 = 每个点到真实轨迹折线的距离。这一轮把这两条量出来
     （正交相机下 **0.000 px**、**0.0000 米**），另外把"虚线的点必须落在半隐式积分的真实抛物线上"
     写成单测。**能给出一个数的验收，比十张截图都硬**——截图只能证明"这一刻我挑的这一帧是对的"。
+127. **"另一个场景"如果还是同一套墙，那就不是另一个场景。** 花园和露台的第一版是小屋的四堵墙
+    换个颜色再加几个道具——玩家一眼看穿："不就是同一个房间"。问题出在把差异做在**调色板**上，
+    而差异应该做在**边界**上：小屋是墙、花园是栅栏、露台是栏杆，一个 `RoomShell` 枚举决定
+    用什么把房间"围起来"，三个地方就真的长得不一样了。**"换地方"的最小单位不是颜色，是空间的形状。**
+128. **密的东西别用方块，用一张程序化纹理。** 栅栏要密才像栅栏（板条每 12 厘米一根），
+    一块 14 米见方的园子四边要几百根；栏杆同理。第一版真的去摆方块，还没摆完就知道手机会哭。
+    改成**一张带 alpha 的镂空纹理贴四块板**（`RoomTextures.Pickets/Balusters`），
+    立柱和横梁用真方块撑场，外观一样、对象数降一个数量级。**花纹会重复的东西，就该是纹理，
+    不该是几何。** 但要注意无缝：纹理里的图案要**在步长内居中**，否则两张拼缝处会长出一根双倍宽的板条
+    （这一轮的单测就抓到了这个——第一次贴图板条贴边，拼缝处正好两根并成一根）。
+129. **程序化纹理也要"真"，不能只是"不是纯色"。** 天际线画板如果只是一块渐变，
+    露台看起来像世界尽头；画上高低错落的楼和几扇亮着的窗，它才是"屋顶"。草地如果只是一块绿，
+    花园像一块绿板；撒上斑驳和几根朝上的草叶，它才是"草地"。**省下来的每一笔，
+    都会在某个角度变成"这也太敷衍了"。**
+130. **"在花园会蹦跳"这件事，得让宠物真的离地。** 第一版把"上窜下跳"做成播 `PetAction.Jump`
+    动画——脚根本没动。现在 `PetAvatar.StartHopping` 用**抛物线**把整个身体抬起来再落下
+    （一上一下连蹦），而且只抬**视觉 rig**、不动 transform：控制器照常拥有位置，判定和测试都不受影响。
+    **"跳"是一个位移量，不是一个表情。** 同时，地方专属行为要拿 `OnlyInPlace` 钉住——
+    同一只宠物同样的心情，在花园会闹、在小屋不会，这才是"换地方改变了宠物"，而不是"宠物突然变皮了"。
+131. **音乐这种"每个场景都要"的东西，接线要能自动，不要靠每个场景记得调用。** 五六个小游戏
+    各自在 `Awake` 里写一句 `Play(某曲)`，迟早有一个漏掉或者忘了改。`[RuntimeInitializeOnLoadMethod]`
+    + `SceneManager.sceneLoaded` + 一张"场景名 → 曲目"的表，让新场景只要出现在表里就有歌。
+    但**房间例外**：`PetRoom` 是同一个场景对应三首歌（小屋/花园/露台），所以地点由 `PlayForTheme` 补一句。
+    **能自动化的自动化，不能自动化的（比如"同一个场景三种地点"）留一个显式口子。**
 
 ---
 
@@ -864,7 +888,8 @@
 D:\projects\dsh-unity\UnityMCPProject
 Assets\Scenes\Main.unity            # 跑酷
 Assets\Pet\Scenes\StartMenu.unity   # 开始界面（构建列表第 0 个：进入房间 / 玩法介绍 / 设置 / 离开房间 + 开门动画）
-Assets\Pet\Scenes\PetRoom.unity     # 虚拟宠物
+Assets\Pet\Scenes\PetRoom.unity     # 虚拟宠物（同一场景三处地方：Cabin 墙 / Garden 栅栏 / Terrace 栏杆，见 RoomShell）
+Assets\Resources\Music\              # 11 首 CC0 背景音乐（出处见 docs/MUSIC_SOURCES.md），Streaming+Vorbis
 Assets\MiniGames\Scenes\FlyBird.unity     # 小鸟飞行
 Assets\MiniGames\Scenes\JumpQuest.unity   # 跳一跳
 Assets\MiniGames\Scenes\CatchFruit.unity  # 接果子
@@ -896,7 +921,7 @@ Tools/DSH Mobile/Preview/Report Current Viewport    # 打印当前视口 / 方�
 Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
-EditMode，期望 322/322
+EditMode，期望 335/335
 
 # 存档
 %USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\

@@ -2243,6 +2243,7 @@ namespace DshPet
         public void OpenMemoryMatch(PetGameManager gm)
         {
             _showMemory = !_showMemory;
+            SyncMusic();
             if (!_showMemory) return;
 
             if (!_memoryLevelLoaded)
@@ -2308,6 +2309,7 @@ namespace DshPet
             if (GUI.Button(new Rect(inner.xMax - 76f, inner.y + 2f, 76f, 30f), "关闭", _button))
             {
                 _showMemory = false;
+                SyncMusic();
                 return;
             }
 
@@ -2535,9 +2537,30 @@ namespace DshPet
         /// Making it a scene would have meant a third .unity file for something that fits in a
         /// panel.
         /// </summary>
+        /// <summary>
+        /// Keeps the music in step with what is on screen.
+        ///
+        /// The two in-room games are panels rather than scenes, so the scene-name wiring that
+        /// gives every other activity its track cannot see them: opening the puzzle would leave
+        /// the garden's music playing over a quiet thinking game. Called from the four places the
+        /// panels open or close rather than every frame — a per-frame "make sure the track is
+        /// right" is the kind of call that quietly becomes a bug when two of them disagree.
+        /// </summary>
+        private void SyncMusic()
+        {
+            if (_showPuzzle || _showMemory)
+            {
+                DshMobile.MobileMusic.Play(DshMobile.MusicId.Puzzle);
+                return;
+            }
+
+            DshMobile.MobileMusic.PlayForTheme(PetWorldMap.Current);
+        }
+
         public void OpenPuzzle(PetGameManager gm)
         {
             _showPuzzle = !_showPuzzle;
+            SyncMusic();
             if (!_showPuzzle) return;
 
             // The picture is painted for this pet and this room, so the puzzle is always about
@@ -2574,6 +2597,7 @@ namespace DshPet
             if (GUI.Button(new Rect(inner.xMax - 76f, inner.y + 2f, 76f, 30f), "关闭", _button))
             {
                 _showPuzzle = false;
+                SyncMusic();
                 return;
             }
 
@@ -3053,6 +3077,27 @@ namespace DshPet
             // spoken to, when poked, and when it reacts on its own — because a setting that
             // leaves half the sounds on is worse than either extreme.
             GUILayout.Space(6f);
+
+            // Music gets its own switch rather than riding on the sound-effect mute: the player
+            // who wants footsteps and chirps without a soundtrack is exactly who asks for this,
+            // and "all audio off" is the one answer that never helps them. The slider is here
+            // because "quieter" is the request people actually have.
+            GUILayout.BeginHorizontal();
+            bool musicOn = GUILayout.Toggle(DshMobile.MobileMusic.Enabled, " 背景音乐", _small);
+            if (musicOn != DshMobile.MobileMusic.Enabled) DshMobile.MobileMusic.Enabled = musicOn;
+            GUILayout.FlexibleSpace();
+            GUILayout.Label(Mathf.RoundToInt(DshMobile.MobileMusic.Volume * 100f) + "%", _small,
+                GUILayout.Width(44f));
+            GUILayout.EndHorizontal();
+
+            float musicVolume = GUILayout.HorizontalSlider(DshMobile.MobileMusic.Volume, 0f, 1f);
+            if (!Mathf.Approximately(musicVolume, DshMobile.MobileMusic.Volume))
+            {
+                DshMobile.MobileMusic.Volume = musicVolume;
+            }
+
+            GUILayout.Label(DshMobile.MobileMusic.NowPlayingText, _small);
+
             bool voiceOn = GUILayout.Toggle(PetVoice.Enabled, " 宠物叫声", _small);
             if (voiceOn != PetVoice.Enabled)
             {
@@ -3419,6 +3464,7 @@ namespace DshPet
             _showCollection = false;
             _showPuzzle = false;
             _showMemory = false;
+            SyncMusic();
             var gm = PetGameManager.Instance;
             if (gm != null && gm.DoorPromptOpen) gm.CloseDoorPrompt();
             e.Use();

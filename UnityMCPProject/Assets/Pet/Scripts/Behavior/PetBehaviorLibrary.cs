@@ -116,6 +116,39 @@ namespace DshPet
                     Lines = new[] { "（摊在地毯上晒太阳，眯起了眼睛）" }
                 },
 
+                // ------------------------------------------------------- 花园里才有的两件事
+                //
+                // 「在花园心情好会上窜下跳、玩捉迷藏」 is a request about what a *place* does to a pet,
+                // and it is the whole reason the map is worth unlocking: the same animal in the
+                // same mood behaves differently in a garden than in a room. Both rows are gated by
+                // OnlyInPlace, so the cabin and the terrace keep the behaviour they had.
+                new PetBehavior
+                {
+                    Id = "garden_zoomies", Label = "在草地上上窜下跳", Drive = BehaviorDrive.Proactive,
+                    Action = PetAction.Jump, Duration = 4.2f, Cooldown = 55f, Weight = 1.9f,
+                    RequiresNeed = "Joy", NeedAbove = 0.58f,
+                    OnlyInPlace = "Garden", Hop = true,
+                    Lines = new[]
+                    {
+                        "（在草地上蹦得老高，尾巴甩成了螺旋）",
+                        "（绕着花坛跑了一圈，又蹦回来）",
+                        "好开心！你也来蹦一下嘛！"
+                    }
+                },
+                new PetBehavior
+                {
+                    Id = "hide_and_seek", Label = "躲起来让你找", Drive = BehaviorDrive.Proactive,
+                    Action = PetAction.Sit, Duration = 4.6f, Cooldown = 90f, Weight = 1.5f,
+                    RequiresNeed = "Joy", NeedAbove = 0.45f,
+                    OnlyInPlace = "Garden", TargetKind = "HidingSpot",
+                    Lines = new[]
+                    {
+                        "（一头钻进灌木后面，只露出半只耳朵）",
+                        "我躲好了，你快来找我！",
+                        "（屏住呼吸，尾尖还在晃）"
+                    }
+                },
+
                 // ------------------------------------------------------- 被动 / ambient quirks
 
                 new PetBehavior

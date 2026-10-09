@@ -66,7 +66,11 @@ namespace DshPet
                 case Mode.React:
                     _reactTimer -= dt;
                     Avatar.SetLocomotion(0f);
-                    if (_reactTimer <= 0f) EnterIdle();
+                    if (_reactTimer <= 0f)
+                    {
+                        Avatar.StopHopping();
+                        EnterIdle();
+                    }
                     break;
 
                 case Mode.Approach:
@@ -576,6 +580,14 @@ namespace DshPet
                 }
             }
 
+            // 上窜下跳 is not an animation: the pet has to actually leave the ground, over and over.
+            if (behavior.Hop)
+            {
+                ReactTo(behavior.Action, behavior.Duration);
+                Avatar.StartHopping(behavior.Duration);
+                return;
+            }
+
             ReactTo(behavior.Action, behavior.Duration);
         }
 
@@ -754,6 +766,12 @@ namespace DshPet
                     target.MarkUsed();
                     Interacted?.Invoke(target);
                     return;
+                case InteractableKind.HidingSpot:
+                    // Hide-and-seek: the pet tucks itself behind the shrub and stays there a
+                    // while, which is the whole game — the player has to come and look.
+                    Needs.Play(0.30f, true);
+                    Avatar.PlayAction(PetAction.Sit, 4.4f);
+                    break;
                 default:
                     Needs.Pet(0.1f);
                     Avatar.PlayAction(PetAction.Happy, 1.6f);
