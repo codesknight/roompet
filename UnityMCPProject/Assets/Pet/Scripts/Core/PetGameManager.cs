@@ -1250,10 +1250,100 @@ namespace DshPet
             LastError = "";
             NotifyPlayerSpoke();
 
+            // An order is understood and carried out here, on the device, in this frame.
+            if (TakeOrder(trimmed)) return;
+
             var context = BuildContext(trimmed);
             _pendingUserMessage = trimmed;
             _thinkDeadline = Time.realtimeSinceStartup + Mathf.Max(10f, BrainConfig.TimeoutSeconds + 6f);
             _thinkRoutine = StartCoroutine(ThinkRoutine(context, trimmed));
+        }
+
+        /// <summary>
+        /// Handles 「拿球」「去吃饭」「过来」「别动」「饭碗在哪」 without asking anyone.
+        ///
+        /// Two reasons this is local rather than a prompt instruction. The honest one: the pet's
+        /// spatial knowledge is already in this process, so a round trip can only make the answer
+        /// slower and less accurate. The practical one: a model asked to chat *and* to fire game
+        /// actions will eventually answer "好的，我这就去！" and not go anywhere — and the player cannot
+        /// tell the difference between a lazy pet and a broken feature.
+        ///
+        /// Returns true when the message was an order, in which case it never reaches the brain.
+        /// </summary>
+        private bool TakeOrder(string text)
+        {
+            var order = PetCommands.Parse(text);
+            if (!order.IsOrder) return false;
+
+            bool done = ExecuteOrder(order);
+
+            string line;
+            if (order.Kind == PetOrderKind.AskWhere) line = DescribeWhere(order);
+            else if (done) line = PetCommands.Reply(order, Environment.TickCount / 1000);
+            else line = PetCommands.CannotDo(order);
+
+            if (string.IsNullOrEmpty(line)) line = "……";
+
+            var action = PetCommands.Action(order);
+
+            Memory.AddUser(text);
+            Memory.AddPet(line);
+            LastActionLabel = PetUtil.ActionLabel(action);
+            Journal.NoteConversation(text, line);
+
+            // Talking to the pet is itself a little bit of play, and doing as it was told even more so.
+            Needs.Pet(0.04f);
+            Needs.AddAffection(done ? 0.04f : 0.01f);
+
+            if (Controller != null)
+            {
+                Controller.LookAt(CameraPosition());
+
+                // The scripted reaction is skipped for orders that are already moving the pet: a
+                // reaction would cancel the walk that the order just started.
+                if (order.Kind != PetOrderKind.AskWhere && !IsMovingOrder(order.Kind))
+                {
+                    Controller.ReactTo(action, ActionDuration(action));
+                }
+                else if (order.Kind == PetOrderKind.AskWhere)
+                {
+                    Controller.ReactTo(PetAction.Curious, 1.6f);
+                }
+            }
+
+            var audio = PetAudioDirector.Instance;
+            if (audio != null) audio.Speak(Needs.Mood);
+
+            float pitch, rate;
+            PetVoice.SpeechParams(Species, Personality, out pitch, out rate);
+            DshMobile.MobileTts.Speak(line, pitch, rate);
+
+            HintAboutSpeech();
+
+            SaveNeeds();
+            Memory.Save(PetKey);
+            ChatChanged?.Invoke();
+            return true;
+        }
+
+        /// <summary>Orders that run themselves: reacting on top of them would cancel the walk.</summary>
+        private static bool IsMovingOrder(PetOrderKind kind)
+        {
+            switch (kind)
+            {
+                case PetOrderKind.Eat:
+                case PetOrderKind.Drink:
+                case PetOrderKind.Play:
+                case PetOrderKind.Fetch:
+                case PetOrderKind.Toilet:
+                case PetOrderKind.Bath:
+                case PetOrderKind.Groom:
+                case PetOrderKind.Come:
+                case PetOrderKind.Follow:
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private IEnumerator ThinkRoutine(PetContext context, string userMessage)
@@ -1403,8 +1493,177 @@ namespace DshPet
                 LongTermFacts = facts.ToArray(),
                 DayDigest = Journal.RecentDigest(3),
                 LastInteraction = lastInteraction,
-                ExtraInstructions = BrainConfig != null ? BrainConfig.ExtraInstructions : ""
+                ExtraInstructions = BrainConfig != null ? BrainConfig.ExtraInstructions : "",
+                Perception = DescribePerception()
             };
+        }
+
+        // ------------------------------------------------------------- perception & orders
+
+        /// <summary>
+        /// Everything the pet can see, as the prompt block body and as the source of every spatial
+        /// answer it gives. See <see cref="PetPerception"/> for the word choices.
+        /// </summary>
+        public string DescribePerception()
+        {
+            var targets = new List<PetTarget>();
+
+            if (Room != null)
+            {
+                for (int i = 0; i < Room.Interactables.Count; i++)
+                {
+                    var item = Room.Interactables[i];
+                    if (item == null) continue;
+                    if (item.Kind == InteractableKind.Mess && !Room.HasMess) continue;
+
+                    targets.Add(new PetTarget
+                    {
+                        Name = string.IsNullOrEmpty(item.Label)
+                            ? PetPerception.NameOf(item.Kind)
+                            : item.Label,
+                        Kind = item.Kind,
+                        Position = item.transform.position,
+                        Ready = item.IsReady
+                    });
+                }
+            }
+
+            Vector3 eye = Controller != null ? Controller.transform.position : Vector3.zero;
+            Vector3 facing = Controller != null ? Controller.transform.forward : Vector3.forward;
+
+            bool hasOwner = Controller != null && Controller.Player != null;
+            Vector3 owner = hasOwner ? Controller.Player.position : Vector3.zero;
+
+            return PetPerception.Describe(eye, facing, targets, Room != null ? Room.Size : 0f,
+                hasOwner, owner);
+        }
+
+        /// <summary>The pet's own position, for the spatial answers.</summary>
+        private Vector3 PetPosition()
+            => Controller != null ? Controller.transform.position : Vector3.zero;
+
+        private Vector3 PetFacing()
+        {
+            if (Controller == null) return Vector3.forward;
+            var facing = Controller.transform.forward;
+            facing.y = 0f;
+            return facing.sqrMagnitude > 0.0001f ? facing : Vector3.forward;
+        }
+
+        /// <summary>
+        /// Answers 「XX 在哪」 from perception, on the device.
+        ///
+        /// The whole point of owning the pet's spatial knowledge is that this answer needs nobody's
+        /// help: no network, no tokens, and no chance of the pet pointing at a wall because a model
+        /// felt like it.
+        /// </summary>
+        public string DescribeWhere(PetOrder order)
+        {
+            if (order.AboutOwner)
+            {
+                if (Controller == null || Controller.Player == null) return "我看不到你在哪，你在房间里吗？";
+                return "你" + OnlyWhere(PetPosition(), PetFacing(), Controller.Player.position) + "呀。";
+            }
+
+            if (order.Target.HasValue)
+            {
+                var item = FindRoomItem(order.Target.Value);
+
+                // The room's own label wins, the same way it does in the perception block: the pet
+                // must call things what the player calls them, or 「饭碗在哪」 is answered about a
+                // 「食物碗」 and reads like a different object.
+                string name = "「" + (item != null && !string.IsNullOrEmpty(item.Label)
+                    ? item.Label
+                    : PetPerception.NameOf(order.Target.Value)) + "」";
+
+                if (item == null) return "房间里好像没有" + name + "……你是不是还没摆出来？";
+
+                return name + OnlyWhere(PetPosition(), PetFacing(), item.transform.position)
+                    + "，我这就指给你看。";
+            }
+
+            // No object named: describe the room instead of refusing, because "在哪" with no subject
+            // is a question about where things are, and the pet does know that.
+            return "你现在在" + PetPerception.RoomPlace(PetPosition(), Room != null ? Room.Size : 0f)
+                + "，房间里的东西我都记得，你问哪一样？";
+        }
+
+        /// <summary>"在你右前方，大概 3 步" without the leading 在你 of the prompt phrasing.</summary>
+        private static string OnlyWhere(Vector3 from, Vector3 facing, Vector3 to)
+        {
+            string sentence = PetPerception.WhereSentence(from, facing, to);
+            return sentence.StartsWith("在你") ? sentence.Substring(2) : sentence;
+        }
+
+        private Interactable FindRoomItem(InteractableKind kind)
+        {
+            if (Room == null) return null;
+
+            Interactable best = null;
+            float bestDistance = float.MaxValue;
+            Vector3 from = PetPosition();
+
+            for (int i = 0; i < Room.Interactables.Count; i++)
+            {
+                var item = Room.Interactables[i];
+                if (item == null || item.Kind != kind) continue;
+
+                float distance = Vector3.Distance(from, item.transform.position);
+                if (distance < bestDistance) { bestDistance = distance; best = item; }
+            }
+
+            return best;
+        }
+
+        /// <summary>
+        /// Carries out an order. False when the room cannot support it, which the caller turns into an
+        /// honest answer rather than silence.
+        /// </summary>
+        private bool ExecuteOrder(PetOrder order)
+        {
+            if (Controller == null) return false;
+
+            switch (order.Kind)
+            {
+                case PetOrderKind.Come: return Controller.ComeToOwner();
+                case PetOrderKind.Follow: return Controller.FollowOwner();
+
+                case PetOrderKind.Stay:
+                    Controller.Stay();
+                    return true;
+
+                case PetOrderKind.Sleep:
+                    Controller.EnterSleep();
+                    return true;
+
+                case PetOrderKind.Fetch:
+                    // A thrown ball is the whole retrieve loop; a ball sitting in its corner is "go
+                    // and pick it up", which is the same walk the pet does when it decides to play.
+                    // Refusing because the ball was not *loose* was the first version's behaviour and
+                    // it made 「拿球」 fail in exactly the case a player would try it.
+                    if (Controller.CanFetch)
+                    {
+                        Controller.FetchBall();
+                        return true;
+                    }
+
+                    return Controller.OrderTo(InteractableKind.Ball);
+
+                case PetOrderKind.AskWhere:
+                    return true;   // answering is the action
+
+                case PetOrderKind.Eat: return Controller.OrderTo(InteractableKind.Food);
+                case PetOrderKind.Drink: return Controller.OrderTo(InteractableKind.Water);
+                case PetOrderKind.Play:
+                    // 玩 means whichever toy is there: the ball if it is out, otherwise the toy box.
+                    return Controller.OrderTo(InteractableKind.Ball)
+                        || Controller.OrderTo(InteractableKind.Toy);
+                case PetOrderKind.Toilet: return Controller.OrderTo(InteractableKind.Toilet);
+                case PetOrderKind.Bath: return Controller.OrderTo(InteractableKind.Bath);
+                case PetOrderKind.Groom: return Controller.OrderTo(InteractableKind.Brush);
+
+                default: return false;
+            }
         }
 
         /// <summary>Prompt preview, for the debug panel.</summary>

@@ -1,4 +1,4 @@
-﻿# Provision the GitHub side of the project: description, topics, labels, milestones and
+# Provision the GitHub side of the project: description, topics, labels, milestones and
 # the issue backlog. Idempotent — safe to re-run; it skips anything that already exists.
 #
 # Auth: uses the credential git already has for github.com (the same one `git push`
@@ -63,7 +63,7 @@ function Invoke-Api {
 
 Write-Host "==> Repository metadata"
 Invoke-Api PATCH "/repos/$Repo" @{
-    description = 'Unity 虚拟宠物空间：会记事、会主动找你说话的宠物，外加一局动物主题跑酷。'
+    description = 'Unity 虚拟宠物空间：会记事、看得见房间、听得懂指令的宠物，外加七个动物主题小游戏和安卓端。'
     has_issues  = $true
     has_wiki    = $false
     has_projects = $true
@@ -71,7 +71,7 @@ Invoke-Api PATCH "/repos/$Repo" @{
 
 Invoke-Api PUT "/repos/$Repo/topics" @{
     names = @('unity', 'unity3d', 'game', 'virtual-pet', 'csharp', 'imgui',
-              'procedural-generation', 'llm', 'deepseek', 'mcp')
+              'procedural-generation', 'llm', 'deepseek', 'mcp', 'android', 'minigames')
 } | Out-Null
 Write-Host "  description + topics set"
 

@@ -17,6 +17,9 @@ namespace DshMiniGames
         private GUIStyle _small;
         private GUIStyle _big;
         private GUIStyle _button;
+        private GUIStyle _centred;
+        private GUIStyle _hint;
+        private GUIStyle _popup;
 
         /// <summary>True while the pointer is over a panel, so a hold there is not a charge.</summary>
         public static bool PointerOverPanel { get; private set; }
@@ -49,6 +52,17 @@ namespace DshMiniGames
                 fontSize = 17,
                 padding = new RectOffset(14, 14, 8, 8)
             };
+
+            // Derived styles are built once. OnGUI runs several times a frame and every `new
+            // GUIStyle` is garbage: three of them per pass was a steady allocation for nothing.
+            _centred = new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter };
+            _hint = new GUIStyle(_small)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = new Color(1f, 1f, 1f, 0.75f) }
+            };
+            _popup = new GUIStyle(_title) { alignment = TextAnchor.MiddleCenter };
+            _popup.normal.textColor = new Color(1f, 0.85f, 0.4f);
         }
 
         private void OnGUI()
@@ -72,15 +86,12 @@ namespace DshMiniGames
 
             // ---- score ----
             GUI.Label(new Rect(width * 0.5f - 120f, 22f, 240f, 62f), _game.Score.ToString(), _big);
-            var centred = new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter };
             GUI.Label(new Rect(width * 0.5f - 160f, 84f, 320f, 24f),
-                $"最高 {_game.Best}　·　🐾 {DshMobile.PetWallet.Coins:N0}", centred);
+                $"最高 {_game.Best}　·　🐾 {DshMobile.PetWallet.Coins:N0}", _centred);
 
             if (!string.IsNullOrEmpty(_game.LastPopup))
             {
-                var popup = new GUIStyle(_title) { alignment = TextAnchor.MiddleCenter };
-                popup.normal.textColor = new Color(1f, 0.85f, 0.4f);
-                GUI.Label(new Rect(width * 0.5f - 120f, height * 0.3f, 240f, 34f), _game.LastPopup, popup);
+                GUI.Label(new Rect(width * 0.5f - 120f, height * 0.3f, 240f, 34f), _game.LastPopup, _popup);
             }
 
             // ---- the way out ----
@@ -106,17 +117,14 @@ namespace DshMiniGames
                 GUI.DrawTexture(fill, Texture2D.whiteTexture);
                 GUI.color = Color.white;
 
-                var hint = new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter };
-                GUI.Label(new Rect(width * 0.5f - 200f, bar.yMax + 6f, 400f, 24f), "松开就跳", hint);
+                GUI.Label(new Rect(width * 0.5f - 200f, bar.yMax + 6f, 400f, 24f), "松开就跳", _hint);
             }
             else if (_game.State == JumpQuestGame.Phase.Ready)
             {
-                var hint = new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter };
-                hint.normal.textColor = new Color(1f, 1f, 1f, 0.75f);
                 GUI.Label(new Rect(width * 0.5f - 220f, height - 96f, 440f, 26f),
                     DshMobile.MobileUi.UseTouchControls
                         ? "按住屏幕蓄力，松手跳出去（跳到正中间会 +2）"
-                        : "按住空格蓄力，松手跳出去（跳到正中间会 +2）", hint);
+                        : "按住空格蓄力，松手跳出去（跳到正中间会 +2）", _hint);
             }
 
             if (_game.State == JumpQuestGame.Phase.Dead)

@@ -154,6 +154,16 @@ namespace DshPet
                 },
                 new PetBehavior
                 {
+                    // Ambient, unlike seek_attention: this one is not asking for anything, it just
+                    // wants to be where the owner is. It is what "知道主人的位置" looks like from the
+                    // outside — the pet noticing where you are and acting on it without being told.
+                    Id = "come_to_owner", Label = "凑到主人身边", Drive = BehaviorDrive.Passive,
+                    Action = PetAction.Wag, Duration = 2.6f, Cooldown = 70f, Weight = 0.8f,
+                    TargetKind = "Player",
+                    Lines = new[] { "（走过来蹭了蹭你的腿）", "你去哪我就去哪。", "（在你脚边趴下）" }
+                },
+                new PetBehavior
+                {
                     Id = "grumble", Label = "闹脾气", Drive = BehaviorDrive.Passive,
                     Action = PetAction.Sad, Duration = 2.6f, Cooldown = 120f, Weight = 0.4f,
                     RequiresNeed = "Joy", NeedBelow = 0.22f,

@@ -1,4 +1,4 @@
-﻿# 开发日志与交接文档
+# 开发日志与交接文档
 
 > **这份文档是"新对话接入"的第一份读物。** 目标：读完它就能继续改这个项目，不需要翻历史对话。
 >
@@ -15,9 +15,9 @@
 | 项 | 状态 |
 |---|---|
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
-| 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/FlyBird.unity`（小鸟飞行）、`Assets/MiniGames/Scenes/JumpQuest.unity`（跳一跳）、`Assets/MiniGames/Scenes/CatchFruit.unity`（接果子），五个都已在 Build Settings |
+| 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **278/278 通过**（虚拟宠物 153 + 跑酷 15 + 手机端 45 + 小游戏 65），EditMode |
+| 测试 | **303/303 通过**（虚拟宠物 172 + 跑酷 15 + 手机端 44 + 小游戏 72），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -69,10 +69,12 @@
 | `Brain/PetPrompting.cs` | 提示词组装 + 回复解析（`<action>` / `<remember>` / JSON） |
 | `Brain/DeepSeekPetBrain.cs` / `Brain/OpenAiClient.cs` / `Brain/LocalPetBrain.cs` | 网络大脑 / HTTP 客户端 / 离线兜底 |
 | `Behavior/PetBehavior.cs` | 行为行定义 + 打分（纯函数，可单测） |
-| `Behavior/PetBehaviorLibrary.cs` | 行为表（8 条主动 + 9 条被动 + fetch） |
+| `Behavior/PetBehaviorLibrary.cs` | 行为表（8 条主动 + 10 条被动 + fetch） |
 | `Behavior/PetBehaviorScheduler.cs` | 主动/被动两条计时器，决定"下一步做什么" |
 | `World/PetRoom.cs` | 房间程序化搭建、可交互物收集、**墙体娃娃屋剔除**、道具摆放与着色 |
-| `World/PetController.cs` | 行为执行：Idle/Wander/Approach/React/Sleep/**Fetch** |
+| `World/PetController.cs` | 行为执行：Idle/Wander/Approach/React/Sleep/Fetch/**Follow**，以及**执行主人指令**（`OrderTo`/`ComeToOwner`/`FollowOwner`/`Stay`） |
+| `World/PetPerception.cs` | **宠物的眼睛（纯函数）**：把房间里的东西与主人变成"哪个方位、大概几步"的句子；八向方位按宠物自身朝向前向换算；同时供系统提示、方位问答、指令词表三处使用 |
+| `Core/PetCommands.cs` | **听得懂的指令（纯解析）**：13 类短指令 + 「XX 在哪」；保守守卫（疑问句/陈述句/长句/带主语都不是指令）；本地回复与"做不了"的实话 |
 | `World/PetAvatar.cs` | 宠物外观与动作 |
 | `World/PetBall.cs` | 球的物理与状态机（手持/飞行/叼着/静止） |
 | `World/PetBubbles.cs` | 洗澡时冒的程序化肥皂泡（自建自毁，不留残渣） |
@@ -91,7 +93,7 @@
 | `Core/PetChatter.cs` | 宠物之间的交流：6 种交换，按两只的性格挑，本地文案表（零 token） |
 | `MiniGame/MiniGameLibrary.cs` | 小游戏注册表（门 → 出去玩的场景往返） |
 | `Editor/PetSceneMenu.cs` | 菜单：`Tools/DSH Pet/{Build Pet Scene, Validate Wiring, Fix Script Encodings, Add Scenes To Build Settings, Clear Pet Save}` |
-| `Tests/Editor/*.cs` | 120 条宠物测试（纯逻辑为主，不依赖场景） |
+| `Tests/Editor/*.cs` | 172 条宠物测试（纯逻辑为主，不依赖场景；含方位说法、指令解析的 13 句正例 + 11 句反例） |
 
 ### 手机端（`Assets/Mobile/`，程序集 `DshMobile`）
 
@@ -114,7 +116,13 @@
 | `Art/icon_*.png` | 生成出来的四个图标层（**要提交**：PlayerSettings 按 GUID 引用它们，缺了图标就没了） |
 | `Scripts/MobileHaptics.cs` | 振动反馈：`HapticGate`（限流 + 开关，可测）+ 安卓 `Vibrator`/`VibrationEffect` |
 | `Scripts/MobileTts.cs` | 语音输出：安卓 `TextToSpeech` + `AndroidJavaProxy`；`Speech()` 去掉括号动作与 emoji（纯函数，可测）；引擎初始化失败每 6 秒重试；`StatusText` 把引擎状态翻成人话；非安卓平台全部是无害空操作（见坑 58–61） |
+| `Scripts/MobileStt.cs` | 语音输入：安卓 `SpeechRecognizer` + `AndroidJavaProxy`（十个回调都要实现）；**所有调用都排到 UI 线程**（坑 102）；**JNI 包装在闭包内创建/释放**（坑 103）；错误码 → 人话（`ErrorText`，第 20 轮，错误码 9/11 是玩家报的）；可恢复错误自动重试一次；`Diagnostics()` 打出每一步的真实情况 |
+| `Scripts/SoftShadow.cs` | 脚下接触阴影（径向渐变 + `Sprites/Default`），替代"黑色方块"（坑 90） |
+| `Scripts/MiniAnimal.cs` | 八种小游戏主角（基本体搭的动物），物种读 `dshpet.species` |
+| `Scripts/SceneClock.cs` | 场景加载时恢复 `Time.timeScale`（跑酷暂停把它设成 0，会跨场景活下来，坑 101） |
 | `Tests/Editor/MobileInputTests.cs` | 23 条测试（手势 / 摇杆 / 缩放 / 手机布局 / 坐标变换） |
+
+（手机端另有 `DshMobile.Tests` 里的语音文字处理、阴影渐变、小动物部件等用例，合计 **44** 条。）
 
 ### 小游戏（`Assets/MiniGames/`，程序集 `DshMiniGames` + `DshMiniGames.Editor`）
 
@@ -128,11 +136,17 @@
 | `Scripts/FlyBird/FlyBirdGame.cs` | 玩法与场景内容（鸟/管道/地面都是 primitive 生成）、按屏幕形状取景（`FitCamera`）、管道生成与回收、点击输入、死亡与结算 |
 | `Scripts/FlyBird/FlyBirdHud.cs` | IMGUI：分数、最高分、宠物币、开始提示、结算面板（再来一次 / 回到宠物小屋）、`PointerOverPanel`（防"点按钮同时扇翅膀"） |
 | `Editor/FlyBirdSceneMenu.cs` | 菜单：`Tools/DSH Mini/{Build FlyBird Scene, Add Mini Game Scenes To Build Settings, Report Mini Games}` |
-| `Scripts/JumpQuest/JumpQuestRules.cs` | 横版平台玩法的纯逻辑：跳跃弧线（含按住跳更高）、最小平移量碰撞解算、踩怪/侧撞判定、关卡生成与**可通过性校验**、金币与评价 |
-| `Scripts/JumpQuest/JumpQuestGame.cs` | 玩法与场景内容（关卡由数据生成 primitive）、相机跟随、敌人巡逻、金币与终点、三条命 |
-| `Scripts/JumpQuest/JumpQuestHud.cs` | IMGUI：金币/命数、开始与结算面板、**按住式**触屏方向键（借 `MobileTouch`，可同时按走与跳） |
-| `Tests/Editor/FlyBirdRulesTests.cs` | 12 条测试（抬升与下落、帧率无关、长帧钳位、难度封顶、间隙永远可达、碰撞算宽度、金币单调） |
-| `Tests/Editor/JumpQuestRulesTests.cs` | 12 条测试（蓄力距离与封顶、充能条与距离一致、完美/落地/落空的判定、方块永远跳得到且留有余量、难度递增、金币单调、飞行弧线与判定一致、偏移不超出一维判定） |
+| `Scripts/JumpQuest/JumpQuestRules.cs` | 跳一跳的纯逻辑：蓄力距离、落点判定（**平面距离**）、**每一跳都朝下一个方块中心**、`SafeGap`（保证从最差落点也跳得到）、飞行弧线、**相机取景 `Frame`/`ViewOffset`**（正交相机的屏幕包围盒）、金币与评价 |
+| `Scripts/JumpQuest/JumpQuestGame.cs` | 玩法与场景内容（方块由数据生成 primitive、**回收身后的方块**）、**算出来的相机跟随**（含"不许把主角弄丢"的兜底）、朝向与俯仰、指向下一块的白线 |
+| `Scripts/JumpQuest/JumpQuestHud.cs` | IMGUI：分数/最高分/宠物币、蓄力条与提示、结算面板、**整屏按住式**蓄力区（借 `MobileTouch`），样式全部缓存 |
+| `Scripts/CatchFruit/CatchRules.cs` / `CatchFruitGame.cs` / `CatchFruitHud.cs` | 接果子：篮子边界与帧率无关、难度两条曲线封顶、**篮子永远来得及横穿屏幕**、水果轮转与金币评价；滑动屏幕操作 |
+| `Scripts/SliceFruit/SliceRules.cs` / `SliceGame.cs` / `SliceHud.cs` | 切水果：**线段**判定（不是点）、起飞速度**反推**（每个水果空中 ≥1.55 秒）、无尽模式与八关闯关（目标分是"可得分"的 62%~82%，并用"完美玩家逐帧打完整关"的模拟测试证明过得去） |
+| `Scripts/AngryBirds/BirdRules.cs` / `BirdLevels.cs` / `AngryBirdsGame.cs` / `AngryBirdsHud.cs` | 弹弓小鸟：纯模拟（支撑/平衡坍塌、材质伤害、落地弹跳滚动）+ **生成器先用同一段模拟自己打一遍**（过不了就换种子）→ 所以"随机搭"和"保证通关"能同时成立；游戏只**回放**模拟给出的事件表 |
+| `Scripts/Shared/FruitArt.cs` | 接果子与切水果共用的水果/炸弹造型（基本体搭的） |
+| `Editor/FlyBirdSceneMenu.cs` | 菜单：`Tools/DSH Mini/{Build FlyBird Scene, Build JumpQuest Scene, Build CatchFruit Scene, Build SliceFruit Scene, Build AngryBirds Scene, Add Mini Game Scenes To Build Settings, Report Mini Games}` |
+| `Tests/Editor/FlyBirdRulesTests.cs` | 14 条测试（抬升与下落、帧率无关、长帧钳位、难度封顶、间隙永远可达、碰撞算宽度、金币单调） |
+| `Tests/Editor/JumpQuestRulesTests.cs` | 18 条测试（蓄力距离与封顶、完美/落地/落空的判定、**"从最差落点也跳得到"逐跳模拟 250 跳**、侧移吃掉的长度预算要还回来、朝方块飞、相机取景在 8 种宽高比下都装得下、金币单调） |
+| `Tests/Editor/CatchRulesTests.cs` / `SliceRulesTests.cs` / `BirdRulesTests.cs` | 接果子 13 条、切水果 12 条（含八关完美玩家模拟）、弹弓小鸟 15 条（含 12 关 × 4 种子复现通关）；小游戏合计 **72** 条 |
 
 在屋里玩的**拼图**没有独立场景：`DshPet` 里的 `PetPuzzle`（纯状态机）+ `PuzzleArt`（程序化画图）+ `PetHud.DrawPuzzle`（面板）。
 三个玩法的形状是一样的：**一个纯逻辑规则类（全部可单测）+ 一个只负责画矩形/面板的场景或面板 + 一个 IMGUI HUD**。
@@ -739,6 +753,31 @@
     （四层石塔比两层的冰屋难得多，而且能被证明可通关）。
     改完之后 48/48 关都是真正随机生成的、且全部验证可通关，平凡兜底一次都没用上。
     **当"保证"和"随机"冲突时，缩小随机的空间，而不是缩小保证。**
+111. **"不许失败"的承诺必须按最差情况算，而不是按平均值。** 跳一跳第一版的上限是
+    "两块方块中心相距 3.2"，而满蓄力能跳 3.6——看起来有 0.4 的余量。但玩家**是站在方块上的**：
+    落在靠前边缘时离中心差 0.62，下一跳就需要 3.82，**满蓄力也够不着**。这类"看起来有余量、
+    实际会死"的边界，只在"把最差合法状态代进去"时才会露出来。修法是把承诺写成一个函数
+    （`SafeGap = 满蓄力 − 方块半径 − 安全余量`）并让生成器**只能**用它，然后写一条
+    **逐跳模拟**的测试：每一跳都站在离下一个方块最远的合法位置，跑 250 跳。
+    第二轮又发现：方块还会**横向漂移**，而漂移会吃掉直线距离（漂移 0.6 就少 0.6），
+    于是"长度预算"要按 `sqrt(gap² + 侧移²)` 算。**同一个承诺，把每一个几何量都代进去才算数。**
+112. **"相机跟随"不是"每帧把相机挪过去"，先问"屏幕中心到底在哪"。** 第一版写的是
+    `position = 目标 + 旋转 * 偏移`——看起来像"站在目标后上方的固定视角"，实际上那个偏移
+    经过旋转之后，**视线中心落在离目标一个多单位、而且深度差 7 个单位的地方**。
+    没人算过它，因为它"看起来还行"。第二层错误更隐蔽：缩放取的是
+    `max(按高度, 按宽度/宽高比)`——**竖屏手机上这个 max 取的是横屏那一支**，
+    于是整个玩具被缩成屏幕中间一条。
+    现在取景是**算出来的**：把"必须看见的点"（动物 + 两块方块的八个角）投影到相机的
+    `right/up` 轴上，取能装下它们的最小视野。正交相机下**只有焦点在屏幕轴上的投影有意义**，
+    所以这一步是纯几何、可以单测（八种宽高比 × 三种间距全部断言"每个点都在画面内"）。
+113. **中文指令解析里，"过"既是"过来"也是过去时。** 第一版的"陈述句守卫"是
+    "含 了/过 就不是指令"，于是**「过来」——最常用的一句指令——被整句吃掉**：
+    `过` 命中，判定成过去时报告。修法是让"过"在 `过来/过去` 里不算时态标记。
+    教训不是"中文难"，而是**这类守卫规则的误伤一定会落在最高频的输入上**，
+    所以每加一条守卫，就要拿"最常用的那几句"和"最像指令的闲聊"各写一组测试
+    （现在是 19 条：13 句指令 + 11 句反例，反例里包括「我今天吃了饭」「你吃饭了吗」）。
+    另外，指令**不经过模型**：模型被要求"既聊天又真的去做"时，早晚会回一句"好的，我这就去！"
+    然后哪儿也不去，而玩家分不出"宠物懒"和"功能坏了"。
 
 ---
 
@@ -752,6 +791,8 @@ Assets\Pet\Scenes\PetRoom.unity     # 虚拟宠物
 Assets\MiniGames\Scenes\FlyBird.unity     # 小鸟飞行
 Assets\MiniGames\Scenes\JumpQuest.unity   # 跳一跳
 Assets\MiniGames\Scenes\CatchFruit.unity  # 接果子
+Assets\MiniGames\Scenes\SliceFruit.unity  # 切水果（无尽 + 八关）
+Assets\MiniGames\Scenes\AngryBirds.unity  # 弹弓小鸟（随机关卡，保证通关）
 
 # 仓库
 git remote -v                       # origin = github.com/codesknight/roompet
@@ -776,7 +817,7 @@ Tools/DSH Mobile/Preview/Report Current Viewport    # 打印当前视口 / 方�
 Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
-EditMode，期望 278/278
+EditMode，期望 303/303
 
 # 存档
 %USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\

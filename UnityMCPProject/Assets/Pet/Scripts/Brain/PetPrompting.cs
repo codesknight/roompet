@@ -59,6 +59,16 @@ namespace DshPet
             }
             sb.AppendLine();
 
+            if (!string.IsNullOrWhiteSpace(ctx.Perception))
+            {
+                // The pet's eyes. Before this existed the model had no idea the room had a bowl in it,
+                // so "饭碗在哪" could only be answered by inventing something — and the player's
+                // report was that the pet should know where things are and act on it.
+                sb.AppendLine("【你看到的东西】");
+                sb.AppendLine(ctx.Perception.Trim());
+                sb.AppendLine();
+            }
+
             if (ctx.LongTermFacts != null && ctx.LongTermFacts.Length > 0)
             {
                 sb.AppendLine("【你记得的事】");

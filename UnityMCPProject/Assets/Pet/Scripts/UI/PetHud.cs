@@ -3148,6 +3148,12 @@ namespace DshPet
 
             GUILayout.Label("语音输入（对着麦克风说）在手机上有麦克风按钮：按一下说话，识别到的字会填进输入框。", _small);
 
+            // The commands are recognised on the device, so they work through the microphone as well
+            // as through the text box — which is worth saying out loud somewhere a player can find.
+            GUILayout.Label("它听得懂短指令（打字或说话都行，本地识别，不花 token）：「过来」「别动」「跟着我」" +
+                            "「吃饭」「喝水」「拿球」「陪我玩」「去睡觉」「上厕所」「洗澡」「梳毛」" +
+                            "「饭碗在哪」。", _small);
+
             if (DshMobile.MobileStt.AvailableNow)
             {
                 bool sttOn = GUILayout.Toggle(DshMobile.MobileStt.Enabled, " 显示麦克风按钮", _small);

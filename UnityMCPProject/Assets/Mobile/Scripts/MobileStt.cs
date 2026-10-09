@@ -596,15 +596,70 @@ namespace DshMobile
             if (permission && _pendingStart) return "正在申请麦克风权限：同意之后会自动开始听。";
             if (!permission) return "还没有麦克风权限：点麦克风按钮，同意系统弹窗即可。";
             if (listening) return "正在听……说完会自动停下。";
-            if (errorCode == 5) return "识别服务拒绝了这次请求（错误码 5）。已经在自动换个方式重试。" +
-                                        "一直这样的话，把下面这段「语音诊断」发我看看。";
-            if (errorCode == 6) return "没听清（说了太久或太安静），再说一次就行。";
-            if (errorCode == 7) return "没听到声音，再试一次。";
-            if (errorCode == 8) return "识别服务正忙（错误码 8），等一下再点一次麦克风。";
-            if (errorCode == 9) return "这台手机没有麦克风权限或没有识别服务，到系统设置里检查一下。";
-            if (errorCode > 0) return $"识别失败（错误码 {errorCode}）。";
+            if (errorCode != int.MinValue && errorCode > 0)
+            {
+                string sentence = ErrorText(errorCode);
+                return _retryPending ? sentence + "（正在自动重试）" : sentence;
+            }
             if (!string.IsNullOrEmpty(error)) return error;
             return "语音输入就绪：点麦克风说话，识别到的文字会填进输入框。";
+        }
+
+        /// <summary>
+        /// What an Android recognition error code means, in a sentence the player can act on.
+        ///
+        /// Pure, and — this is the point — <b>shared</b>. The first version had two mappings: a
+        /// detailed one for the settings panel and a bare "识别失败（错误码 9）" for the conversation.
+        /// That is exactly backwards, because the conversation is where the player is looking: the
+        /// report came back twice from the phone, with codes 9 and 11, as a message that explained
+        /// nothing and offered nothing to do. A number is a fact about the platform; this is the
+        /// fact about the *player's* situation.
+        /// </summary>
+        public static string ErrorText(int code)
+        {
+            switch (code)
+            {
+                case 1: return "网络超时：识别服务没连上，检查一下网络再来一次。";
+                case 2: return "网络出错：这台手机的语音识别要联网，检查一下网络。";
+                case 3: return "录音出错：麦克风可能被别的应用占用了，关掉它们再试。";
+                case 4: return "识别服务出错了（错误码 4），再点一次麦克风通常就好了。";
+                case 5: return "识别服务拒绝了这次请求（错误码 5），我换个方式再试一次。";
+                case 6: return "没听清（说得太久或太安静），再说一次就行。";
+                case 7: return "没听到声音：靠近一点、大声一点再说一次。";
+                case 8: return "识别服务正忙（错误码 8），等一下再点麦克风。";
+                case 9: return "麦克风权限不够（错误码 9）：到系统设置里允许「录音」，" +
+                               "顺便看看系统的语音服务有没有被禁用。";
+                case 10: return "请求太频繁了（错误码 10），歇一会儿再说话。";
+                case 11: return "系统语音服务断开了（错误码 11），再点一次麦克风重连。";
+                case 12: return "这台手机的语音识别不支持中文，先用打字吧。";
+                case 13: return "这台手机还没下载中文语音包（错误码 13），到系统设置里装上再试。";
+                case 14: return "这台手机的语音识别不可用（错误码 14），先用打字吧。";
+                case 15: return "系统正在处理语音包的下载（错误码 15），稍后再试。";
+                default: return $"识别失败（错误码 {code}），再点一次麦克风；" +
+                                "一直这样的话，把设置里的「语音诊断」发我看看。";
+            }
+        }
+
+        /// <summary>
+        /// Whether an error is the kind that a second attempt can fix on its own.
+        ///
+        /// These are the ones that are about the *attempt* rather than about the phone: a server that
+        /// dropped the connection, a request that timed out, an engine that refused this particular
+        /// question. Retrying one of those is invisible and useful; retrying "no speech package
+        /// installed" would be a loop that hides the reason, so those are reported instead.
+        /// </summary>
+        public static bool IsTransient(int code)
+        {
+            switch (code)
+            {
+                case 1:   // ERROR_NETWORK_TIMEOUT
+                case 2:   // ERROR_NETWORK
+                case 4:   // ERROR_SERVER
+                case 11:  // ERROR_SERVER_DISCONNECTED
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private static AndroidJavaObject CurrentActivity()
@@ -698,7 +753,11 @@ namespace DshMobile
             {
                 _listening = false;
                 _errorCode = error;
-                _error = "识别失败（错误码 " + error + "）";
+
+                // The same sentence the settings panel shows, because the conversation is where the
+                // player is actually looking. Codes 9 and 11 were reported from the phone as a bare
+                // "识别失败（错误码 9）", which tells a player nothing and offers nothing to do.
+                _error = ErrorText(error);
 
                 // The engine never even became ready: this is the shape of failure that means "this
                 // phone did not like the question", not "the phone did not hear you". Try the other
@@ -712,9 +771,22 @@ namespace DshMobile
                     return;
                 }
 
+                // An engine that *was* working and then lost its connection gets one more attempt
+                // with the same question and a fresh object — the shape is not the problem, the drop
+                // is. (ERROR_SERVER_DISCONNECTED, 11, arrived from the phone as a bare error code.)
+                if (IsTransient(error) && _attemptsThisPress < 2)
+                {
+                    _needsRebuild = true;
+                    _retryPending = true;
+                    return;
+                }
+
                 // 5 ERROR_CLIENT and 8 ERROR_RECOGNIZER_BUSY both leave the object in a state where
-                // the next press would otherwise be dropped on the floor.
-                if (error == 5 || error == 8) _needsRebuild = true;
+                // the next press would otherwise be dropped on the floor. 9 INSUFFICIENT_PERMISSIONS
+                // does the same on the ROMs that report it for a *stale* recogniser rather than for a
+                // missing permission — the permission was checked before starting, so the object is
+                // the suspect, and rebuilding it is the only lever this class has.
+                if (error == 5 || error == 8 || error == 9) _needsRebuild = true;
             }
 
             public void onResults(AndroidJavaObject results)

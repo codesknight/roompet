@@ -12,7 +12,7 @@ namespace DshPet
     /// </summary>
     public class PetController : MonoBehaviour
     {
-        public enum Mode { Idle, Wander, Approach, React, Sleep, Fetch }
+        public enum Mode { Idle, Wander, Approach, React, Sleep, Fetch, Follow }
 
         [Header("Wiring")]
         public PetAvatar Avatar;
@@ -83,6 +83,10 @@ namespace DshPet
 
                 case Mode.Fetch:
                     TickFetch(dt);
+                    break;
+
+                case Mode.Follow:
+                    TickFollow(dt);
                     break;
 
                 default:
@@ -469,6 +473,7 @@ namespace DshPet
             _idleTimer = Mathf.Lerp(IdleMin, IdleMax, (float)_rng.NextDouble());
             _pending = null;
             CurrentBehavior = null;
+            _stayUntil = 0f;
         }
 
         /// <summary>True while the pet is free to start something new.</summary>
@@ -590,6 +595,107 @@ namespace DshPet
 
         /// <summary>Turn to look at a world point (the camera, when the player is talking).</summary>
         public void LookAt(Vector3 worldPoint) => Avatar.FaceTowards(worldPoint);
+
+        // ------------------------------------------------------------------ orders
+        //
+        // What "听得懂主人指令" means in code. An order is not a new kind of movement: it is the same
+        // walk-to-it-and-use-it the pet already does on its own, aimed by the owner instead of by the
+        // need table. That is also why it works at all — the pet's spatial knowledge is the thing
+        // being commanded, exactly as the player described it.
+
+        /// <summary>
+        /// Walks to a kind of object and uses it. False when the room has none that is usable, which
+        /// is the one case the pet has to admit to rather than silently ignore.
+        /// </summary>
+        public bool OrderTo(InteractableKind kind)
+        {
+            var item = FindInteractable(kind);
+            if (item == null) return false;
+
+            GoTo(item);
+            return true;
+        }
+
+        /// <summary>Come and stand in front of the owner.</summary>
+        public bool ComeToOwner()
+        {
+            if (Player == null) return false;
+
+            Vector3 spot = Player.position - (Player.position - transform.position).normalized * 1.1f;
+            GoToPoint(ClampToRoom(spot), PetBehaviorLibrary.Get("seek_attention"));
+            return true;
+        }
+
+        /// <summary>
+        /// Walk with the owner for a while.
+        ///
+        /// A mode of its own rather than "go to the player once": the point of 「跟着我」 is that it
+        /// stays true while the owner moves, so the target is re-read every frame instead of being
+        /// fixed at the moment of the order.
+        /// </summary>
+        public bool FollowOwner(float seconds = 25f)
+        {
+            if (Player == null) return false;
+
+            DropCarriedBall();
+            _pending = null;
+            _freeTarget = null;
+            _freeBehavior = null;
+            _followUntil = Time.time + seconds;
+            CurrentBehavior = PetBehaviorLibrary.Get("seek_attention");
+            CurrentMode = Mode.Follow;
+            return true;
+        }
+
+        private float _followUntil;
+
+        /// <summary>How close the pet tries to stay while following.</summary>
+        public float FollowDistance = 1.6f;
+
+        private void TickFollow(float dt)
+        {
+            if (Player == null || Time.time > _followUntil)
+            {
+                EnterIdle();
+                return;
+            }
+
+            Avatar.FaceTowards(Player.position);
+
+            Vector3 flat = Player.position - transform.position;
+            flat.y = 0f;
+
+            if (flat.magnitude > FollowDistance)
+            {
+                Avatar.SetLocomotion(1f);
+                transform.position = ClampToRoom(
+                    transform.position + flat.normalized * (WalkSpeed * dt));
+            }
+            else
+            {
+                // Close enough: walk in place visually stopped, but keep facing the owner.
+                Avatar.SetLocomotion(0f);
+            }
+        }
+
+        /// <summary>
+        /// Stay put for a while — 「别动」.
+        ///
+        /// Implemented as a long scripted reaction rather than a new mode, because "not moving" is
+        /// already what the reaction state does, and because the scheduler only runs when the pet is
+        /// idle: being in any other state is exactly what stops it wandering off mid-order.
+        /// </summary>
+        public void Stay(float seconds = 20f)
+        {
+            ReactTo(PetAction.Sit, seconds);
+            _stayUntil = Time.time + seconds;
+            CurrentBehavior = PetBehaviorLibrary.Get("sit_stare");
+        }
+
+        private float _stayUntil;
+
+        /// <summary>True while the pet is holding position on purpose, for the HUD and the prompt.</summary>
+        public bool IsStaying => _stayUntil > Time.time && CurrentMode == Mode.React;
 
         public void SnapTo(Vector3 position)
         {
