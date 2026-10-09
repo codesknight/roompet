@@ -366,6 +366,34 @@ namespace DshMobile.Tests
         }
 
         [Test]
+        public void PhoneLayout_ButtonsClearTheCollapsedBarInEveryOrientation()
+        {
+            // The assertion above only ever saw the *expanded* layout, where a side panel really is
+            // out of the buttons' way. Collapsed, the bar is a full-width strip along the bottom
+            // edge — and on a phone held sideways the action button was drawn straight on top of it,
+            // with the bar (a far bigger target) taking every tap meant for the button.
+            foreach (var design in PhoneDesigns)
+            {
+                foreach (bool transcriptVisible in new[] { false, true })
+                {
+                    var layout = DshPet.PetHud.ComputeLayout(design.x, design.y, 4, transcriptVisible);
+                    var controls = DshPet.PetHud.ComputeMobileControls(layout);
+                    string where = $"at {design.x}x{design.y} ({(transcriptVisible ? "expanded" : "collapsed")})";
+
+                    // Where the collapsed bar would be drawn, whatever the layout says about sides.
+                    var bar = new Rect(layout.Chat.x,
+                        layout.Chat.yMax - DshPet.PetHud.MobileChatBarHeight,
+                        layout.Chat.width, DshPet.PetHud.MobileChatBarHeight);
+
+                    Assert.IsFalse(controls.Action.Overlaps(bar), $"action button under the chat bar {where}");
+                    Assert.IsFalse(controls.Throw.Overlaps(bar), $"throw button under the chat bar {where}");
+                    Assert.IsFalse(controls.Chat.Overlaps(bar), $"chat pill under the chat bar {where}");
+                    Assert.IsFalse(controls.StickZone.Overlaps(bar), $"stick zone over the chat bar {where}");
+                }
+            }
+        }
+
+        [Test]
         public void PhoneLayout_StatusAndChatStillDoNotOverlap()
         {
             // The desktop invariant, re-checked at phone design sizes: the chat panel is drawn
@@ -673,6 +701,133 @@ namespace DshMobile.Tests
             finally
             {
                 MobileHaptics.Sink = null;
+            }
+        }
+
+        // ------------------------------------------------------------------- hit testing
+
+        /// <summary>
+        /// "If the player taps here, which control gets it?" — asked of the real lookup.
+        ///
+        /// This is the question behind two rounds of "按钮点不动": a microphone drawn on top of a
+        /// full-width chat bar, and a joystick zone that was written as its own oversized rectangle
+        /// covering both. Neither is visible in a screenshot, and neither can be reproduced without
+        /// a phone — unless the lookup itself can be asked.
+        /// </summary>
+        [Test]
+        public void HitTest_TheSmallControlOnTopWins()
+        {
+            MobileTouch.Reset();
+            try
+            {
+                var bar = new Rect(0f, 2200f, 1080f, 200f);
+                var mic = new Rect(40f, 2250f, 104f, 104f);
+                MobileTouch.RegisterButton("bar", bar, true);
+                MobileTouch.RegisterButton("mic", mic, true);
+
+                Assert.AreEqual("mic", MobileTouch.HitTest(mic.center),
+                    "the microphone is on top of the bar and must get the tap");
+                Assert.AreEqual("bar", MobileTouch.HitTest(new Vector2(bar.xMax - 30f, bar.center.y)),
+                    "and the rest of the bar is still tappable");
+                Assert.IsNull(MobileTouch.HitTest(new Vector2(540f, 10f)),
+                    "a tap on nothing hits nothing");
+            }
+            finally
+            {
+                MobileTouch.Reset();
+            }
+        }
+
+        [Test]
+        public void HitTest_IgnoresHiddenControlsAndAModalPanel()
+        {
+            MobileTouch.Reset();
+            try
+            {
+                var rect = new Rect(100f, 100f, 200f, 200f);
+                MobileTouch.RegisterButton("hidden", rect, false);
+                Assert.IsNull(MobileTouch.HitTest(rect.center), "an unregistered-visible control is not there");
+
+                MobileTouch.RegisterButton("shown", rect, true);
+                Assert.AreEqual("shown", MobileTouch.HitTest(rect.center));
+
+                // A modal panel owns the screen: nothing behind it may take a tap, which is how
+                // "the button under the dialog reacted" gets prevented.
+                MobileTouch.PlayInputEnabled = false;
+                Assert.IsNull(MobileTouch.HitTest(rect.center), "a modal panel swallows every tap");
+            }
+            finally
+            {
+                MobileTouch.Reset();
+            }
+        }
+
+        // ----------------------------------------------------------------- mini animals
+
+        [Test]
+        public void MiniAnimal_SpeciesIdsMapToAnimals()
+        {
+            // The hero of 跳一跳 is the pet, and the only thing tying the two assemblies together is
+            // the species id in the save — so that mapping has to be right for every id the pet game
+            // can write, and has to survive junk.
+            Assert.AreEqual(MiniAnimalKind.Fox, MiniAnimal.FromSpeciesId("fox"));
+            Assert.AreEqual(MiniAnimalKind.Cat, MiniAnimal.FromSpeciesId("cat"));
+            Assert.AreEqual(MiniAnimalKind.Rabbit, MiniAnimal.FromSpeciesId("rabbit"));
+            Assert.AreEqual(MiniAnimalKind.Bear, MiniAnimal.FromSpeciesId("bear"));
+
+            // Case and padding come from a save file, not from code.
+            Assert.AreEqual(MiniAnimalKind.Fox, MiniAnimal.FromSpeciesId(" FOX "));
+
+            // An unknown or missing species still has to produce an animal.
+            Assert.AreEqual(MiniAnimalKind.Cat, MiniAnimal.FromSpeciesId("dragon"));
+            Assert.AreEqual(MiniAnimalKind.Cat, MiniAnimal.FromSpeciesId(""));
+            Assert.AreEqual(MiniAnimalKind.Cat, MiniAnimal.FromSpeciesId(null));
+
+            for (int i = 0; i < MiniAnimal.KindCount; i++)
+            {
+                var kind = (MiniAnimalKind)i;
+                Assert.IsFalse(string.IsNullOrEmpty(MiniAnimal.Name(kind)), $"{kind} has no name");
+            }
+        }
+
+        [Test]
+        public void MiniAnimal_FursAreDistinguishable()
+        {
+            // Eight animals that look the same are eight animals the player cannot tell apart — and
+            // the point of this class was "the hero should be my pet".
+            var seen = new HashSet<int>();
+            for (int i = 0; i < MiniAnimal.KindCount; i++)
+            {
+                var fur = MiniAnimal.Fur((MiniAnimalKind)i);
+                int key = ((int)(fur.r * 255f) << 16) | ((int)(fur.g * 255f) << 8) | (int)(fur.b * 255f);
+                Assert.IsTrue(seen.Add(key), $"two animals share a fur colour at {i}");
+            }
+        }
+
+        [Test]
+        public void MiniAnimal_BuildsARealAnimal()
+        {
+            // Built from primitives, so the failure modes are "nothing was created", "it is a pile
+            // of parts at the origin" and "it is the wrong size" — all checkable here.
+            var root = MiniAnimal.Build(null, MiniAnimalKind.Fox, 1f);
+            try
+            {
+                var renderers = root.GetComponentsInChildren<Renderer>();
+                Assert.GreaterOrEqual(renderers.Length, 10,
+                    "an animal needs a body, a head, ears, a tail, feet and a face");
+                Assert.AreEqual(0, root.GetComponentsInChildren<Collider>().Length,
+                    "decorative parts must not have colliders");
+
+                // It stands on its origin and is about as tall as asked for.
+                var bounds = new Bounds(root.position, Vector3.zero);
+                foreach (var renderer in renderers) bounds.Encapsulate(renderer.bounds);
+                Assert.Greater(bounds.max.y, 0.7f, "the animal is too short to read as a character");
+                Assert.Less(bounds.max.y, 1.4f, "and not a giant");
+                Assert.Less(bounds.min.y, 0.2f, "it stands on the ground, not in the air");
+            }
+            finally
+            {
+                Object.DestroyImmediate(root.gameObject);
             }
         }
     }

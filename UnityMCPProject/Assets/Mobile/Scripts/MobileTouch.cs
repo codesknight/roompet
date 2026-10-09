@@ -120,6 +120,37 @@ namespace DshMobile
             return Buttons.TryGetValue(id, out state) ? state.Rect : new Rect();
         }
 
+        /// <summary>
+        /// Which control a tap at this screen point would actually be given to.
+        ///
+        /// Deciding that is the whole point of this class, and until now nothing could *ask* it:
+        /// the only way to find out why a button "does not work" was to hold a phone and try. This
+        /// is the same lookup the input pass performs, exposed so a test — or the editor — can ask
+        /// "if I tap here, who gets it?". That is how the overlapping-target bug (a full-width chat
+        /// bar swallowing the microphone sitting on top of it) gets caught without a device.
+        ///
+        /// Returns null when the point hits nothing, which is also an answer.
+        /// </summary>
+        public static string HitTest(Vector2 screenPoint)
+        {
+            if (!PlayInputEnabled) return null;
+            return FindButtonAt(screenPoint);
+        }
+
+        /// <summary>
+        /// How many controls are registered and visible right now. A zero here means the HUD never
+        /// drew its buttons — the state that made the microphone invisible for a whole round.
+        /// </summary>
+        public static int VisibleButtonCount()
+        {
+            int count = 0;
+            foreach (var pair in Buttons)
+            {
+                if (pair.Value.Visible) count++;
+            }
+            return count;
+        }
+
         // --------------------------------------------------------------------- state
 
         /// <summary>

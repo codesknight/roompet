@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/FlyBird.unity`（小鸟飞行）、`Assets/MiniGames/Scenes/JumpQuest.unity`（跳一跳）、`Assets/MiniGames/Scenes/CatchFruit.unity`（接果子），五个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **235/235 通过**（虚拟宠物 152 + 跑酷 15 + 手机端 34 + 小游戏 34），EditMode |
+| 测试 | **242/242 通过**（虚拟宠物 152 + 跑酷 15 + 手机端 41 + 小游戏 34），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -170,6 +170,7 @@
    | `dshpet.tts` / `dshpet.tts.hinted` | 朗读开关（**第 14 轮起默认开**，和叫声一致）/ "已经提示过设置里能开朗读" |
    | `dshpet.stt` | 语音输入开关（默认开，关掉就不显示麦克风按钮） |
    | `dshpet.memory.level` | 记忆配对的难度（`easy`/`normal`/`hard`） |
+   | `dshpet.species` | **小游戏也读它**：跳一跳的主角就是这个物种（`DshMobile.MiniAnimal`）|
    | `dshpet.coins` | 宠物币（`DshMobile.PetWallet`） |
    | `dshpet.collection` | 商城/仓库/背包的 JSON（`PetCollection`） |
    | `dshpet.world.unlocked` / `dshpet.world.current` | 地图解锁列表 / 当前所在地 |
@@ -612,6 +613,37 @@
     意图，拿到权限自动开始听**；③国产 ROM 的识别服务要 `EXTRA_CALLING_PACKAGE`，否则回
     `ERROR_CLIENT` 就像"听过了"。**"点不动"是一个体验描述，不是一个 bug 描述**：
     尺寸、时序、平台差异都要各查一遍。
+86. **emoji 第五次，而且这次是"看不见的按钮"。** 桌面聊天底栏的静音按钮写着 🔊/🔇——
+    内建字体里没有这两个字形，所以它一直是**一个空白按钮**（前面四次：宠物页签、底栏标签、
+    圆按钮、记忆配对牌面）。结论再升级一次：**凡是玩家要点的东西，标签只用汉字**；
+    emoji 只允许出现在"纯装饰、且不参与布局"的地方。
+87. **形状就是信息。** 接果子的果实以前是五种颜色的 `Sphere`——玩家看到的是"小球"（原话：
+    "怎么是小球"）。换成用基本体搭的苹果/橘子/梨/香蕉/胡萝卜/番茄之后，**一眼就知道要接的是食物**。
+    顺带一条：带梗带叶的果子必须**更大**才看得出细节（0.28 → 0.34 单位），
+    因为细节是长在轮廓外面的。
+88. **两个程序集之间，PlayerPrefs key 比程序集引用更松。** 跳一跳的主角要变成"宠物本身"，
+    但小游戏（`DshMiniGames`）**故意**只引用共享层 `DshMobile`，够不到 `DshPet` 的物种表。
+    与其为了一个造型把依赖接上去，不如**读同一个 key**（`dshpet.species`）——
+    这和它们回房间用的 `dshpet.away` 是同一种做法：**数据耦合比代码耦合更难变成一团乱麻**。
+    映射函数（`FromSpeciesId`）是纯的，所以"八个物种 id 各对应哪只动物、垃圾输入落到谁"全都能单测。
+89. **`Destroy` 是延迟的，所以"我删掉了"在当帧是假的。** 新写的"小动物"构件里，
+    每个部件都用 `Destroy(collider)` 去掉碰撞体——游戏里没问题（下一帧就没了），
+    但测试里断言"没有碰撞体"时看到的是 **21 个**。编辑器里正确做法是 `DestroyImmediate`。
+    **一条自己抓到自己 bug 的测试，比十条通过的测试更值钱**：它证明这条断言真的在测东西。
+90. **"按钮没反应"要先量一遍"点击送到哪了"，再谈功能。** 用户报"点蓝色的说没反应"，
+    第一嫌疑是两轮前刚修过的触控命中（大聊天栏吞掉小按钮）。于是给触控层加了
+    `MobileTouch.HitTest(屏幕坐标)`——问的就是它自己用来分发的那段逻辑——答案是 `pet.mic` 赢了，
+    命中没问题。**于是问题被推进到下一层**：真的在听，只是失败得无声无息
+    （错误信息只画在设置面板里，而玩家在聊天面板）。这两件事必须分开测：
+    **输入有没有送到**是触控层的事，**送到之后做了什么**是功能的事。
+91. **失败必须留在屏幕上的历史里。** 识别失败以前写进一个会被每帧重画的标签，
+    展开面板才看得见、切走就没了。现在同时：①写成对话里的**系统提示**（留在记录里、可回读、可截图）；
+    ②底栏一行实时状态；③按钮自己变成「等」（权限弹窗还开着）。**"没反应"往往就是"反馈放错了地方"。**
+92. **第一次失败以后要换一种问法，而不是再问一遍。** 安卓识别器有两种常见形状：
+    带 `EXTRA_LANGUAGE=zh-CN`（能保证中文，但部分 ROM 直接回 `ERROR_CLIENT`）和不带（交给系统）。
+    与其猜这台手机认哪种，不如**失败一次就换另一种再试一次**，并且**先重建识别器**——
+    已经报过错的识别器对象可以一直错下去。只重试一次：重试两次失败说明这台手机就是不行，
+    再打下去只会把一条清楚的错误信息变成一个谜。
 
 ---
 
@@ -649,7 +681,7 @@ Tools/DSH Mobile/Preview/Report Current Viewport    # 打印当前视口 / 方�
 Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
-EditMode，期望 235/235
+EditMode，期望 242/242
 
 # 存档
 %USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\

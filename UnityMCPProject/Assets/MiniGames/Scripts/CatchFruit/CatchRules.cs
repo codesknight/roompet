@@ -38,7 +38,12 @@ namespace DshMiniGames
             SpawnHeight = 6.4f,
             BasketSpeed = 7.6f,
             BasketHalfWidth = 0.85f,
-            FruitHalfWidth = 0.28f,
+
+            // 0.28 was a ball; a fruit built out of a body, a stem, a leaf and a calyx needs to be
+            // bigger than that before any of it reads on a phone. The catch rule adds half of this
+            // to the basket's reach, so making it bigger is also a little more forgiving — which a
+            // game about catching things can afford.
+            FruitHalfWidth = 0.34f,
             FallSpeed = 3.1f,
             FallSpeedPerPoint = 0.075f,
             MaxFallSpeed = 8.2f,
@@ -47,6 +52,9 @@ namespace DshMiniGames
             MinSpawnSeconds = 0.55f
         };
     }
+
+    /// <summary>What falls out of the tree: four fruits and two vegetables.</summary>
+    public enum FruitKind { Apple = 0, Orange = 1, Pear = 2, Banana = 3, Carrot = 4, Tomato = 5 }
 
     /// <summary>
     /// 接果子, as arithmetic.
@@ -58,6 +66,38 @@ namespace DshMiniGames
     /// </summary>
     public static class CatchRules
     {
+        /// <summary>How many kinds of thing fall.</summary>
+        public static int FruitKindCount => 6;
+
+        /// <summary>
+        /// Which kind of fruit a roll produces.
+        ///
+        /// Round-robin rather than random: a run should show the player everything the tree grows.
+        /// Random picks clump — the first phone to play this saw a screen of nothing but red spheres,
+        /// which is what "the fruit are all little balls" was actually describing.
+        /// </summary>
+        public static FruitKind FruitFor(int index)
+        {
+            int count = FruitKindCount;
+            int wrapped = index % count;
+            if (wrapped < 0) wrapped += count;
+            return (FruitKind)wrapped;
+        }
+
+        /// <summary>The name of a fruit, for messages.</summary>
+        public static string FruitName(FruitKind kind)
+        {
+            switch (kind)
+            {
+                case FruitKind.Apple: return "苹果";
+                case FruitKind.Orange: return "橘子";
+                case FruitKind.Pear: return "梨";
+                case FruitKind.Banana: return "香蕉";
+                case FruitKind.Carrot: return "胡萝卜";
+                default: return "番茄";
+            }
+        }
+
         /// <summary>Where the basket ends up after a frame of holding a direction.</summary>
         public static float StepBasket(float x, float direction, float dt, CatchSettings settings)
         {

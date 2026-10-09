@@ -1450,16 +1450,22 @@ namespace DshPet
                 if (micHere)
                 {
                     bool listening = DshMobile.MobileStt.Listening;
-                    if (MobileWidgets.CircleButton(MobileButtonIds.PetMic, micRect,
-                            listening ? "停" : "说",
-                            listening ? new Color(0.90f, 0.42f, 0.36f) : new Color(0.34f, 0.60f, 0.86f)))
+                    string label = listening ? "停" : (DshMobile.MobileStt.PendingPermission ? "等" : "说");
+                    var tint = listening
+                        ? new Color(0.90f, 0.42f, 0.36f)
+                        : (DshMobile.MobileStt.PendingPermission
+                            ? new Color(0.82f, 0.66f, 0.30f)
+                            : new Color(0.34f, 0.60f, 0.86f));
+
+                    if (MobileWidgets.CircleButton(MobileButtonIds.PetMic, micRect, label, tint))
                     {
                         // Speaking is a conversation, so tapping the microphone opens the
                         // transcript as well: the recognised words have to land somewhere visible,
-                        // and a player who has to tap twice to be heard will not bother.
+                        // and so does the reason when nothing is recognised at all.
                         _chatExpanded = true;
                         FillEditConfig(gm);
-                        DshMobile.MobileStt.StartListening();
+                        if (listening) DshMobile.MobileStt.StopListening();
+                        else StartListeningAndSay(gm);
                         _unreadMark = gm.Memory.Recent.Count;
                         return;
                     }
@@ -1514,17 +1520,10 @@ namespace DshPet
                 return;
             }
 
-            // Expanded: the real transcript, with a close button in its corner.
+            // Expanded: the real transcript. The 收起 button is drawn by DrawChat, which also
+            // reserves its width out of the header — see the comment there.
             DrawChat(gm, layout);
             _unreadMark = gm.Memory.Recent.Count;
-
-            var close = new Rect(rect.xMax - MobileUi.Touchable(88f) - 14f, rect.y + 14f,
-                MobileUi.Touchable(88f), MobileUi.Touchable(34f));
-            if (MobileWidgets.Button("pet.chatclose", close, "收起", new Color(0.75f, 0.35f, 0.35f)))
-            {
-                _chatExpanded = false;
-                GUI.FocusControl(null);
-            }
         }
 
         private int _unreadMark;
@@ -1606,11 +1605,14 @@ namespace DshPet
             // viewport's corner or the edge of the sidebar when there is one.
             float right = (layout.ChatOnSide ? Mathf.Min(layout.FreeBand.xMax, view.xMax) : view.xMax) - margin;
 
-            // Sit above the collapsed chat bar, not on it — but only where the bar really does
-            // own that strip.
-            float bottom = layout.ChatOnSide
-                ? view.yMax - margin
-                : layout.Chat.yMax - MobileChatBarHeight - 10f;
+            // Sit above the collapsed chat bar, not on it — in BOTH orientations.
+            //
+            // This used to ask `ChatOnSide`, on the theory that a side panel cannot be in the way of
+            // the buttons. It can: the transcript only moves to the side once it is *expanded*, and
+            // while it is collapsed the bar spans the full width of the bottom edge — so on a phone
+            // held sideways the action button was drawn straight on top of the bar, and the bar
+            // (a much bigger target) took the tap. The bar is the one thing that is always there.
+            float bottom = layout.Chat.yMax - MobileChatBarHeight - 10f;
 
             var action = new Rect(right - primary, bottom - primary, primary, primary);
             var throwRect = new Rect(right - secondary, action.y - gap - secondary, secondary, secondary);
@@ -1739,22 +1741,40 @@ namespace DshPet
             UiSkin.Panel(rect, 16f, new Color(0.10f, 0.09f, 0.13f, 0.94f),
                 new Color(1f, 1f, 1f, 0.10f), 2f, shadow: true);
 
+            // The 收起 button is laid out HERE, before the header, so the header can be narrowed by
+            // exactly its width. It used to be drawn last at the panel's top-right corner, on top of
+            // whatever the header happened to put there — the pet's name, its mood, and the
+            // "正在想…" indicator all ran underneath it.
+            var close = new Rect(rect.xMax - MobileUi.Touchable(88f) - 14f, rect.y + 14f,
+                MobileUi.Touchable(88f), MobileUi.Touchable(34f));
+
             float headerHeight = 46f;
-            var header = new Rect(rect.x + 18f, rect.y + 12f, rect.width - 36f, headerHeight);
+            var header = new Rect(rect.x + 18f, rect.y + 12f,
+                Mathf.Max(80f, rect.width - 36f - close.width - 10f), headerHeight);
             DrawChatHeader(gm, header);
             UiSkin.Fill(new Rect(rect.x + 14f, header.yMax + 4f, rect.width - 28f, 1f),
                 new Color(1f, 1f, 1f, 0.09f));
 
             // --- transcript ---
-            float footerHeight = 96f;
+            // The phone footer is two rows plus a status line: a thumb needs bigger targets than a
+            // mouse, and the voice/TTS state has to be readable *here* rather than only in settings.
+            float footerHeight = Mobile ? 138f : 96f;
             var logRect = new Rect(rect.x + 8f, header.yMax + 10f, rect.width - 16f,
                 Mathf.Max(60f, rect.yMax - footerHeight - header.yMax - 16f));
 
             DrawTranscript(gm, logRect);
 
             // --- input row + quick actions ---
-            var footer = new Rect(rect.x + 16f, rect.yMax - footerHeight + 8f, rect.width - 32f, footerHeight - 8f);
-            DrawChatFooter(gm, footer);
+            var footer = new Rect(rect.x + 16f, rect.yMax - footerHeight + 8f, rect.width - 32f,
+                footerHeight - 8f);
+            if (Mobile) DrawMobileChatFooter(gm, footer);
+            else DrawChatFooter(gm, footer);
+
+            if (MobileWidgets.Button("pet.chatclose", close, "收起", new Color(0.75f, 0.35f, 0.35f)))
+            {
+                _chatExpanded = false;
+                GUI.FocusControl(null);
+            }
         }
 
         /// <summary>
@@ -1882,6 +1902,187 @@ namespace DshPet
 
         private float _lastChatContent;
 
+        /// <summary>
+        /// The phone's chat footer: speak, type, send — and the two switches that used to be
+        /// findable only in the settings panel.
+        ///
+        /// Three things are different from the desktop row, and each is a fix rather than a taste:
+        ///
+        ///  · <b>The voice state is shown here.</b> The error from a failed recognition used to be
+        ///    written into <c>_voiceMessage</c>, which is only *rendered* by the settings panel — so
+        ///    on a phone, tapping the microphone and getting nothing produced literally no feedback.
+        ///    "The button does nothing" was the correct reading of the screen.
+        ///  · <b>Reading aloud has a button.</b> The pet talks now, and the only way to shut it up
+        ///    was a checkbox in a panel most players never open. A switch the player cannot find is
+        ///    a switch that does not work.
+        ///  · <b>Two rows instead of one crammed line.</b> The desktop footer packs three quick
+        ///    actions, a mute button, a volume slider and two hint labels into one 30px strip; on a
+        ///    637px-wide panel that row ran off the bottom edge of the screen.
+        /// </summary>
+        private void DrawMobileChatFooter(PetGameManager gm, Rect rect)
+        {
+            MobileWidgets.BeginFrame(Scale, SafeOffset);
+            DshMobile.MobileStt.Tick();
+
+            // ---------------------------------------------------------------- row 1: talk
+            float rowHeight = 46f;
+            bool micHere = DshMobile.MobileStt.Offered;
+            float micSize = micHere ? rowHeight : 0f;
+
+            var field = new Rect(rect.x + micSize + (micHere ? 8f : 0f), rect.y + 14f,
+                rect.width - 84f - micSize - (micHere ? 8f : 0f), rowHeight);
+            UiSkin.Panel(field, 12f, new Color(1f, 1f, 1f, 0.10f), new Color(1f, 1f, 1f, 0.22f), 1.5f);
+
+            if (micHere)
+            {
+                var mic = new Rect(rect.x, field.y, micSize, micSize);
+                bool listening = DshMobile.MobileStt.Listening;
+
+                // The label is the state, because the button is the only thing on screen while the
+                // player waits: 说 → tap to speak, 听 → it is listening, 等 → the system dialog is up.
+                string label = listening ? "停" : (DshMobile.MobileStt.PendingPermission ? "等" : "说");
+                var tint = listening
+                    ? new Color(0.90f, 0.42f, 0.36f)
+                    : (DshMobile.MobileStt.PendingPermission
+                        ? new Color(0.82f, 0.66f, 0.30f)
+                        : new Color(0.34f, 0.60f, 0.86f));
+
+                if (MobileWidgets.CircleButton(MobileButtonIds.PetMic, mic, label, tint))
+                {
+                    if (listening) DshMobile.MobileStt.StopListening();
+                    else StartListeningAndSay(gm);
+                }
+            }
+
+            GUI.SetNextControlName("PetInput");
+            bool enter = Event.current.type == EventType.KeyDown &&
+                         (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter) &&
+                         GUI.GetNameOfFocusedControl() == "PetInput";
+
+            var previous = GUI.skin.textField.fontSize;
+            GUI.skin.textField.fontSize = _inputFontSize;
+            _input = GUI.TextField(new Rect(field.x + 12f, field.y + 10f, field.width - 24f, 26f),
+                _input ?? "", 400);
+            GUI.skin.textField.fontSize = previous;
+            IsTextInputFocused = GUI.GetNameOfFocusedControl() == "PetInput";
+
+            var sendRect = new Rect(field.xMax + 8f, field.y, 76f, rowHeight);
+            bool send = GUI.Button(sendRect, gm.IsThinking ? "…" : "发送", _sendButton);
+            if ((send || enter) && !gm.IsThinking)
+            {
+                gm.Talk(_input);
+                _input = "";
+                if (enter) Event.current.Use();
+            }
+
+            // ------------------------------------------------------- row 2: the two switches
+            var actions = new Rect(rect.x, field.yMax + 8f, rect.width, 34f);
+            GUILayout.BeginArea(actions);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("摸摸它", _buttonSmall, GUILayout.Height(30f))) gm.QuickAction("pet");
+            if (GUILayout.Button("去吃饭", _buttonSmall, GUILayout.Height(30f))) gm.QuickAction("feed");
+            if (GUILayout.Button("去玩球", _buttonSmall, GUILayout.Height(30f))) gm.QuickAction("play");
+
+            GUILayout.FlexibleSpace();
+
+            if (DshMobile.MobileTts.Available)
+            {
+                bool speaking = DshMobile.MobileTts.Enabled;
+                if (GUILayout.Button(speaking ? "朗读：开" : "朗读：关", _buttonSmall,
+                        GUILayout.Height(30f), GUILayout.Width(96f)))
+                {
+                    SetSpeechEnabled(gm, !speaking);
+                }
+            }
+
+            var audio = PetAudioDirector.Instance;
+            if (audio != null)
+            {
+                // No emoji for the speaker: Unity's built-in font has no glyph for 🔊 and this
+                // project has shipped that bug four times (DEVLOG 坑 77/80).
+                if (GUILayout.Button(audio.Muted ? "音效：关" : "音效：开", _buttonSmall,
+                        GUILayout.Height(30f), GUILayout.Width(96f)))
+                {
+                    audio.ToggleMute();
+                }
+            }
+
+            GUILayout.EndHorizontal();
+            GUILayout.EndArea();
+
+            // ---------------------------------------------------------------- the status line
+            string status = VoiceStatusLine();
+            if (!string.IsNullOrEmpty(status))
+            {
+                GUI.color = VoiceStatusIsProblem() ? new Color(1f, 0.68f, 0.58f)
+                                                   : new Color(0.72f, 0.82f, 0.95f);
+                GUI.Label(new Rect(rect.x + 2f, actions.yMax + 2f, rect.width - 4f, 22f),
+                    status, _small);
+                GUI.color = Color.white;
+            }
+        }
+
+        /// <summary>
+        /// Starts listening, and — when it cannot — says so in the conversation.
+        ///
+        /// The error goes into the transcript as a system note, not into a label that a repaint can
+        /// wipe: a player who tapped the microphone and got nothing has to be able to read *why*,
+        /// and to still be able to read it after the next frame.
+        /// </summary>
+        private void StartListeningAndSay(PetGameManager gm)
+        {
+            if (DshMobile.MobileStt.StartListening()) return;
+
+            string why = DshMobile.MobileStt.LastError;
+            if (string.IsNullOrEmpty(why)) why = "语音输入现在用不了。";
+
+            // The reason already reads as a sentence ("这台手机没有语音识别服务"), so it goes in
+            // brackets rather than behind another prefix — "语音输入：语音输入…" is what a naive
+            // concatenation produces, and it makes a diagnostic look like a bug.
+            gm.Memory.AddSystem("（" + why + "）");
+            gm.AnnounceChat();
+        }
+
+        /// <summary>Turns reading aloud on or off, from anywhere, and notes it in the conversation.</summary>
+        private void SetSpeechEnabled(PetGameManager gm, bool on)
+        {
+            DshMobile.MobileTts.Enabled = on;
+            if (on) DshMobile.MobileTts.WarmUp();
+            else DshMobile.MobileTts.Stop();
+
+            gm.Memory.AddSystem(on
+                ? "（朗读打开了：宠物说的话会念出来。想安静再点一次「朗读：开」）"
+                : "（朗读关掉了：宠物只叫不说。想听再点一次「朗读：关」）");
+            gm.AnnounceChat();
+        }
+
+        /// <summary>
+        /// One line about the voice features, for the phone's chat panel.
+        ///
+        /// Empty when there is nothing worth saying — a status that is always on is wallpaper.
+        /// </summary>
+        private static string VoiceStatusLine()
+        {
+            if (DshMobile.MobileStt.Listening) return "正在听……说完会自动停，识别到的字会填进输入框。";
+            if (DshMobile.MobileStt.PendingPermission) return "在等麦克风权限：同意系统弹窗后会自动开始听。";
+            if (DshMobile.MobileStt.Enabled && !DshMobile.MobileStt.AvailableNow)
+                return "这台设备没有语音识别，打字也可以。";
+            if (!string.IsNullOrEmpty(DshMobile.MobileStt.LastError))
+                return DshMobile.MobileStt.LastError;
+
+            if (DshMobile.MobileTts.Available && !DshMobile.MobileTts.Enabled)
+                return "朗读已关闭（点「朗读：关」可以打开）。";
+            return "";
+        }
+
+        /// <summary>Whether <see cref="VoiceStatusLine"/> is reporting a problem rather than a state.</summary>
+        private static bool VoiceStatusIsProblem()
+        {
+            if (DshMobile.MobileStt.Listening || DshMobile.MobileStt.PendingPermission) return false;
+            if (DshMobile.MobileStt.Enabled && !DshMobile.MobileStt.AvailableNow) return true;
+            return !string.IsNullOrEmpty(DshMobile.MobileStt.LastError);
+        }
+
         /// <summary>Input field, send button and the quick actions.</summary>
         private void DrawChatFooter(PetGameManager gm, Rect rect)
         {
@@ -1965,8 +2166,10 @@ namespace DshPet
             var audio = PetAudioDirector.Instance;
             if (audio != null)
             {
-                if (GUILayout.Button(audio.Muted ? "🔇" : "🔊", _buttonSmall, GUILayout.Width(40f),
-                        GUILayout.Height(26f)))
+                // Words, not 🔇/🔊: the built-in font has no glyph for either, so the desktop
+                // footer had two invisible buttons sitting next to the volume slider (DEVLOG 坑 77).
+                if (GUILayout.Button(audio.Muted ? "音效：关" : "音效：开", _buttonSmall,
+                        GUILayout.Width(78f), GUILayout.Height(26f)))
                 {
                     audio.ToggleMute();
                 }
@@ -2951,6 +3154,22 @@ namespace DshPet
                     GUILayout.Button("申请麦克风权限", _buttonSmall, GUILayout.Height(26f)))
                 {
                     DshMobile.MobileStt.RequestPermission();
+                }
+
+                // The facts of the last attempt, on screen. "点麦克风没反应" cannot be diagnosed
+                // from a phone without this: there is no console, and every failure mode (no
+                // permission, no recogniser, refused request, engine never ready) looks identical
+                // from the outside.
+                GUILayout.Space(4f);
+                GUILayout.Label("语音诊断（点一次麦克风之后看这里）：", _small);
+                GUI.color = new Color(0.80f, 0.84f, 0.92f);
+                GUILayout.Label(DshMobile.MobileStt.Diagnostics(), _small);
+                GUI.color = Color.white;
+
+                if (GUILayout.Button("重置识别器（识别不动时点一下）", _buttonSmall, GUILayout.Height(26f)))
+                {
+                    DshMobile.MobileStt.ResetRecognizer();
+                    SetVoiceMessage("识别器已经重建，再点一次麦克风试试。", false);
                 }
             }
 

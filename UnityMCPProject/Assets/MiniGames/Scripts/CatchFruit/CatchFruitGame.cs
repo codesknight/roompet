@@ -44,14 +44,24 @@ namespace DshMiniGames
         private float _deathAt;
         private float _basketX;
 
-        private static readonly Color[] FruitColours =
-        {
-            new Color(0.92f, 0.34f, 0.34f),   // apple
-            new Color(0.98f, 0.72f, 0.26f),   // orange
-            new Color(0.72f, 0.52f, 0.86f),   // plum
-            new Color(0.44f, 0.78f, 0.46f),   // pear
-            new Color(0.95f, 0.52f, 0.68f)    // peach
-        };
+        /// <summary>Where the round-robin over the fruit kinds has got to.</summary>
+        private int _fruitIndex;
+
+        private static readonly Color AppleRed = new Color(0.90f, 0.24f, 0.24f);
+        private static readonly Color OrangeSkin = new Color(0.98f, 0.62f, 0.16f);
+        private static readonly Color PearGreen = new Color(0.74f, 0.82f, 0.32f);
+        private static readonly Color BananaYellow = new Color(0.98f, 0.86f, 0.30f);
+        private static readonly Color CarrotOrange = new Color(0.96f, 0.50f, 0.16f);
+        private static readonly Color TomatoRed = new Color(0.94f, 0.30f, 0.22f);
+        private static readonly Color LeafGreen = new Color(0.36f, 0.66f, 0.30f);
+        private static readonly Color StemBrown = new Color(0.44f, 0.30f, 0.18f);
+
+        /// <summary>
+        /// Materials are shared per colour: a fruit is three or four primitives and there are at
+        /// most a handful on screen, but a fresh Material per primitive is a real cost on a phone
+        /// and these colours never change.
+        /// </summary>
+        private readonly Dictionary<int, Material> _materials = new Dictionary<int, Material>();
 
         // ------------------------------------------------------------------ setup
 
@@ -155,6 +165,7 @@ namespace DshMiniGames
             Lives = CatchRules.StartLives;
             _nextSpawn = 0.7f;
             _basketX = 0f;
+            _fruitIndex = 0;      // every run opens with an apple
             State = Phase.Ready;
 
             if (_basket != null) _basket.position = new Vector3(0f, -_settings.SpawnHeight + 1.4f, 0f);
@@ -281,29 +292,146 @@ namespace DshMiniGames
         private void Spawn()
         {
             float x = CatchRules.SpawnX((float)_rng.NextDouble(), _basketX, _settings);
-            var colour = FruitColours[_rng.Next(FruitColours.Length)];
+            var kind = CatchRules.FruitFor(_fruitIndex++);
 
-            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            go.name = "Fruit";
-            go.transform.SetParent(transform, false);
-            go.transform.localScale = Vector3.one * (_settings.FruitHalfWidth * 2f);
-            go.transform.position = new Vector3(x, _settings.SpawnHeight, 0f);
+            var root = new GameObject("Fruit_" + CatchRules.FruitName(kind)).transform;
+            root.SetParent(transform, false);
+            root.position = new Vector3(x, _settings.SpawnHeight, 0f);
 
-            var renderer = go.GetComponent<Renderer>();
-            var material = new Material(Shader.Find("Standard"));
-            material.color = colour;
-            material.SetFloat("_Glossiness", 0.5f);
-            renderer.material = material;
-            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            renderer.receiveShadows = false;
-            Destroy(go.GetComponent<Collider>());
+            BuildFruit(root, kind, _settings.FruitHalfWidth);
 
             _fruits.Add(new Fruit
             {
-                Transform = go.transform,
+                Transform = root,
                 X = x,
                 Y = _settings.SpawnHeight
             });
+        }
+
+        /// <summary>
+        /// One fruit or vegetable, out of primitives.
+        ///
+        /// They used to be plain spheres in five colours, which the report from the phone described
+        /// exactly: "怎么是小球". A ball is not a fruit — the shape *is* the information here, and a
+        /// falling carrot reads as food at a glance where a purple sphere reads as a bullet.
+        ///
+        /// Every fruit is built around the same half-width, so the catch rule (which is arithmetic
+        /// in <see cref="CatchRules"/>) keeps agreeing with what the player sees.
+        /// </summary>
+        private void BuildFruit(Transform root, FruitKind kind, float half)
+        {
+            switch (kind)
+            {
+                case FruitKind.Apple:
+                    Ball(root, "Apple", new Vector3(0f, 0f, 0f), new Vector3(1f, 0.94f, 1f) * half * 2f, AppleRed);
+                    Stick(root, "Stem", new Vector3(0f, half * 1.05f, 0f), new Vector3(0.06f, half * 0.5f, 0.06f), StemBrown, 12f);
+                    Ball(root, "Leaf", new Vector3(half * 0.42f, half * 1.12f, 0f),
+                        new Vector3(half * 0.9f, half * 0.16f, half * 0.5f), LeafGreen);
+                    break;
+
+                case FruitKind.Orange:
+                    Ball(root, "Orange", Vector3.zero, Vector3.one * half * 2f, OrangeSkin);
+                    Ball(root, "Navel", new Vector3(0f, -half * 0.92f, 0f),
+                        new Vector3(half * 0.5f, half * 0.2f, half * 0.5f), new Color(0.86f, 0.48f, 0.10f));
+                    Ball(root, "Leaf", new Vector3(half * 0.34f, half * 0.98f, 0f),
+                        new Vector3(half * 0.7f, half * 0.14f, half * 0.4f), LeafGreen);
+                    break;
+
+                case FruitKind.Pear:
+                    // A pear is two spheres: a small one sitting in a big one.
+                    Ball(root, "PearBody", new Vector3(0f, -half * 0.28f, 0f),
+                        new Vector3(half * 1.7f, half * 1.5f, half * 1.7f), PearGreen);
+                    Ball(root, "PearTop", new Vector3(0f, half * 0.62f, 0f),
+                        new Vector3(half * 1.1f, half * 1.1f, half * 1.1f), PearGreen);
+                    Stick(root, "Stem", new Vector3(0f, half * 1.3f, 0f), new Vector3(0.05f, half * 0.4f, 0.05f), StemBrown, 8f);
+                    break;
+
+                case FruitKind.Banana:
+                    // A banana is an arc of four overlapping spheres, which at this size is
+                    // indistinguishable from a curved mesh and costs nothing to build.
+                    for (int i = 0; i < 4; i++)
+                    {
+                        float t = i / 3f;
+                        float bx = Mathf.Lerp(-half * 0.75f, half * 0.75f, t);
+                        float by = Mathf.Sin(t * Mathf.PI) * half * 0.45f;
+                        Ball(root, "Banana" + i, new Vector3(bx, by, 0f),
+                            new Vector3(half * 0.9f, half * 0.8f, half * 0.8f),
+                            Color.Lerp(BananaYellow, new Color(0.86f, 0.70f, 0.22f), t));
+                    }
+                    Ball(root, "Tip", new Vector3(half * 0.95f, half * 0.1f, 0f),
+                        Vector3.one * half * 0.34f, StemBrown);
+                    break;
+
+                case FruitKind.Carrot:
+                    // A cone pointing down: the one shape in this list that says "vegetable".
+                    var body = Primitive(root, "Carrot", PrimitiveType.Cylinder, new Vector3(0f, 0f, 0f),
+                        new Vector3(half * 0.95f, half * 1.5f, half * 0.95f), CarrotOrange);
+                    body.localRotation = Quaternion.Euler(180f, 0f, 0f);
+                    Ball(root, "Tip", new Vector3(0f, -half * 1.5f, 0f), Vector3.one * half * 0.4f, CarrotOrange);
+                    for (int i = 0; i < 3; i++)
+                    {
+                        var leaf = Primitive(root, "Leaf" + i, PrimitiveType.Cube,
+                            new Vector3(0f, half * 1.75f, 0f),
+                            new Vector3(half * 0.22f, half * 1.1f, half * 0.22f), LeafGreen);
+                        leaf.localRotation = Quaternion.Euler(0f, 0f, -28f + i * 28f);
+                    }
+                    break;
+
+                default: // Tomato: a squashed red ball with a green star on top.
+                    Ball(root, "Tomato", Vector3.zero, new Vector3(half * 2f, half * 1.7f, half * 2f), TomatoRed);
+                    for (int i = 0; i < 5; i++)
+                    {
+                        var calyx = Primitive(root, "Calyx" + i, PrimitiveType.Cube,
+                            new Vector3(0f, half * 0.9f, 0f),
+                            new Vector3(half * 0.5f, half * 0.08f, half * 0.2f), LeafGreen);
+                        calyx.localRotation = Quaternion.Euler(0f, i * 72f, 0f);
+                    }
+                    break;
+            }
+        }
+
+        private void Ball(Transform root, string name, Vector3 position, Vector3 scale, Color color)
+            => Primitive(root, name, PrimitiveType.Sphere, position, scale, color);
+
+        private void Stick(Transform root, string name, Vector3 position, Vector3 scale, Color color,
+            float tilt)
+        {
+            var stick = Primitive(root, name, PrimitiveType.Cylinder, position, scale, color);
+            stick.localRotation = Quaternion.Euler(0f, 0f, tilt);
+        }
+
+        private Transform Primitive(Transform root, string name, PrimitiveType type, Vector3 position,
+            Vector3 scale, Color color)
+        {
+            var go = GameObject.CreatePrimitive(type);
+            go.name = name;
+            go.transform.SetParent(root, false);
+            go.transform.localPosition = position;
+            go.transform.localScale = scale;
+
+            var renderer = go.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                renderer.sharedMaterial = MaterialFor(color);
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+            }
+
+            Destroy(go.GetComponent<Collider>());
+            return go.transform;
+        }
+
+        private Material MaterialFor(Color color)
+        {
+            int key = ((int)(color.r * 255f) << 16) | ((int)(color.g * 255f) << 8) | (int)(color.b * 255f);
+            Material material;
+            if (_materials.TryGetValue(key, out material) && material != null) return material;
+
+            material = new Material(Shader.Find("Standard"));
+            material.color = color;
+            material.SetFloat("_Glossiness", 0.45f);
+            _materials[key] = material;
+            return material;
         }
 
         private void Die()

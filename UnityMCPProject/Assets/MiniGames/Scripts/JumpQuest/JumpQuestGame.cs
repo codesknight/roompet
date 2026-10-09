@@ -127,26 +127,36 @@ namespace DshMiniGames
             _player = BuildPlayer();
         }
 
+        /// <summary>
+        /// The character: the pet itself, as a little animal.
+        ///
+        /// It shipped as a bottle-shaped figure (a white cylinder with a sphere and a scarf), which
+        /// is a fine placeholder and a strange thing to be jumping around in a game that lives
+        /// behind a door in your pet's room. The species comes from the pet's own save, so the thing
+        /// hopping is the animal the player has been looking after.
+        /// </summary>
         private Transform BuildPlayer()
         {
             var root = new GameObject("Player").transform;
             root.SetParent(transform, false);
 
-            // A little bottle-shaped figure, like the original's: body, head, scarf.
-            var body = Shape("Body", PrimitiveType.Cylinder, new Vector3(0f, 0.34f, 0f),
-                new Vector3(0.34f, 0.30f, 0.34f), new Color(0.94f, 0.95f, 0.98f));
-            body.SetParent(root, false);
+            _kind = DshMobile.MiniAnimal.Current;
+            DshMobile.MiniAnimal.Build(root, _kind, 1.05f);
 
-            var head = Shape("Head", PrimitiveType.Sphere, new Vector3(0f, 0.78f, 0f),
-                Vector3.one * 0.36f, new Color(0.36f, 0.44f, 0.86f));
-            head.SetParent(root, false);
-
-            var scarf = Shape("Scarf", PrimitiveType.Cylinder, new Vector3(0f, 0.58f, 0f),
-                new Vector3(0.30f, 0.03f, 0.30f), new Color(0.92f, 0.36f, 0.36f));
-            scarf.SetParent(root, false);
+            // A soft disc under its feet: without it the animal is hard to place against a box of a
+            // similar colour, and "am I on the box or beside it" is the whole game.
+            var shadow = Shape("Shadow", PrimitiveType.Cylinder, new Vector3(0f, 0.012f, 0f),
+                new Vector3(0.34f, 0.005f, 0.34f), new Color(0f, 0f, 0f, 1f));
+            shadow.SetParent(root, false);
 
             return root;
         }
+
+        /// <summary>Which animal the hero is, for the HUD to name it.</summary>
+        private DshMobile.MiniAnimalKind _kind = DshMobile.MiniAnimalKind.Cat;
+
+        /// <summary>The hero's animal name, e.g. 狐狸.</summary>
+        public string HeroName => DshMobile.MiniAnimal.Name(_kind);
 
         private Transform Shape(string name, PrimitiveType type, Vector3 localPosition,
             Vector3 scale, Color color)

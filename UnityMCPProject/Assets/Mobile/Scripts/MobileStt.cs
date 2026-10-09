@@ -144,6 +144,88 @@ namespace DshMobile
         /// <summary>True when a listen is queued behind the permission dialog.</summary>
         public static bool PendingPermission => _pendingStart;
 
+        // ------------------------------------------------------------------ diagnostics
+        //
+        // "I pressed the microphone and nothing happened" is not a bug report, it is the absence of
+        // one — and on a device there is no console to read. So every step of the attempt is
+        // recorded as it happens, and the settings panel prints it. The values are deliberately
+        // plain facts (did the engine ever say it was ready?) rather than a guess at the cause.
+
+        /// <summary>Attempts made for the current press, including the automatic retry.</summary>
+        private static int _attemptsThisPress;
+
+        /// <summary>
+        /// Whether the current attempt carries an explicit <c>EXTRA_LANGUAGE</c>.
+        ///
+        /// Some Chinese ROMs accept a recogniser intent with a locale and then answer with
+        /// ERROR_CLIENT without ever becoming ready; the same ROM works when the engine is left to
+        /// pick its own language. Rather than guess which kind of phone this is, the first failure
+        /// to reach "ready" flips this and tries the other shape once.
+        /// </summary>
+        private static bool _useLanguageExtra = true;
+
+        /// <summary>Set by a failed attempt; <see cref="Tick"/> runs it on the next frame.</summary>
+        private static bool _retryPending;
+
+        /// <summary>Whether the engine ever reported that it was ready for speech.</summary>
+        private static bool _sawReady;
+
+        /// <summary>Whether the last attempt got as far as calling startListening on the engine.</summary>
+        private static bool _startCalled;
+
+        /// <summary>Destroy the recogniser before the next attempt (a broken one never recovers).</summary>
+        private static bool _needsRebuild;
+
+        /// <summary>How many times the recogniser object has been built, for the diagnostics line.</summary>
+        private static int _builds;
+
+        /// <summary>Whether the engine said it was ready for speech on the last attempt.</summary>
+        public static bool SawReady => _sawReady;
+
+        /// <summary>Whether the last attempt reached the engine at all.</summary>
+        public static bool StartCalled => _startCalled;
+
+        /// <summary>Whether an automatic retry is queued.</summary>
+        public static bool RetryQueued => _retryPending;
+
+        /// <summary>
+        /// The facts of the last attempt, one per line, for the settings panel.
+        ///
+        /// Kept as plain text rather than a status word because the useful question is not "does it
+        /// work" but "which step did not happen" — and a player reading four lines off a phone
+        /// screen can answer that where a log cannot.
+        /// </summary>
+        public static string Diagnostics()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("· 平台：").Append(Available ? "安卓" : "非安卓（编辑器/桌面，识别不可用）").Append('\n');
+            sb.Append("· 麦克风权限：").Append(HasPermission ? "已授权" : "未授权").Append('\n');
+            sb.Append("· 识别器：").Append(_recognizer == null ? "未创建" : "已创建").Append("（第 ")
+              .Append(_builds).Append(" 次）").Append('\n');
+            sb.Append("· 上次：startListening ").Append(_startCalled ? "已调用" : "未调用")
+              .Append("；引擎就绪 ").Append(_sawReady ? "是" : "否");
+            if (_errorCode != int.MinValue) sb.Append("；错误码 ").Append(_errorCode);
+            sb.Append('\n');
+            sb.Append("· 语言参数：").Append(_useLanguageExtra ? "zh-CN" : "交给系统");
+            if (_retryPending) sb.Append("（正在自动重试）");
+            sb.Append('\n');
+            sb.Append("· 上次结果：").Append(string.IsNullOrEmpty(_heard) ? "（无）" : _heard);
+            return sb.ToString();
+        }
+
+        /// <summary>Throws away the recogniser so the next attempt builds a fresh one.</summary>
+        public static void ResetRecognizer()
+        {
+            DestroyRecognizer();
+            _needsRebuild = false;
+            _retryPending = false;
+            _attemptsThisPress = 0;
+            _sawReady = false;
+            _startCalled = false;
+            _error = "";
+            _errorCode = int.MinValue;
+        }
+
         /// <summary>
         /// Starts listening. Returns false — with a reason in <see cref="LastError"/> — when there
         /// is no recogniser or no permission, rather than pretending to listen.
@@ -153,6 +235,14 @@ namespace DshMobile
         /// the player's one press is honoured instead of being thrown away.
         /// </summary>
         public static bool StartListening()
+        {
+            _attemptsThisPress = 0;
+            _retryPending = false;
+            return StartAttempt();
+        }
+
+        /// <summary>One attempt. Separate from <see cref="StartListening"/> so a retry does not reset the count.</summary>
+        private static bool StartAttempt()
         {
             if (!Available)
             {
@@ -171,29 +261,70 @@ namespace DshMobile
 
             _pendingStart = false;
 
+            if (_needsRebuild)
+            {
+                // A recogniser that has already failed can be a recogniser that fails forever: the
+                // platform object caches its broken state, and every later startListening is
+                // silently dropped. Throwing it away is the whole fix for "it worked the first time
+                // and never again".
+                DestroyRecognizer();
+                _needsRebuild = false;
+            }
+
             if (!EnsureRecognizer())
             {
+                _needsRebuild = true;
                 return false;
             }
 
             try
             {
+                _attemptsThisPress++;
                 _heard = "";
                 _error = "";
                 _errorCode = int.MinValue;
+                _sawReady = false;
                 HasResult = false;
                 _listening = true;
                 _listeningSince = Time.realtimeSinceStartup;
+
+                // cancel() before start(): after an error some engines are still tearing the last
+                // session down, and a start that arrives mid-teardown is ignored.
+                try { _recognizer.Call("cancel"); } catch { /* nothing to cancel */ }
+
+                _startCalled = true;
                 _recognizer.Call("startListening", _intent);
                 return true;
             }
             catch (System.Exception e)
             {
                 _listening = false;
+                _startCalled = false;
+                _needsRebuild = true;
                 _error = e.Message;
                 Debug.LogWarning("[DshMobile] Speech recogniser failed to start: " + e.Message);
                 return false;
             }
+        }
+
+        private static void DestroyRecognizer()
+        {
+            if (_recognizer != null)
+            {
+                try { _recognizer.Call("destroy"); }
+                catch { /* going away anyway */ }
+                _recognizer.Dispose();
+                _recognizer = null;
+            }
+
+            if (_intent != null)
+            {
+                _intent.Dispose();
+                _intent = null;
+            }
+
+            _listener = null;
+            _listening = false;
         }
 
         public static void StopListening()
@@ -215,23 +346,9 @@ namespace DshMobile
         public static void Shutdown()
         {
             Cancel();
-            if (_recognizer != null)
-            {
-                try { _recognizer.Call("destroy"); }
-                catch { /* nothing useful to do */ }
-                _recognizer.Dispose();
-                _recognizer = null;
-            }
-
-            if (_intent != null)
-            {
-                _intent.Dispose();
-                _intent = null;
-            }
-
-            _listener = null;
-            _listening = false;
+            DestroyRecognizer();
             _pendingStart = false;
+            _retryPending = false;
         }
 
         /// <summary>Call once a frame: starts the queued listen, and gives up on a silent one.</summary>
@@ -244,7 +361,7 @@ namespace DshMobile
                     // The dialog has been answered with a yes. Start now, which is what the player
                     // asked for one press ago.
                     _pendingStart = false;
-                    StartListening();
+                    StartAttempt();
                 }
                 else if (Time.realtimeSinceStartup - _pendingSince > PendingPermissionSeconds)
                 {
@@ -253,6 +370,16 @@ namespace DshMobile
                     _error = "没有麦克风权限：到系统设置里允许「录音」，再点麦克风。";
                     return;
                 }
+            }
+
+            // The automatic retry: the first attempt failed before the engine was ever ready, so
+            // try the other intent shape once. One retry, not a loop — a recogniser that fails
+            // twice is a recogniser that does not work on this phone, and hammering it would turn a
+            // clear message into a mystery.
+            if (_retryPending && !_listening && !_pendingStart)
+            {
+                _retryPending = false;
+                StartAttempt();
             }
 
             if (!_listening) return;
@@ -282,10 +409,14 @@ namespace DshMobile
         {
             if (!available) return "语音输入只在安卓上可用（需要手机的语音识别）。";
             if (!enabled) return "语音输入已关闭。打开后聊天框旁边会出现麦克风按钮。";
+            if (permission && _pendingStart) return "正在申请麦克风权限：同意之后会自动开始听。";
             if (!permission) return "还没有麦克风权限：点麦克风按钮，同意系统弹窗即可。";
             if (listening) return "正在听……说完会自动停下。";
+            if (errorCode == 5) return "识别服务拒绝了这次请求（错误码 5）。已经在自动换个方式重试。" +
+                                        "一直这样的话，把下面这段「语音诊断」发我看看。";
             if (errorCode == 6) return "没听清（说了太久或太安静），再说一次就行。";
             if (errorCode == 7) return "没听到声音，再试一次。";
+            if (errorCode == 8) return "识别服务正忙（错误码 8），等一下再点一次麦克风。";
             if (errorCode == 9) return "这台手机没有麦克风权限或没有识别服务，到系统设置里检查一下。";
             if (errorCode > 0) return $"识别失败（错误码 {errorCode}）。";
             if (!string.IsNullOrEmpty(error)) return error;
@@ -321,8 +452,17 @@ namespace DshMobile
                     _intent.Call<AndroidJavaObject>("putExtra",
                         intentClass.GetStatic<string>("EXTRA_LANGUAGE_MODEL"),
                         intentClass.GetStatic<string>("LANGUAGE_MODEL_FREE_FORM"));
-                    _intent.Call<AndroidJavaObject>("putExtra",
-                        intentClass.GetStatic<string>("EXTRA_LANGUAGE"), "zh-CN");
+
+                    // The locale is a *try*, not a fact: asking for zh-CN explicitly is what makes a
+                    // Chinese phone recognise Chinese rather than answering in English, and it is
+                    // also what some ROMs choke on (they answer ERROR_CLIENT and never become
+                    // ready). So it goes on the first attempt and comes off the retry — one of the
+                    // two shapes is what this device wants, and the diagnostics line says which.
+                    if (_useLanguageExtra)
+                    {
+                        _intent.Call<AndroidJavaObject>("putExtra",
+                            intentClass.GetStatic<string>("EXTRA_LANGUAGE"), "zh-CN");
+                    }
 
                     // Partial results make the wait feel shorter, and they are all the input the
                     // player needs to see before they stop talking.
@@ -352,6 +492,7 @@ namespace DshMobile
                     }
                 }
 
+                _builds++;
                 return true;
             }
             catch (System.Exception e)
@@ -384,6 +525,7 @@ namespace DshMobile
             public void onReadyForSpeech(AndroidJavaObject parameters)
             {
                 _listening = true;
+                _sawReady = true;
             }
 
             public void onBeginningOfSpeech() { }
@@ -399,6 +541,22 @@ namespace DshMobile
                 _listening = false;
                 _errorCode = error;
                 _error = "识别失败（错误码 " + error + "）";
+
+                // The engine never even became ready: this is the shape of failure that means "this
+                // phone did not like the question", not "the phone did not hear you". Try the other
+                // question once — with the locale extra taken off, or put back on — and rebuild the
+                // engine first, because a recogniser that has errored can keep failing forever.
+                if (!_sawReady && _attemptsThisPress < 2)
+                {
+                    _useLanguageExtra = !_useLanguageExtra;
+                    _needsRebuild = true;
+                    _retryPending = true;
+                    return;
+                }
+
+                // 5 ERROR_CLIENT and 8 ERROR_RECOGNIZER_BUSY both leave the object in a state where
+                // the next press would otherwise be dropped on the floor.
+                if (error == 5 || error == 8) _needsRebuild = true;
             }
 
             public void onResults(AndroidJavaObject results)

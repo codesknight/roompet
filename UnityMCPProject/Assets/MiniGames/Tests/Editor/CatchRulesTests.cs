@@ -228,5 +228,31 @@ namespace DshMiniGames.Tests
             Assert.IsFalse(float.IsNaN(CatchRules.PixelsToWorld(10f, 0f, Settings)));
             Assert.IsFalse(float.IsInfinity(CatchRules.PixelsToWorld(10f, 0f, Settings)));
         }
+
+        [Test]
+        public void Fruit_ShowsEveryKindAndThenStartsOver()
+        {
+            // The fruit used to be plain spheres in five colours, which is exactly what "怎么是小球"
+            // was describing. Each kind is now built out of primitives, and this is the rule that
+            // decides which one falls: round-robin, so one run shows the player everything.
+            var seen = new bool[CatchRules.FruitKindCount];
+            for (int i = 0; i < CatchRules.FruitKindCount; i++)
+            {
+                var kind = CatchRules.FruitFor(i);
+                Assert.GreaterOrEqual((int)kind, 0);
+                Assert.Less((int)kind, CatchRules.FruitKindCount);
+                Assert.IsFalse(seen[(int)kind], $"{kind} came up twice in the first pass");
+                Assert.IsFalse(string.IsNullOrEmpty(CatchRules.FruitName(kind)), $"{kind} has no name");
+                seen[(int)kind] = true;
+            }
+
+            // …and the cycle repeats rather than running off the end of the list.
+            Assert.AreEqual(CatchRules.FruitFor(0), CatchRules.FruitFor(CatchRules.FruitKindCount));
+            Assert.AreEqual(CatchRules.FruitFor(1), CatchRules.FruitFor(CatchRules.FruitKindCount * 3 + 1));
+
+            // A negative index (a counter that wrapped) must not throw or return nonsense.
+            Assert.GreaterOrEqual((int)CatchRules.FruitFor(-1), 0);
+            Assert.Less((int)CatchRules.FruitFor(-7), CatchRules.FruitKindCount);
+        }
     }
 }
