@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+using System.Collections.Generic;
+using UnityEngine;
 
 namespace DshMobile
 {
@@ -151,20 +152,94 @@ namespace DshMobile
         // recorded as it happens, and the settings panel prints it. The values are deliberately
         // plain facts (did the engine ever say it was ready?) rather than a guess at the cause.
 
-        /// <summary>Attempts made for the current press, including the automatic retry.</summary>
+        /// <summary>Attempts made for the current press, including the automatic retries.</summary>
         private static int _attemptsThisPress;
 
         /// <summary>
-        /// Whether the current attempt carries an explicit <c>EXTRA_LANGUAGE</c>.
+        /// How many times one press may try.
         ///
-        /// Some Chinese ROMs accept a recogniser intent with a locale and then answer with
-        /// ERROR_CLIENT without ever becoming ready; the same ROM works when the engine is left to
-        /// pick its own language. Rather than guess which kind of phone this is, the first failure
-        /// to reach "ready" flips this and tries the other shape once.
+        /// Three, because there are three shapes of the question to ask: with the locale, without it,
+        /// and bare. Each one is a *different request*, and a recogniser that refuses the first is
+        /// saying something about the request rather than about the phone.
         /// </summary>
-        private static bool _useLanguageExtra = true;
+        public const int AttemptsPerPress = 3;
 
-        /// <summary>Set by a failed attempt; <see cref="Tick"/> runs it on the next frame.</summary>
+        /// <summary>The last shape that is only "recognise speech" — everything else stripped out.</summary>
+        public const int MinimalVariant = 2;
+
+        /// <summary>Which shape of the intent an attempt index uses. Pure, so the policy is a test.</summary>
+        public static int VariantFor(int attemptIndex)
+            => Mathf.Clamp(attemptIndex, 0, MinimalVariant);
+
+        /// <summary>What the diagnostics call that shape.</summary>
+        public static string VariantName(int variant)
+        {
+            switch (variant)
+            {
+                case 0: return "中文 + 部分结果";
+                case 1: return "交给系统（无语言）";
+                default: return "最简 + 优先离线";
+            }
+        }
+
+        /// <summary>
+        /// Whether this attempt is the last one this press will make.
+        ///
+        /// The retry only happens when the engine never became ready, so "final" means "we have asked
+        /// three different ways and it refused all of them" — which is worth telling the player about.
+        /// </summary>
+        public static bool IsFinalAttempt(int attemptsMade, bool sawReady)
+            => sawReady || attemptsMade >= AttemptsPerPress;
+
+        /// <summary>The shape the current attempt is using.</summary>
+        private static int _variant;
+
+        /// <summary>How the recogniser was finally built, for the diagnostics (empty until one works).</summary>
+        private static string _createPath = "";
+
+        /// <summary>The last thing that went wrong while building one, kept until one works.</summary>
+        private static string _createError = "";
+
+        /// <summary>
+        /// The last failure that has not been cleared by a working recogniser.
+        ///
+        /// Kept apart from <see cref="_error"/>, which every attempt resets: this is the "has this
+        /// feature ever worked on this phone" answer, and the settings panel shows it.
+        /// </summary>
+        private static string _lastFailure = "";
+
+        /// <summary>Which press the last reported error belonged to.</summary>
+        private static int _reportedPress = -1;
+
+        /// <summary>Press counter, so one press can be told from the next.</summary>
+        private static int _pressId;
+
+        private static float _lastReportAt = -999f;
+
+        /// <summary>
+        /// How long between two voice notes in the conversation.
+        ///
+        /// A phone whose recogniser cannot be built used to write a line into the chat for *every*
+        /// error code it produced — five lines for one press (5, 9, 11, 9, 11), each one a different
+        /// sentence, so the "only report it once" rule never fired. The player asked for a diagnosis,
+        /// not a transcript of the failure.
+        /// </summary>
+        public const float ReportCooldown = 5f;
+
+        /// <summary>
+        /// Whether a failure should be written into the conversation.
+        ///
+        /// Pure and shared with the UI test: a retry that is still queued must say nothing (its own
+        /// outcome will be reported), one press gets at most one note, and two notes never arrive
+        /// closer together than <see cref="ReportCooldown"/>.
+        /// </summary>
+        public static bool ShouldReport(bool retrying, bool alreadyReportedThisPress,
+            float secondsSinceLastReport, float cooldown = ReportCooldown)
+            => !retrying && !alreadyReportedThisPress && secondsSinceLastReport >= cooldown;
+
+        /// <summary>
+        /// Set by a failed attempt; <see cref="Tick"/> runs it on the next frame.
+        /// </summary>
         private static bool _retryPending;
 
         /// <summary>Whether the engine ever reported that it was ready for speech.</summary>
@@ -207,12 +282,15 @@ namespace DshMobile
               .Append(_builds == 0 ? "还没问过" : (_recognitionAvailable ? "有" : "没有"))
               .Append('\n');
             sb.Append("· 识别器：").Append(HasRecognizer ? "已创建" : "未创建")
-              .Append("（第 ").Append(_builds).Append(" 次尝试）").Append('\n');
+              .Append("（第 ").Append(_builds).Append(" 次尝试）");
+            if (!string.IsNullOrEmpty(_createPath)) sb.Append("，方式：").Append(_createPath);
+            sb.Append('\n');
             sb.Append("· 上次：startListening ").Append(_startCalled ? "已调用" : "未调用")
               .Append("；引擎就绪 ").Append(_sawReady ? "是" : "否");
             if (_errorCode != int.MinValue) sb.Append("；错误码 ").Append(_errorCode);
             sb.Append('\n');
-            sb.Append("· 语言参数：").Append(_useLanguageExtra ? "zh-CN" : "交给系统");
+            sb.Append("· 问法：").Append(VariantName(_variant))
+              .Append("（本次按下已试 ").Append(_attemptsThisPress).Append('/').Append(AttemptsPerPress).Append(" 次）");
             if (_retryPending) sb.Append("（正在自动重试）");
             sb.Append('\n');
             sb.Append("· 调用线程：").Append(OnMainThread ? "主线程" : "非主线程")
@@ -246,6 +324,8 @@ namespace DshMobile
         {
             _attemptsThisPress = 0;
             _retryPending = false;
+            _pressId++;                 // one press, one conversation note at most
+            _variant = 0;
             return StartAttempt();
         }
 
@@ -280,6 +360,7 @@ namespace DshMobile
             }
 
             _attemptsThisPress++;
+            _variant = VariantFor(_attemptsThisPress - 1);
             _heard = "";
             _error = "";
             _errorCode = int.MinValue;
@@ -339,6 +420,16 @@ namespace DshMobile
         /// "创建识别器失败：Object reference not set to an instance of an object", which says
         /// nothing about the actual mistake. Capturing a disposed handle is the Managed-to-Java
         /// version of using a pointer after free.
+        ///
+        /// <b>Three ways to get a recogniser, tried in order</b> — added after a phone reported
+        /// "系统识别服务：有 / 识别器：未创建（第 51 次尝试）": <c>isRecognitionAvailable</c> answered yes
+        /// while <c>createSpeechRecognizer(context)</c> answered null, fifty-one times in a row. The
+        /// one-argument call binds whatever service the system *prefers*, and on a Chinese ROM that is
+        /// often a disabled one — a Google service on a phone with no Google account, for instance. So:
+        /// the default call, then the same call for every RecognitionService the package manager can
+        /// actually see (by explicit component name), then the on-device recogniser where the platform
+        /// has one. Whichever wins is recorded, because knowing *which* one works on a given phone is
+        /// the difference between a fix and a guess.
         /// </summary>
         private static bool CreateIfNeeded()
         {
@@ -351,7 +442,7 @@ namespace DshMobile
                 {
                     if (activity == null)
                     {
-                        _error = "拿不到当前的 Activity，无法创建识别器。";
+                        Fail("拿不到当前的 Activity，无法创建识别器。");
                         return false;
                     }
 
@@ -359,41 +450,200 @@ namespace DshMobile
                         "isRecognitionAvailable", activity);
                     if (!_recognitionAvailable)
                     {
-                        _error = "这台手机没有语音识别服务（系统里可能没装）。";
+                        Fail("这台手机没有语音识别服务（系统里可能没装）。");
                         return false;
                     }
 
-                    _listener = new Listener();
-                    _recognizer = recognizerClass.CallStatic<AndroidJavaObject>(
-                        "createSpeechRecognizer", activity);
-                    _builds++;
-
-                    if (!HasRecognizer)
+                    // 1. The platform's default choice.
+                    if (TryCreate(recognizerClass, activity, "默认"))
                     {
-                        // The platform answers null on a device whose recognition service is declared
-                        // but not actually there. Calling into that null is what produced a bare
-                        // NullReferenceException before this check existed.
-                        _recognizer = null;
-                        _error = "系统没有给出识别器（isRecognitionAvailable 却说有）：这台手机的语音识别没有装好。";
-                        return false;
+                        return true;
                     }
 
-                    _recognizer.Call("setRecognitionListener", _listener);
-                    _intent = BuildIntent();
-                    return true;
+                    // 2. Every recognition service it can actually see, named explicitly.
+                    var services = RecognitionServices(activity);
+                    for (int i = 0; i < services.Count; i++)
+                    {
+                        if (TryCreate(recognizerClass, activity, services[i].Package,
+                                services[i].Package, services[i].Name))
+                        {
+                            return true;
+                        }
+                    }
+
+                    // 3. The on-device (offline) recogniser, API 31 and up.
+                    try
+                    {
+                        if (recognizerClass.CallStatic<bool>("isOnDeviceRecognitionAvailable", activity))
+                        {
+                            _listener = new Listener();
+                            _builds++;
+                            _recognizer = recognizerClass.CallStatic<AndroidJavaObject>(
+                                "createOnDeviceSpeechRecognizer", activity);
+                            if (HasRecognizer && FinishCreating("本机离线识别")) return true;
+                            _recognizer = null;
+                        }
+                    }
+                    catch (System.Exception e)
+                    {
+                        _createError = "离线识别不可用：" + e.Message;
+                    }
+
+                    // Nothing worked. The reason is kept rather than cleared, because "which step did
+                    // not happen" is the only thing that can be acted on from a phone.
+                    string seen = services.Count == 0
+                        ? "一个都没找到"
+                        : services.Count + " 个（" + services[0].Package + "…）";
+
+                    Fail("系统不给识别器：找到服务 " + seen +
+                         (string.IsNullOrEmpty(_createError) ? "" : "；" + _createError) +
+                         "。到手机「设置 → 应用管理」里找到系统的语音识别服务（可能叫「语音服务」" +
+                         "「Google」「小爱同学」等），确认它没有被停用或卸载，再回来点一次麦克风。");
+                    return false;
                 }
             }
             catch (System.Exception e)
             {
-                _error = "创建识别器失败：" + e.Message;
-                Debug.LogWarning("[DshMobile] " + _error);
+                Fail("创建识别器失败：" + e.Message);
                 _recognizer = null;
                 return false;
             }
         }
 
+        /// <summary>One recognition service the package manager will admit to.</summary>
+        private struct ServiceRef
+        {
+            public string Package;
+            public string Name;
+        }
+
+        /// <summary>
+        /// Every <c>RecognitionService</c> the package manager can see.
+        ///
+        /// <c>isRecognitionAvailable</c> answers "is there one at all", which is not the same question
+        /// as "is the one it will use usable" — and the second is the one that was biting this device.
+        /// </summary>
+        private static List<ServiceRef> RecognitionServices(AndroidJavaObject activity)
+        {
+            var found = new List<ServiceRef>();
+
+            try
+            {
+                using (var serviceClass = new AndroidJavaClass("android.speech.RecognitionService"))
+                using (var intent = new AndroidJavaObject("android.content.Intent",
+                           serviceClass.GetStatic<string>("SERVICE_INTERFACE")))
+                using (var manager = activity.Call<AndroidJavaObject>("getPackageManager"))
+                using (var list = manager.Call<AndroidJavaObject>("queryIntentServices", intent, 0))
+                {
+                    if (list == null) return found;
+
+                    int size = list.Call<int>("size");
+                    for (int i = 0; i < size; i++)
+                    {
+                        using (var info = list.Call<AndroidJavaObject>("get", i))
+                        {
+                            if (info == null) continue;
+
+                            using (var serviceInfo = info.Get<AndroidJavaObject>("serviceInfo"))
+                            {
+                                if (serviceInfo == null) continue;
+
+                                string package = serviceInfo.Get<string>("packageName");
+                                string name = serviceInfo.Get<string>("name");
+                                if (string.IsNullOrEmpty(package) || string.IsNullOrEmpty(name)) continue;
+
+                                found.Add(new ServiceRef { Package = package, Name = name });
+                            }
+                        }
+                    }
+                }
+            }
+            catch (System.Exception e)
+            {
+                _createError = "查服务列表失败：" + e.Message;
+            }
+
+            return found;
+        }
+
+        /// <summary>Tries one way of building a recogniser. Leaves <see cref="_recognizer"/> set on success.</summary>
+        private static bool TryCreate(AndroidJavaClass recognizerClass, AndroidJavaObject activity,
+            string label, string package = null, string name = null)
+        {
+            _listener = new Listener();
+            _builds++;
+
+            try
+            {
+                if (string.IsNullOrEmpty(package))
+                {
+                    _recognizer = recognizerClass.CallStatic<AndroidJavaObject>(
+                        "createSpeechRecognizer", activity);
+                }
+                else
+                {
+                    using (var component = new AndroidJavaObject("android.content.ComponentName", package, name))
+                    {
+                        _recognizer = recognizerClass.CallStatic<AndroidJavaObject>(
+                            "createSpeechRecognizer", activity, component);
+                    }
+                }
+            }
+            catch (System.Exception e)
+            {
+                _createError = label + "：" + e.Message;
+                _recognizer = null;
+                return false;
+            }
+
+            if (!HasRecognizer)
+            {
+                // A wrapper around a Java null is not a recogniser, and calling into it is what once
+                // produced a bare NullReferenceException instead of a diagnosis.
+                _recognizer = null;
+                _createError = label + "：系统返回了 null";
+                return false;
+            }
+
+            return FinishCreating(label);
+        }
+
+        /// <summary>Hooks the listener and the intent up to a recogniser that exists.</summary>
+        private static bool FinishCreating(string label)
+        {
+            try
+            {
+                _recognizer.Call("setRecognitionListener", _listener);
+                _intent = BuildIntent(_variant);
+                _createPath = label;
+                _lastFailure = "";
+                return true;
+            }
+            catch (System.Exception e)
+            {
+                Fail("识别器创建后设置失败：" + e.Message);
+                _recognizer = null;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Records a failure, and keeps it.
+        ///
+        /// This is the fix for a diagnostic that lied by omission: <see cref="_error"/> is cleared at
+        /// the start of every attempt, so a phone whose recogniser had *never* been created displayed
+        /// "语音输入就绪：点麦克风说话" — the panel was reporting the last attempt's silence, not the
+        /// feature's state. <see cref="_lastFailure"/> is only cleared by a recogniser that works.
+        /// </summary>
+        private static void Fail(string message)
+        {
+            _error = message;
+            _lastFailure = message;
+            Debug.LogWarning("[DshMobile] " + message);
+        }
+
         /// <summary>The intent the recogniser is started with. Built on the UI thread with the rest.</summary>
-        private static AndroidJavaObject BuildIntent()
+        private static AndroidJavaObject BuildIntent(int variant)
         {
             using (var intentClass = new AndroidJavaClass("android.speech.RecognizerIntent"))
             using (var activity = CurrentActivity())
@@ -405,15 +655,34 @@ namespace DshMobile
                     intentClass.GetStatic<string>("EXTRA_LANGUAGE_MODEL"),
                     intentClass.GetStatic<string>("LANGUAGE_MODEL_FREE_FORM"));
 
-                // The locale is a *try*, not a fact: asking for zh-CN explicitly is what makes a
-                // Chinese phone recognise Chinese rather than answering in English, and it is also
-                // what some ROMs choke on (they answer ERROR_CLIENT and never become ready). So it
-                // goes on the first attempt and comes off the retry — one of the two shapes is what
-                // this device wants, and the diagnostics line says which.
-                if (_useLanguageExtra)
+                if (variant > MinimalVariant) return intent;   // the last shape is the action and nothing else
+
+                // The locale is a *try*, not a fact: asking for zh-CN explicitly is what makes a Chinese
+                // phone recognise Chinese rather than answering in English, and it is also what some ROMs
+                // choke on (they answer ERROR_CLIENT and never become ready). So it goes on the first
+                // attempt and comes off the next one — one of the shapes is what this device wants, and
+                // the diagnostics line says which.
+                if (variant == 0)
                 {
                     intent.Call<AndroidJavaObject>("putExtra",
                         intentClass.GetStatic<string>("EXTRA_LANGUAGE"), "zh-CN");
+                }
+
+                // The third shape asks for the *on-device* engine, which is a genuinely different
+                // question from "recognise this online": a phone whose online recognition backend is a
+                // service it cannot reach (a Google one on a phone with no Google account, say) can
+                // still have a perfectly good offline engine.
+                if (variant == MinimalVariant)
+                {
+                    try
+                    {
+                        intent.Call<AndroidJavaObject>("putExtra",
+                            intentClass.GetStatic<string>("EXTRA_PREFER_OFFLINE"), true);
+                    }
+                    catch (System.Exception e)
+                    {
+                        Debug.Log("[DshMobile] prefer-offline extra skipped: " + e.Message);
+                    }
                 }
 
                 // Partial results make the wait feel shorter, and they are all the input the player
@@ -537,10 +806,10 @@ namespace DshMobile
                 }
             }
 
-            // The automatic retry: the first attempt failed before the engine was ever ready, so
-            // try the other intent shape once. One retry, not a loop — a recogniser that fails
-            // twice is a recogniser that does not work on this phone, and hammering it would turn a
-            // clear message into a mystery.
+            // The automatic retry: the attempt failed without the engine ever being ready, so ask a
+            // different way. Three shapes, one per attempt — not a loop: a recogniser that refuses all
+            // three is a recogniser that does not work on this phone, and hammering it would turn a
+            // clear message into a mystery (and, before the report rules above, five chat lines).
             if (_retryPending && !_listening && !_pendingStart)
             {
                 _retryPending = false;
@@ -576,13 +845,18 @@ namespace DshMobile
         /// </summary>
         public static string TakeErrorReport()
         {
-            if (string.IsNullOrEmpty(_error) || _error == _reportedError) return "";
+            if (string.IsNullOrEmpty(_error)) return "";
 
-            _reportedError = _error;
+            if (!ShouldReport(_retryPending, _reportedPress == _pressId,
+                    Time.realtimeSinceStartup - _lastReportAt))
+            {
+                return "";
+            }
+
+            _reportedPress = _pressId;
+            _lastReportAt = Time.realtimeSinceStartup;
             return _error;
         }
-
-        private static string _reportedError = "";
 
         /// <summary>
         /// A sentence for the settings panel: what the recogniser is doing, in words. Pure, so the
@@ -602,6 +876,12 @@ namespace DshMobile
                 return _retryPending ? sentence + "（正在自动重试）" : sentence;
             }
             if (!string.IsNullOrEmpty(error)) return error;
+
+            // A phone whose recogniser has never once been built must not be told "everything is
+            // ready": that is what this line said while the diagnostics a few rows below were saying
+            // "识别器：未创建（第 51 次尝试）". The panel's own silence is not a status.
+            if (!string.IsNullOrEmpty(_lastFailure)) return _lastFailure;
+
             return "语音输入就绪：点麦克风说话，识别到的文字会填进输入框。";
         }
 
@@ -760,21 +1040,20 @@ namespace DshMobile
                 _error = ErrorText(error);
 
                 // The engine never even became ready: this is the shape of failure that means "this
-                // phone did not like the question", not "the phone did not hear you". Try the other
-                // question once — with the locale extra taken off, or put back on — and rebuild the
-                // engine first, because a recogniser that has errored can keep failing forever.
-                if (!_sawReady && _attemptsThisPress < 2)
+                // phone did not like the question", not "the phone did not hear you". Ask it a different
+                // way — the next attempt uses the next intent shape — and rebuild the engine first,
+                // because a recogniser that has errored can keep failing forever.
+                if (!IsFinalAttempt(_attemptsThisPress, _sawReady))
                 {
-                    _useLanguageExtra = !_useLanguageExtra;
                     _needsRebuild = true;
                     _retryPending = true;
                     return;
                 }
 
-                // An engine that *was* working and then lost its connection gets one more attempt
-                // with the same question and a fresh object — the shape is not the problem, the drop
-                // is. (ERROR_SERVER_DISCONNECTED, 11, arrived from the phone as a bare error code.)
-                if (IsTransient(error) && _attemptsThisPress < 2)
+                // An engine that *was* working and then lost its connection gets one more attempt with
+                // the same question and a fresh object — the shape is not the problem, the drop is.
+                // (ERROR_SERVER_DISCONNECTED, 11, arrived from the phone as a bare error code.)
+                if (IsTransient(error) && _attemptsThisPress < AttemptsPerPress)
                 {
                     _needsRebuild = true;
                     _retryPending = true;

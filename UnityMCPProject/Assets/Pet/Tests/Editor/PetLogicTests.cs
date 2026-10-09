@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -2501,6 +2501,61 @@ namespace DshPet.Tests
             Assert.IsFalse(DshMobile.MobileStt.StartListening());
             Assert.DoesNotThrow(DshMobile.MobileStt.Tick);
             Assert.DoesNotThrow(DshMobile.MobileStt.Cancel);
+        }
+
+        [Test]
+        public void Stt_AsksThreeDifferentWaysBeforeBelievingThePhone()
+        {
+            // One press used to ask twice, with only the locale toggled. A Chinese ROM that refuses
+            // "recognise Chinese speech, give me partial results, from this package" may well accept
+            // the bare request — and the third shape exists because the second one did not fix the
+            // phone this was reported from.
+            Assert.AreEqual(0, DshMobile.MobileStt.VariantFor(0));
+            Assert.AreEqual(1, DshMobile.MobileStt.VariantFor(1));
+            Assert.AreEqual(DshMobile.MobileStt.MinimalVariant, DshMobile.MobileStt.VariantFor(2));
+
+            // Out-of-range attempts clamp rather than throwing: the last shape is the last shape.
+            Assert.AreEqual(DshMobile.MobileStt.MinimalVariant, DshMobile.MobileStt.VariantFor(9));
+            Assert.AreEqual(0, DshMobile.MobileStt.VariantFor(-3));
+
+            for (int i = 0; i < DshMobile.MobileStt.AttemptsPerPress; i++)
+            {
+                Assert.IsFalse(string.IsNullOrEmpty(DshMobile.MobileStt.VariantName(i)),
+                    "shape " + i + " has no name for the diagnostics");
+            }
+
+            Assert.AreNotEqual(DshMobile.MobileStt.VariantName(0), DshMobile.MobileStt.VariantName(1));
+            Assert.AreNotEqual(DshMobile.MobileStt.VariantName(1), DshMobile.MobileStt.VariantName(2));
+
+            // A press stops asking once every shape has been tried, or as soon as the engine was
+            // actually ready — a phone that heard the player is not a phone with a broken request.
+            Assert.IsFalse(DshMobile.MobileStt.IsFinalAttempt(1, false), "in the middle of the shapes");
+            Assert.IsTrue(DshMobile.MobileStt.IsFinalAttempt(DshMobile.MobileStt.AttemptsPerPress, false),
+                "the last shape is the last attempt");
+            Assert.IsTrue(DshMobile.MobileStt.IsFinalAttempt(1, true),
+                "an engine that became ready has already answered the question");
+        }
+
+        [Test]
+        public void Stt_OnePressWritesAtMostOneLineIntoTheConversation()
+        {
+            // Reported from the phone: one tap produced *five* lines in the chat (codes 5, 9, 11, 9,
+            // 11), because the "only report it once" rule compared message text and every code has a
+            // different sentence. Three rules replace it, and all three are here.
+            Assert.IsFalse(DshMobile.MobileStt.ShouldReport(true, false, 999f),
+                "a retry that is still queued must not be reported yet");
+
+            Assert.IsFalse(DshMobile.MobileStt.ShouldReport(false, true, 999f),
+                "this press has already been reported");
+
+            Assert.IsFalse(DshMobile.MobileStt.ShouldReport(false, false, 0.2f),
+                "two notes back to back is a flood, not a diagnosis");
+
+            Assert.IsTrue(DshMobile.MobileStt.ShouldReport(false, false, DshMobile.MobileStt.ReportCooldown + 0.1f),
+                "the first failure of a press, after the cooldown, is worth a line");
+
+            Assert.GreaterOrEqual(DshMobile.MobileStt.ReportCooldown, 2f,
+                "a cooldown shorter than a couple of seconds is not a cooldown");
         }
 
         // -------------------------------------------------------------- memory match

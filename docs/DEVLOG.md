@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **310/310 通过**（虚拟宠物 172 + 跑酷 15 + 手机端 44 + 小游戏 79），EditMode |
+| 测试 | **312/312 通过**（虚拟宠物 174 + 跑酷 15 + 手机端 44 + 小游戏 79），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -809,6 +809,23 @@
     也就是说：一个关卡可能被"一发玩家做不出来的球"验证通过，而"每一关都打得通"这句话就悄悄
     变成了空话。修法是让候选集从 `SlowestLaunchSpeed` 起算，并单测**每一个候选发都可达**。
     **"玩家能做到"这件事，和"数值在范围内"不是一回事。**
+120. **两个都叫"有没有"的 API，回答的是两个问题。** 真机报回来的诊断是
+    「系统识别服务：有 / 识别器：未创建（**第 51 次尝试**）」：`isRecognitionAvailable` 一直说"有"，
+    而 `createSpeechRecognizer(context)` 51 次一次都没给出可用的识别器。这两句话都不假：
+    前者说"系统里存在识别服务"，后者说"系统**默认给你的那个**能用"——国产 ROM 上默认绑定的
+    往往是"没有 Google 账号的机器上那个被停用的 Google 语音服务"。修法是**别信默认，去点名**：
+    用 `PackageManager.queryIntentServices(RecognitionService)` 列出来，再逐个用
+    `createSpeechRecognizer(context, component)` 显式创建，最后再试平台的**本机离线**识别。
+    教训：**平台 API 说"有"时，要接着问"那我怎么拿到它"**，而不是把"有"当成"能用"。
+121. **"同一条只报一次"如果是按文字去重，那它防不住任何东西。** 一次点击在对话里刷了 5 条：
+    错误码 5、9、11、9、11——每一句的**文字都不一样**，所以"去重"规则一次都没生效，
+    重试链把每一步都写成了聊天记录。规则的真正对象不是"这句话"，而是**一次用户操作**：
+    改成"重试还排着队就先不报 + 同一次按下只报一条 + 两条之间至少隔 5 秒"。
+    **限流要按"用户的一次动作"计数，不是按消息内容。**
+122. **失败原因不能每次尝试开头就清空。** `_error` 在每次 `StartAttempt` 开头被置空，于是
+    一台"识别器从来没建出来过"的手机，设置面板显示的是「语音输入就绪：点麦克风说话」——
+    面板报出的是**最后一次尝试的安静**，而不是这个功能的状态。诊断类信息要分两层：
+    "这次怎么了"（可以清）和"这功能到底能不能用"（只能被成功清掉）。
 
 ---
 
@@ -848,7 +865,7 @@ Tools/DSH Mobile/Preview/Report Current Viewport    # 打印当前视口 / 方�
 Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
-EditMode，期望 310/310
+EditMode，期望 312/312
 
 # 存档
 %USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\
