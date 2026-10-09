@@ -185,6 +185,7 @@ namespace DshMiniGames
             _height = 0.4f;
             _velocity = 0f;
             _nextSpawn = 4.5f;
+            _lastCentre = _height;      // the run starts from wherever the bird starts
             State = Phase.Ready;
 
             if (_bird != null) _bird.position = new Vector3(BirdX, _height, 0f);
@@ -368,15 +369,28 @@ namespace DshMiniGames
             if (_nextSpawn <= 0f)
             {
                 SpawnPipe();
-                _nextSpawn = _settings.PipeSpacing;
+
+                // The spacing is a *rate*, not a distance: it grows with the speed so the pipes keep
+                // arriving at a rhythm a thumb can play (see FlyBirdRules.PipeSeconds).
+                _nextSpawn = FlyBirdRules.SpacingFor(Score, _settings);
             }
         }
 
+        /// <summary>
+        /// Places the next pipe pair.
+        ///
+        /// The gap's height is not a free random number: it is drawn from the window the bird can
+        /// physically fly to from the last gap, given the time the next pipe takes to arrive (see
+        /// <see cref="FlyBirdRules.ReachableCentre"/>). The first version rolled uniformly over the
+        /// whole play area, which produced pairs of pipes 14 units apart when the bird can travel
+        /// about 4 — the run was already lost, and it felt exactly as random as it was.
+        /// </summary>
         private void SpawnPipe()
         {
             float gap = FlyBirdRules.GapFor(Score, _settings);
             float roll = (float)_rng.NextDouble();
-            float centre = FlyBirdRules.GapCentre(roll, gap, _settings, 1f);
+            float centre = FlyBirdRules.NextGapCentre(roll, _lastCentre, gap, Score, _settings);
+            _lastCentre = centre;
 
             var root = new GameObject("Pipe").transform;
             root.SetParent(transform, false);
@@ -400,6 +414,9 @@ namespace DshMiniGames
 
             _pipes.Add(new Pipe { Root = root, Centre = centre, Gap = gap });
         }
+
+        /// <summary>The gap centre of the last pipe placed: where the bird has to come from.</summary>
+        private float _lastCentre;
 
         private void Die()
         {

@@ -120,10 +120,10 @@ namespace DshPet
             AddLimb("ArmLBone", "ArmL", new Vector3(-shoulderX, shoulderY, 0f), ArmLength, Jacket, Skin);
             AddLimb("ArmRBone", "ArmR", new Vector3(shoulderX, shoulderY, 0f), ArmLength, Jacket, Skin);
 
-            _shadow = Mesh("Shadow", null, transform, new Vector3(0f, 0.012f, 0f),
-                new Vector3(0.85f, 0.02f, 0.85f));
-            var shadowRenderer = _shadow.GetComponent<Renderer>();
-            if (shadowRenderer != null) shadowRenderer.sharedMaterial = ShadowMaterial();
+            // A soft round blob rather than the flat dark cube this used to be: on the room's floor
+            // that cube was a black square following the player around (see the same fix in
+            // PetAvatar, and the report behind both).
+            _shadow = DshMobile.SoftShadow.Attach(transform, 0.42f, 0.42f, 0.5f);
         }
 
         private void AddLimb(string boneName, string meshName, Vector3 at, float length,

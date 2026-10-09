@@ -169,10 +169,12 @@ namespace DshPet
             AddLeg("LegBRBone", "LegBR", new Vector3(hipX, legLength, backZ), legLength, width);
 
             // ---- soft contact shadow so the pet does not look like it floats ----
-            _shadow = Mesh("Shadow", null, transform, new Vector3(0f, 0.012f, 0f),
-                new Vector3(width * 1.9f, 0.02f, length * 2.1f));
-            var shadowRenderer = _shadow.GetComponent<Renderer>();
-            if (shadowRenderer != null) shadowRenderer.sharedMaterial = ShadowMaterial();
+            //
+            // A soft round blob, NOT the flat cube this used to be: an opaque slab of (0.12, 0.11,
+            // 0.16) scaled to the pet's footprint reads as a black square under its feet, and it is
+            // most obvious while the pet is walking, which is exactly when the player is looking at
+            // its feet (the report was "宠物在移动时脚下有黑色方块").
+            _shadow = DshMobile.SoftShadow.Attach(transform, width * 0.95f, length * 1.05f, 0.5f);
 
             _baseScale = transform.localScale;
         }

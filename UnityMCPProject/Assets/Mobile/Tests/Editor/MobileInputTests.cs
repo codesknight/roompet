@@ -762,6 +762,88 @@ namespace DshMobile.Tests
             }
         }
 
+        // ------------------------------------------------------------------ contact shadow
+
+        [Test]
+        public void SoftShadow_FadesTowardsItsEdgeInsteadOfStopping()
+        {
+            // The bug: both avatars used a flat *cube* as their contact shadow, so a character
+            // walking around the room dragged a black square under its feet. What makes a shadow a
+            // shadow is that its edge fades, so that is what is asserted here.
+            var gradient = SoftShadow.Gradient;
+            Assert.IsNotNull(gradient, "the shadow has no gradient texture");
+            Assert.AreEqual(SoftShadow.TextureSize, gradient.width);
+
+            var pixels = gradient.GetPixels32();
+            int size = gradient.width;
+
+            System.Func<int, int, byte> alphaAt = (x, y) => pixels[y * size + x].a;
+
+            byte centre = alphaAt(size / 2, size / 2);
+            Assert.GreaterOrEqual(centre, 240, "the middle of a shadow should be its darkest");
+
+            foreach (var corner in new[]
+                     {
+                         new Vector2Int(0, 0), new Vector2Int(size - 1, 0),
+                         new Vector2Int(0, size - 1), new Vector2Int(size - 1, size - 1)
+                     })
+            {
+                Assert.AreEqual(0, alphaAt(corner.x, corner.y),
+                    "the corners of the gradient must be fully transparent, or the shadow has a rim");
+            }
+
+            // Falling all the way out: no plateau (that would be a disc) and no hard step (a square).
+            byte previous = centre;
+            for (int x = size / 2; x < size; x++)
+            {
+                byte here = alphaAt(x, size / 2);
+                Assert.LessOrEqual(here, previous, $"the gradient brightens again at x={x}");
+                previous = here;
+            }
+
+            // …and the middle of an edge is dimmer than the centre but not yet zero: the fade has to
+            // be gradual enough to read, rather than a vignette that ends in a visible ring.
+            byte edgeMid = alphaAt(size / 2, 1);
+            Assert.Greater(edgeMid, 0, "the fade reaches zero before the edge, which makes a ring");
+            Assert.Less(edgeMid, centre);
+        }
+
+        [Test]
+        public void SoftShadow_IsAFlatTransparentQuadNotAnOpaqueCube()
+        {
+            var host = new GameObject("shadow-host");
+            try
+            {
+                var shadow = SoftShadow.Attach(host.transform, 0.4f, 0.5f, 0.5f);
+                if (shadow == null)
+                {
+                    // No Sprites/Default on this build: skipping the shadow is the documented
+                    // fallback, and it is a great deal better than a black square.
+                    Assert.Inconclusive("no transparent shader available in this project");
+                    return;
+                }
+
+                Assert.AreEqual(0, shadow.GetComponentsInChildren<Collider>().Length,
+                    "a shadow must not collide with anything");
+
+                // Lying flat, and sized to its radius rather than to a slab.
+                Assert.AreEqual(90f, Mathf.DeltaAngle(0f, shadow.localRotation.eulerAngles.x), 1f,
+                    "the shadow is standing up instead of lying on the floor");
+                Assert.AreEqual(0.8f, shadow.localScale.x, 0.001f);
+                Assert.AreEqual(1.0f, shadow.localScale.y, 0.001f);
+
+                var renderer = shadow.GetComponent<Renderer>();
+                Assert.IsNotNull(renderer);
+                Assert.Greater(renderer.sharedMaterial.renderQueue, 2000,
+                    "the shadow has to be drawn transparent — an opaque one is the black square again");
+                Assert.AreEqual(1, host.transform.childCount, "one object, one draw call");
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+            }
+        }
+
         // ----------------------------------------------------------------- mini animals
 
         [Test]

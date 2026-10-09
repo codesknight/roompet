@@ -143,11 +143,11 @@ namespace DshMiniGames
             _kind = DshMobile.MiniAnimal.Current;
             DshMobile.MiniAnimal.Build(root, _kind, 1.05f);
 
-            // A soft disc under its feet: without it the animal is hard to place against a box of a
-            // similar colour, and "am I on the box or beside it" is the whole game.
-            var shadow = Shape("Shadow", PrimitiveType.Cylinder, new Vector3(0f, 0.012f, 0f),
-                new Vector3(0.34f, 0.005f, 0.34f), new Color(0f, 0f, 0f, 1f));
-            shadow.SetParent(root, false);
+            // A soft blob under its feet: without it the animal is hard to place against a box of a
+            // similar colour, and "am I on the box or beside it" is the whole game. (The first
+            // version of this was a flat black cylinder — legible, but it read as a hole cut in the
+            // box rather than as a shadow.)
+            DshMobile.SoftShadow.Attach(root, 0.30f, 0.30f, 0.45f);
 
             return root;
         }
