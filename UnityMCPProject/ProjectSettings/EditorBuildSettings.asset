@@ -20,4 +20,10 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/MiniGames/Scenes/CatchFruit.unity
     guid: 02a6ead3e02dce94caf97d0fde552baa
+  - enabled: 1
+    path: Assets/MiniGames/Scenes/SliceFruit.unity
+    guid: f58703c2142dc1141b083552e1cac8d8
+  - enabled: 1
+    path: Assets/MiniGames/Scenes/AngryBirds.unity
+    guid: cd2ea68ffa36c2d469e1e0722c44f076
   m_configObjects: {}

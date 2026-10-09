@@ -17,6 +17,8 @@ namespace DshMiniGames.EditorTools
         public const string ScenePath = "Assets/MiniGames/Scenes/FlyBird.unity";
         public const string JumpQuestScenePath = "Assets/MiniGames/Scenes/JumpQuest.unity";
         public const string CatchFruitScenePath = "Assets/MiniGames/Scenes/CatchFruit.unity";
+        public const string SliceScenePath = "Assets/MiniGames/Scenes/SliceFruit.unity";
+        public const string AngryBirdsScenePath = "Assets/MiniGames/Scenes/AngryBirds.unity";
 
         [MenuItem("Tools/DSH Mini/Build FlyBird Scene")]
         public static void BuildScene()
@@ -63,6 +65,36 @@ namespace DshMiniGames.EditorTools
             Debug.Log($"[DshMini] CatchFruit scene built at {CatchFruitScenePath}.");
         }
 
+        [MenuItem("Tools/DSH Mini/Build SliceFruit Scene")]
+        public static void BuildSliceScene()
+        {
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+            var root = new GameObject("SliceFruit");
+            root.AddComponent<SliceGame>();
+            root.AddComponent<SliceHud>();
+
+            EditorSceneManager.SaveScene(scene, SliceScenePath);
+
+            RegisterInBuildSettings();
+            Debug.Log($"[DshMini] SliceFruit scene built at {SliceScenePath}.");
+        }
+
+        [MenuItem("Tools/DSH Mini/Build AngryBirds Scene")]
+        public static void BuildAngryBirdsScene()
+        {
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+            var root = new GameObject("AngryBirds");
+            root.AddComponent<AngryBirdsGame>();
+            root.AddComponent<AngryBirdsHud>();
+
+            EditorSceneManager.SaveScene(scene, AngryBirdsScenePath);
+
+            RegisterInBuildSettings();
+            Debug.Log($"[DshMini] AngryBirds scene built at {AngryBirdsScenePath}.");
+        }
+
         [MenuItem("Tools/DSH Mini/Add Mini Game Scenes To Build Settings")]
         public static void RegisterInBuildSettings()
         {
@@ -72,6 +104,8 @@ namespace DshMiniGames.EditorTools
             AddIfPresent(scenes, ScenePath);
             AddIfPresent(scenes, JumpQuestScenePath);
             AddIfPresent(scenes, CatchFruitScenePath);
+            AddIfPresent(scenes, SliceScenePath);
+            AddIfPresent(scenes, AngryBirdsScenePath);
 
             // The room and the runner are registered by their own menus; keeping them here as well
             // means a fresh clone can be made playable by running the menus in any order.

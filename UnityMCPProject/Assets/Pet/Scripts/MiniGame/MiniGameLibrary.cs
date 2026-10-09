@@ -86,10 +86,28 @@ namespace DshPet
             {
                 Id = "catchfruit",
                 DisplayName = "接果子",
-                Blurb = "按住左右移动篮子，接住掉下来的果子；漏三个就结束。",
+                Blurb = "在屏幕上左右滑动，接住掉下来的水果，漏三个就结束。",
                 SceneName = "CatchFruit",
                 ScenePath = "Assets/MiniGames/Scenes/CatchFruit.unity",
                 Icon = "🧺"
+            },
+            new MiniGameDefinition
+            {
+                Id = "slicefruit",
+                DisplayName = "切水果",
+                Blurb = "滑动切开飞起来的水果：有无尽模式，也有八关闯关模式。",
+                SceneName = "SliceFruit",
+                ScenePath = "Assets/MiniGames/Scenes/SliceFruit.unity",
+                Icon = "🔪"
+            },
+            new MiniGameDefinition
+            {
+                Id = "angrybirds",
+                DisplayName = "弹弓小鸟",
+                Blurb = "拉弹弓把小鸟射出去，把躲在结构里的猪砸掉；每关都是随机搭的，但一定打得通。",
+                SceneName = "AngryBirds",
+                ScenePath = "Assets/MiniGames/Scenes/AngryBirds.unity",
+                Icon = "🐦"
             }
             // 新增玩法就在这里加一行：填一个已在 Build Settings 里的场景即可。
         };
