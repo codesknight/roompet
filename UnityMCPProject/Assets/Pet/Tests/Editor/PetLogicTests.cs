@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -1256,6 +1256,100 @@ namespace DshPet.Tests
                     Assert.IsTrue(seen.Exists(l => l.Contains("地图")), $"map button missing at {where}");
                     Assert.IsTrue(seen.Contains("提示词"), $"prompt button missing at {where}");
                     Assert.IsTrue(seen.Contains("重置"), $"reset button missing at {where}");
+
+                    // And the collapsed card keeps the way back out plus the navigation.
+                    var shortRows = PetHud.StatusFooterRows(mobile, detailOn: false, available,
+                        buttonFont, collapsed: true);
+                    var shortSeen = new System.Collections.Generic.List<string>();
+                    foreach (var row in shortRows)
+                    {
+                        Assert.LessOrEqual(PetHud.EstimatedRowWidth(row, buttonFont),
+                            available - PetHud.RowPackingSlack + 0.01f,
+                            $"collapsed footer row [{string.Join(", ", row)}] has no slack at {where}");
+                        shortSeen.AddRange(row);
+                    }
+
+                    Assert.IsTrue(shortSeen.Contains("展开"), $"no way to reopen the card at {where}");
+                    Assert.IsTrue(shortSeen.Exists(l => l.Contains("设置")),
+                        $"collapsed card loses the settings at {where}");
+                    Assert.IsTrue(shortSeen.Exists(l => l.Contains("地图")),
+                        $"collapsed card loses the map at {where}");
+                }
+            }
+        }
+
+        [Test]
+        public void Hud_ThePetCardAlwaysFitsTheSpaceItIsGiven()
+        {
+            // The card has three stacked blocks — chips, header, pinned buttons — and one elastic
+            // one, the detail. Everything here is a failure this project has already shipped once:
+            // buttons laid out past the panel they belong to, and a card that grew taller than the
+            // viewport. The rule under test is the one that fixes both: the card is exactly its
+            // content, and when the expanded form cannot fit, it falls back to the short form
+            // instead of drawing controls past its own edge.
+            const int font = 14;
+            const float innerInset = 28f;
+
+            var chipSets = new[]
+            {
+                new[] { "小熊" },
+                new[] { "小熊", "小猫咪", "小猫咪2" },
+                new[] { "* 小熊", "! 小猫咪", "小猫咪2" }
+            };
+
+            foreach (var size in Viewports)
+            {
+                foreach (bool mobile in new[] { false, true })
+                {
+                    foreach (bool expanded in new[] { false, true })
+                    {
+                        foreach (bool primary in new[] { false, true })
+                        {
+                            foreach (var chips in chipSets)
+                            {
+                                var layout = PetHud.ComputeLayout(size.x, size.y, PetSpecies.Count);
+                                var plan = PetHud.ComputeCardLayout(layout.Status, chips, expanded,
+                                    primary, font, font);
+
+                                string where = $"{size.x}x{size.y} ({(mobile ? "mobile" : "desktop")}, " +
+                                               $"expanded={expanded}, primary={primary}, {chips.Length} pets)";
+
+                                Assert.LessOrEqual(plan.Panel.height, layout.Status.height + 0.01f,
+                                    $"the card is taller than its space at {where}");
+                                Assert.LessOrEqual(plan.Panel.yMax, layout.Status.yMax + 0.01f,
+                                    $"the card runs past the bottom of its space at {where}");
+
+                                // The panel is exactly the sum of its parts — no silent overlap
+                                // between the scroll area and the pinned footer.
+                                float content = 12f + plan.ChipsHeight + plan.HeaderHeight +
+                                                plan.ScrollHeight + plan.FooterHeight + 12f;
+                                Assert.AreEqual(Mathf.Min(layout.Status.height, content),
+                                    plan.Panel.height, 0.01f,
+                                    $"the card and its content disagree at {where}");
+
+                                // A collapsed card must never leave the buttons outside the panel.
+                                Assert.LessOrEqual(plan.ChipsHeight + plan.HeaderHeight + plan.FooterHeight,
+                                    plan.Panel.height + 0.01f,
+                                    $"chips + header + footer do not fit the card at {where}");
+
+                                // Nothing may be silently dropped at the pet counts and name
+                                // lengths the game can actually produce: the room holds at most
+                                // BackpackSlots pets, and the chip label is shortened to fit.
+                                Assert.AreEqual(
+                                    PetHud.ChipRowsFor(chips, layout.Status.width - 28f, font),
+                                    plan.ChipRows,
+                                    $"the card dropped pet chips at {where}");
+
+                                float available = layout.Status.width - innerInset;
+                                foreach (var row in plan.FooterRows)
+                                {
+                                    Assert.LessOrEqual(PetHud.EstimatedRowWidth(row, font),
+                                        available - PetHud.RowPackingSlack + 0.01f,
+                                        $"row [{string.Join(", ", row)}] has no slack at {where}");
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1876,6 +1970,262 @@ namespace DshPet.Tests
             }
         }
 
+        // ------------------------------------------------------------------- puzzle
+
+        [Test]
+        public void Puzzle_AlwaysStartsShuffledAndWithEveryTilePresent()
+        {
+            for (int seed = 1; seed <= 40; seed++)
+            {
+                var puzzle = PetPuzzle.Start(seed * 7919);
+                Assert.IsFalse(puzzle.IsSolved, $"seed {seed} started solved");
+                Assert.AreEqual(0, puzzle.Moves, "a fresh shuffle is not moves the player made");
+
+                var seen = new bool[PetPuzzle.TileCount + 1];
+                for (int i = 0; i < PetPuzzle.TileCount; i++)
+                {
+                    int value = puzzle[i];
+                    Assert.GreaterOrEqual(value, 0);
+                    Assert.LessOrEqual(value, PetPuzzle.TileCount);
+                    Assert.IsFalse(seen[value], "two tiles have the same value");
+                    seen[value] = true;
+                }
+
+                for (int value = 0; value < PetPuzzle.TileCount; value++)
+                {
+                    Assert.IsTrue(seen[value], $"tile {value} is missing from the board");
+                }
+            }
+        }
+
+        [Test]
+        public void Puzzle_OnlyTilesNextToTheHoleCanMove()
+        {
+            var puzzle = PetPuzzle.Start(4242);
+            int hole = puzzle.EmptyIndex;
+
+            for (int i = 0; i < PetPuzzle.TileCount; i++)
+            {
+                int row = i / PetPuzzle.Size, column = i % PetPuzzle.Size;
+                int holeRow = hole / PetPuzzle.Size, holeColumn = hole % PetPuzzle.Size;
+                bool adjacent = Mathf.Abs(row - holeRow) + Mathf.Abs(column - holeColumn) == 1;
+
+                Assert.AreEqual(adjacent && puzzle[i] != PetPuzzle.Empty, puzzle.CanSlide(i),
+                    $"tile {i} disagrees with the board at hole {hole}");
+            }
+
+            Assert.IsFalse(puzzle.CanSlide(hole), "the hole cannot slide into itself");
+            Assert.IsFalse(puzzle.TrySlide(hole));
+            Assert.AreEqual(0, puzzle.Moves, "a refused move is not a move");
+        }
+
+        [Test]
+        public void Puzzle_SlidingATileMovesTheHoleAndCountsTheMove()
+        {
+            var puzzle = PetPuzzle.Start(999);
+            int hole = puzzle.EmptyIndex;
+            int tile = puzzle.MovableTiles()[0];
+            int tileIndex = -1;
+            for (int i = 0; i < PetPuzzle.TileCount; i++)
+            {
+                if (puzzle[i] == tile) tileIndex = i;
+            }
+
+            Assert.IsTrue(puzzle.TrySlide(tileIndex));
+            Assert.AreEqual(1, puzzle.Moves);
+            Assert.AreEqual(tileIndex, puzzle.EmptyIndex, "the hole is where the tile was");
+            Assert.AreEqual(tile, puzzle[hole], "the tile is where the hole was");
+        }
+
+        [Test]
+        public void Puzzle_UndoingEveryMoveReturnsTheBoard()
+        {
+            // The board is a state machine with one reversible move, and the shuffle is a walk of
+            // legal moves rather than a permutation — which is what makes the puzzle always
+            // solvable. This test is that claim: start from the solved board, walk it, and walk
+            // every step back.
+            var puzzle = PetPuzzle.Solved();
+            var walked = new System.Collections.Generic.List<int>();
+
+            for (int i = 0; i < 25; i++)
+            {
+                int hole = puzzle.EmptyIndex;
+                var movable = puzzle.MovableTiles();
+                int pick = movable[i % movable.Length];
+                int index = -1;
+                for (int t = 0; t < PetPuzzle.TileCount; t++)
+                {
+                    if (puzzle[t] == pick) index = t;
+                }
+
+                Assert.IsTrue(puzzle.TrySlide(index));
+                walked.Add(hole);   // undoing means putting this tile back into that hole
+            }
+
+            Assert.IsFalse(puzzle.IsSolved, "25 moves should not accidentally solve it again");
+
+            for (int i = walked.Count - 1; i >= 0; i--)
+            {
+                Assert.IsTrue(puzzle.TrySlide(walked[i]), "the reverse of a legal move is legal");
+            }
+
+            Assert.IsTrue(puzzle.IsSolved, "walking every move back has to solve the board");
+        }
+
+        [Test]
+        public void Puzzle_PaysOutForFinishingAndPaysLessForFlailing()
+        {
+            Assert.AreEqual(40, PetPuzzle.Reward(PetPuzzle.Par), "par pays the full amount");
+            Assert.AreEqual(40, PetPuzzle.Reward(0), "a perfect run is not punished");
+            Assert.Greater(PetPuzzle.Reward(PetPuzzle.Par), PetPuzzle.Reward(PetPuzzle.Par + 5));
+            Assert.GreaterOrEqual(PetPuzzle.Reward(PetPuzzle.Par + 500), 8,
+                "finishing is the point: the payout never reaches zero");
+
+            var shuffled = PetPuzzle.Start(5);
+            Assert.AreEqual(0, shuffled.PendingReward, "an unsolved board pays nothing");
+
+            // A solved board is worth its payout — the HUD pays once per board, not once per frame.
+            Assert.AreEqual(40, PetPuzzle.Solved().PendingReward);
+        }
+
+        [Test]
+        public void Puzzle_EncodesAndDecodesWithoutLosingTheBoard()
+        {
+            var puzzle = PetPuzzle.Start(2024);
+            string encoded = puzzle.Encode();
+
+            var parsed = PetPuzzle.Decode(encoded);
+            Assert.IsNotNull(parsed, "a round trip has to survive");
+
+            for (int i = 0; i < PetPuzzle.TileCount; i++)
+            {
+                Assert.AreEqual(puzzle[i], parsed[i], $"tile {i} changed in the round trip");
+            }
+            Assert.AreEqual(puzzle.Moves, parsed.Moves);
+            Assert.AreEqual(puzzle.EmptyIndex, parsed.EmptyIndex);
+        }
+
+        [Test]
+        public void Puzzle_RefusesCorruptSaves()
+        {
+            // The board lives in a save file that a player can edit; a board with two 3s or no
+            // hole at all is not a puzzle, and the caller has to be able to tell.
+            Assert.IsNull(PetPuzzle.Decode(null));
+            Assert.IsNull(PetPuzzle.Decode(""));
+            Assert.IsNull(PetPuzzle.Decode("12345678"));
+            Assert.IsNull(PetPuzzle.Decode("123456789"));
+            Assert.IsNull(PetPuzzle.Decode("123456789:0"), "a board with no hole is not a board");
+            Assert.IsNull(PetPuzzle.Decode("123456788:4"), "a duplicated tile is not a board");
+            Assert.IsNotNull(PetPuzzle.Decode("123456780:12"));
+        }
+
+        [Test]
+        public void Puzzle_EveryTileShowsItsOwnSliceOfThePicture()
+        {
+            var seen = new System.Collections.Generic.List<Rect>();
+            for (int i = 0; i < PetPuzzle.TileCount; i++)
+            {
+                var uv = PuzzleArt.TileUv(i);
+                Assert.GreaterOrEqual(uv.x, 0f);
+                Assert.LessOrEqual(uv.xMax, 1f);
+                Assert.GreaterOrEqual(uv.y, 0f);
+                Assert.LessOrEqual(uv.yMax, 1f);
+
+                foreach (var other in seen)
+                {
+                    Assert.IsFalse(Mathf.Approximately(other.x, uv.x) &&
+                                   Mathf.Approximately(other.y, uv.y),
+                        $"tile {i} shows the same slice as an earlier tile");
+                }
+                seen.Add(uv);
+            }
+        }
+
+        [Test]
+        public void Puzzle_ThePictureIsPaintedForThisRoomAndIsNotFlat()
+        {
+            var cabin = PuzzleArt.Paint(PetSpecies.Get("fox"), RoomThemeInfo.Get(RoomTheme.Cabin), 11);
+            var terrace = PuzzleArt.Paint(PetSpecies.Get("bear"), RoomThemeInfo.Get(RoomTheme.Terrace), 11);
+
+            Assert.AreEqual(PuzzleArt.Size, cabin.width);
+            Assert.AreEqual(PuzzleArt.Size, cabin.height);
+
+            var first = cabin.GetPixel(4, 4);
+            var middle = cabin.GetPixel(PuzzleArt.Size / 2, PuzzleArt.Size / 2);
+            var bottom = cabin.GetPixel(4, 4);
+
+            Assert.AreNotEqual(first, middle, "a flat colour would make the puzzle unsolvable by eye");
+            Assert.AreEqual(first, bottom);
+
+            var night = terrace.GetPixel(4, 4);
+            Assert.AreNotEqual(first, night, "the terrace paints a different picture from the cabin");
+
+            Object.DestroyImmediate(cabin);
+            Object.DestroyImmediate(terrace);
+        }
+
+        [Test]
+        public void Collection_DefaultNamesNeverCollide()
+        {
+            // Two pets called 小猫咪 is fine in a warehouse list and useless in a room: the status
+            // card names each animal, so the generated names have to tell them apart.
+            var previous = JsonUtility.ToJson(PetCollection.Data);
+            int original = DshMobile.PetWallet.Coins;
+            try
+            {
+                PetCollection.ReplaceForTests(new PetCollectionData());
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(100000);
+
+                string message;
+                PetCollection.Buy("cat", out message);
+                PetCollection.Buy("cat", out message);
+                PetCollection.Buy("cat", out message);
+
+                var names = new System.Collections.Generic.List<string>();
+                foreach (var record in PetCollection.Warehouse)
+                {
+                    Assert.IsFalse(names.Contains(record.Name),
+                        $"two pets are both called {record.Name}");
+                    names.Add(record.Name);
+                }
+
+                Assert.IsTrue(names.Contains("小猫咪2"), "the second cat needs a different name");
+            }
+            finally
+            {
+                PetCollection.ReplaceForTests(JsonUtility.FromJson<PetCollectionData>(previous));
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(original);
+            }
+        }
+
+        [Test]
+        public void Tts_TheStatusLineSaysWhatIsActuallyWrong()
+        {
+            // The settings line is the only feedback the player gets, and "I hear nothing" has
+            // four very different causes. Each one gets its own sentence.
+            string desktop = DshMobile.MobileTts.StatusText(true, false, false, int.MinValue,
+                int.MinValue, "");
+            Assert.IsTrue(desktop.Contains("只在安卓"), desktop);
+
+            string failed = DshMobile.MobileTts.StatusText(true, false, true, -1, int.MinValue, "");
+            Assert.IsTrue(failed.Contains("初始化失败"), failed);
+
+            string noVoice = DshMobile.MobileTts.StatusText(true, true, true, 0, -1, "");
+            Assert.IsTrue(noVoice.Contains("中文语音"), noVoice);
+
+            string off = DshMobile.MobileTts.StatusText(false, true, true, 0, 0, "");
+            Assert.IsTrue(off.Contains("打开开关"), off);
+
+            string on = DshMobile.MobileTts.StatusText(true, true, true, 0, 0, "");
+            Assert.IsTrue(on.Contains("就绪"), on);
+
+            string pending = DshMobile.MobileTts.StatusText(true, false, true, int.MinValue,
+                int.MinValue, "");
+            Assert.IsTrue(pending.Contains("准备中"), pending);
+        }
+
         // ------------------------------------------------------------ footer geometry
 
         [Test]
@@ -1900,17 +2250,17 @@ namespace DshPet.Tests
 
                     string where = $"{size.x}x{size.y} ({(mobile ? "mobile" : "desktop")}, {rows.Length} rows)";
 
-                    // The pinned rows plus the header have to fit inside the panel, or the
-                    // bottom row is drawn where the panel's own area no longer delivers input.
-                    Assert.LessOrEqual(footer + 56f, innerHeight + 0.01f,
-                        $"two rows of buttons plus the compact header need {footer + 56f:F0}px " +
-                        $"of a {innerHeight:F0}px panel at {where}");
+                    // Naming one pet: the card the footer belongs to is the short form when the
+                    // full one cannot hold it, so what has to hold is the pinned block itself.
+                    var plan = PetHud.ComputeCardLayout(layout.Status, new[] { "小熊" }, true, true,
+                        buttonFont, buttonFont);
 
-                    // ...and there is still a strip of detail left over for the need bars. When
-                    // the panel is this tight the header drops its subtitle (86px -> 56px), which
-                    // is the trade the panel makes rather than overflowing.
-                    Assert.GreaterOrEqual(innerHeight - 56f - footer, 24f,
-                        $"no room left for the need bars at {where}");
+                    Assert.LessOrEqual(plan.FooterHeight, plan.Panel.height + 0.01f,
+                        $"the footer is taller than the card at {where}");
+                    Assert.LessOrEqual(plan.HeaderHeight + plan.FooterHeight,
+                        innerHeight + 0.01f,
+                        $"header + footer alone do not fit the panel at {where}");
+                    Assert.GreaterOrEqual(footer, 0f);
                 }
             }
         }

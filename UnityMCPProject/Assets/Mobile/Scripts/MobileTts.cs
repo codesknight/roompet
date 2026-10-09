@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using UnityEngine;
 
 namespace DshMobile
@@ -22,26 +22,54 @@ namespace DshMobile
     /// Input is not implemented. Speech recognition needs a microphone permission, a recognizer
     /// intent, and a whole turn-taking UI; a half-built one that pops a system dialog and
     /// sometimes returns nothing is worse than the keyboard that already works.
+    ///
+    /// The first version of this shipped and said nothing on a real phone. Two causes, both
+    /// invisible in the editor: from Android 11 the speech engine is not even visible to the app
+    /// without a &lt;queries&gt; declaration in the manifest (see <c>MobileAndroidPackaging</c>),
+    /// and a device whose engine has no Chinese voice data accepts the utterance and then plays
+    /// silence. So the engine now reports what it actually did, the settings panel shows that
+    /// report, and a button speaks a fixed line on the spot instead of waiting for the pet to
+    /// say something interesting.
     /// </summary>
     public static class MobileTts
     {
         public const string EnabledKey = "dshpet.tts";
+        public const string HintedKey = "dshpet.tts.hinted";
+
+        /// <summary>The line the test button speaks: fixed, so it needs no reply to exist.</summary>
+        public const string TestLine = "你好，我是你的宠物，我现在会说话了。";
 
         private static bool _enabledLoaded;
         private static bool _enabled;
 
         private static bool _initTried;
         private static bool _ready;
-        private static bool _failed;
         private static AndroidJavaObject _engine;
         private static AndroidJavaObject _bundle;
         private static InitListener _listener;
+
+        private static float _lastAttemptAt = -999f;
+        private static string _lastError = "";
+        private static int _initStatus = int.MinValue;
+        private static int _languageStatus = int.MinValue;
+
+        /// <summary>Seconds between init attempts, so a device without an engine is not hammered.</summary>
+        public const float InitRetrySeconds = 6f;
 
         /// <summary>True when there is a text-to-speech engine to use at all.</summary>
         public static bool Available => Application.platform == RuntimePlatform.Android;
 
         /// <summary>True once the engine has come up and can be spoken to.</summary>
         public static bool Ready => _ready;
+
+        /// <summary>The last thing that went wrong, for the settings panel.</summary>
+        public static string LastError => _lastError;
+
+        /// <summary>The engine's initialisation status, as reported by Android.</summary>
+        public static int InitStatus => _initStatus;
+
+        /// <summary>What <c>setLanguage(Locale.CHINA)</c> answered; negative means "no Chinese voice".</summary>
+        public static int LanguageStatus => _languageStatus;
 
         /// <summary>
         /// Whether the pet reads its lines out loud.
@@ -69,25 +97,56 @@ namespace DshMobile
             }
         }
 
-        /// <summary>Forgets the cached setting, so the next read comes from disk.</summary>
-        public static void ResetCache() => _enabledLoaded = false;
+        /// <summary>Whether the player has already been pointed at the switch.</summary>
+        public static bool HintShown
+        {
+            get => PlayerPrefs.GetInt(HintedKey, 0) != 0;
+            set
+            {
+                PlayerPrefs.SetInt(HintedKey, value ? 1 : 0);
+                PlayerPrefs.Save();
+            }
+        }
+
+        /// <summary>Forgets cached state, so the next read comes from disk and the engine retries.</summary>
+        public static void ResetCache()
+        {
+            _enabledLoaded = false;
+            _initTried = false;
+            _ready = false;
+            _lastAttemptAt = -999f;
+            _lastError = "";
+            _initStatus = int.MinValue;
+            _languageStatus = int.MinValue;
+        }
 
         /// <summary>
-        /// Says one line. Safe to call with anything, on any platform, at any time.
+        /// Says one line, if the player has switched speech on. Safe to call from anywhere.
         ///
         /// Stage directions are dropped: the pet's transcript is full of "（开心地晃了晃）", and a
         /// synthetic voice reading parentheses aloud is exactly the thing that makes a talking
         /// pet embarrassing rather than charming. A line that is nothing but a stage direction
         /// produces no speech at all, which is why poking the pet chirps instead of narrating.
         /// </summary>
-        public static void Speak(string text, float pitch = 1f, float rate = 1f)
+        public static bool Speak(string text, float pitch = 1f, float rate = 1f)
+            => Enabled && Say(text, pitch, rate);
+
+        /// <summary>
+        /// Speaks regardless of the switch, for the settings panel's test button.
+        ///
+        /// The switch is a preference; the test is a diagnostic. A player who hears nothing needs
+        /// one button that answers "is it my phone or is it my settings".
+        /// </summary>
+        public static bool Test(float pitch = 1f, float rate = 1f) => Say(TestLine, pitch, rate);
+
+        private static bool Say(string text, float pitch, float rate)
         {
-            if (!Available || !Enabled) return;
+            if (!Available) return false;
 
             string line = Speech(text);
-            if (string.IsNullOrEmpty(line)) return;
+            if (string.IsNullOrEmpty(line)) return false;
 
-            if (!EnsureEngine()) return;
+            if (!EnsureEngine()) return false;
 
             try
             {
@@ -97,12 +156,19 @@ namespace DshMobile
                 // QUEUE_FLUSH: the newest line wins. A pet that queues four replies and reads them
                 // out one after another long after the conversation moved on is worse than one
                 // that interrupts itself.
-                _engine.Call<int>("speak", line, 1, _bundle, "dshpet");
+                int result = _engine.Call<int>("speak", line, 1, _bundle, "dshpet");
+
+                // speak() answers SUCCESS(0) or ERROR(-1). A zero means the engine accepted the
+                // text; it is still possible to hear nothing, and that is what the status line in
+                // the settings panel is for.
+                _lastError = result == 0 ? "" : "speak() 返回 " + result;
+                return result == 0;
             }
             catch (System.Exception e)
             {
-                _failed = true;
+                _lastError = e.Message;
                 Debug.LogWarning("[DshMobile] TTS speak failed: " + e.Message);
+                return false;
             }
         }
 
@@ -129,7 +195,43 @@ namespace DshMobile
             _listener = null;
             _initTried = false;
             _ready = false;
-            _failed = false;
+        }
+
+        /// <summary>
+        /// A sentence for the settings panel: what the engine is doing, in words.
+        ///
+        /// Pure, so the mapping from Android's status codes to "what do I tell the player" is a
+        /// test rather than something only a phone can check.
+        /// </summary>
+        public static string StatusText(bool enabled, bool ready, bool available,
+            int initStatus, int languageStatus, string error)
+        {
+            if (!available) return "这台设备没有系统语音（语音输出只在安卓上可用）。";
+
+            if (!ready)
+            {
+                if (initStatus == -1) return "语音引擎初始化失败：这台手机可能没有装语音服务。";
+                if (initStatus != int.MinValue) return $"语音引擎初始化失败（状态 {initStatus}）。";
+                if (!string.IsNullOrEmpty(error)) return "语音引擎起不来：" + error;
+                return "语音引擎准备中……";
+            }
+
+            if (languageStatus < 0)
+            {
+                return "引擎能起来，但这台手机没有中文语音包（语言状态 " + languageStatus +
+                       "）：到系统设置里的「语言与输入 → 文字转语音」装一个中文语音即可。";
+            }
+
+            if (!enabled) return "语音引擎已就绪：打开开关后宠物就会朗读它说的话。";
+            return "语音引擎已就绪，会用这只宠物的音色朗读。";
+        }
+
+        /// <summary>Short status text for the HUD, without the lecture.</summary>
+        public static string ShortStatus()
+        {
+            if (!Available) return "不可用";
+            if (!_ready) return "未就绪";
+            return _languageStatus < 0 ? "缺中文语音包" : "就绪";
         }
 
         /// <summary>
@@ -182,12 +284,21 @@ namespace DshMobile
             return result.Trim();
         }
 
+        /// <summary>
+        /// Starts the engine if it is not up yet.
+        ///
+        /// Retried rather than latched: the first version marked a failed attempt as permanent,
+        /// so a device that was merely slow — or that had no engine for one moment during startup
+        /// — stayed silent for the rest of the session. A failure now costs one attempt every
+        /// <see cref="InitRetrySeconds"/> seconds.
+        /// </summary>
         private static bool EnsureEngine()
         {
             if (_ready) return true;
-            if (_failed || _initTried) return _ready;
+            if (_initTried && Time.realtimeSinceStartup - _lastAttemptAt < InitRetrySeconds) return false;
 
             _initTried = true;
+            _lastAttemptAt = Time.realtimeSinceStartup;
 
             try
             {
@@ -196,29 +307,46 @@ namespace DshMobile
                 using (var locale = new AndroidJavaClass("java.util.Locale"))
                 using (var china = locale.GetStatic<AndroidJavaObject>("CHINA"))
                 {
-                    _listener = new InitListener();
-                    _engine = new AndroidJavaObject("android.speech.tts.TextToSpeech", activity, _listener);
-                    _engine.Call<int>("setLanguage", china);
-                    _bundle = new AndroidJavaObject("android.os.Bundle");
+                    if (_engine == null)
+                    {
+                        _listener = new InitListener();
+                        _engine = new AndroidJavaObject("android.speech.tts.TextToSpeech", activity, _listener);
+                        _bundle = new AndroidJavaObject("android.os.Bundle");
+                    }
+
+                    // A phone with an English-only engine answers LANG_MISSING_DATA here and then
+                    // plays silence for Chinese text, so the answer is checked and reported rather
+                    // than assumed.
+                    _languageStatus = _engine.Call<int>("setLanguage", china);
+                    if (_languageStatus < 0)
+                    {
+                        // Fall back to whatever the engine does have: it will pronounce Chinese
+                        // badly, which is still better than silence, and the settings line tells
+                        // the player what to install to fix it properly.
+                        using (var fallback = locale.CallStatic<AndroidJavaObject>("getDefault"))
+                        {
+                            _engine.Call<int>("setLanguage", fallback);
+                        }
+                    }
                 }
             }
             catch (System.Exception e)
             {
-                _failed = true;
+                _lastError = e.Message;
                 Debug.LogWarning("[DshMobile] TTS unavailable: " + e.Message);
                 return false;
             }
 
             // Initialisation is asynchronous: onInit arrives a few hundred milliseconds later.
             // The first line or two may therefore be silent, which is why the engine is also
-            // woken when the switch is turned on rather than on the first reply.
+            // warmed up when the switch is turned on rather than on the first reply.
             return _ready;
         }
 
         /// <summary>Warms the engine up, so the first reply is not swallowed by initialisation.</summary>
         public static void WarmUp()
         {
-            if (!Available || !Enabled) return;
+            if (!Available) return;
             EnsureEngine();
         }
 
@@ -230,8 +358,9 @@ namespace DshMobile
             // ReSharper disable once InconsistentNaming — the JNI name is what matters.
             public void onInit(int status)
             {
+                _initStatus = status;
                 _ready = status == 0;   // 0 == TextToSpeech.SUCCESS
-                if (!_ready) _failed = true;
+                if (!_ready) _lastError = "引擎初始化状态 " + status;
             }
         }
     }

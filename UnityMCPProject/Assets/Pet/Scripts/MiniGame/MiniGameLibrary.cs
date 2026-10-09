@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -63,6 +63,15 @@ namespace DshPet
                 SceneName = "Main",
                 ScenePath = "Assets/Scenes/Main.unity",
                 Icon = "🏃"
+            },
+            new MiniGameDefinition
+            {
+                Id = "flybird",
+                DisplayName = "小鸟飞行",
+                Blurb = "点一下扇翅膀，钻过一根根管子，撞到就结束。",
+                SceneName = "FlyBird",
+                ScenePath = "Assets/MiniGames/Scenes/FlyBird.unity",
+                Icon = "🐦"
             }
             // 新增玩法就在这里加一行：填一个已在 Build Settings 里的场景即可。
         };

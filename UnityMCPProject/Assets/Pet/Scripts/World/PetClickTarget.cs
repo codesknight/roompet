@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 namespace DshPet
 {
@@ -41,6 +41,12 @@ namespace DshPet
         {
             if (PetHud.ModalOpen) return;
 
+            // Which pet is being touched is also which pet the status card should be about, and
+            // that has to happen before the cooldown guard: selecting is not a reaction, and a
+            // tap during a reaction still means "I am looking at this one".
+            var manager = PetGameManager.Instance;
+            if (manager != null) manager.SelectPetObject(gameObject);
+
             // A pet that is being tapped repeatedly should not machine-gun reactions.
             if (_cooldown > 0f) return;
             _cooldown = 0.6f;
@@ -63,8 +69,7 @@ namespace DshPet
                 return;
             }
 
-            var gm = PetGameManager.Instance;
-            if (gm != null) gm.PokePet();
+            if (manager != null) manager.PokePet();
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -221,7 +221,7 @@ namespace DshPet
             var personality = PetPersonality.Create(
                 Environment.TickCount ^ (speciesId ?? "").GetHashCode() ^ Data.Pets.Count * 7919);
 
-            var record = PetRecord.Create(speciesId, species.DisplayName, personality,
+            var record = PetRecord.Create(speciesId, UniqueName(species.DisplayName), personality,
                 Data.Pets.Count + 1);
             Data.Pets.Add(record);
             if (!Data.UnlockedSpecies.Contains(speciesId)) Data.UnlockedSpecies.Add(speciesId);
@@ -235,6 +235,36 @@ namespace DshPet
 
             message = $"带回了{record.Name}（{personality.Archetype}）";
             return record;
+        }
+
+        /// <summary>
+        /// A default name that is not already taken: 小猫咪, 小猫咪2, 小猫咪3.
+        ///
+        /// Two pets called 小猫咪 is fine in a warehouse list and useless in a room: the status
+        /// card labels each animal by name, so the names have to tell them apart. A name the
+        /// player typed is never touched — only the generated one.
+        /// </summary>
+        public static string UniqueName(string baseName)
+        {
+            if (string.IsNullOrEmpty(baseName)) baseName = "宠物";
+
+            string candidate = baseName;
+            int suffix = 1;
+            while (NameTaken(candidate))
+            {
+                suffix++;
+                candidate = baseName + suffix;
+            }
+            return candidate;
+        }
+
+        private static bool NameTaken(string name)
+        {
+            for (int i = 0; i < Data.Pets.Count; i++)
+            {
+                if (Data.Pets[i] != null && Data.Pets[i].Name == name) return true;
+            }
+            return false;
         }
 
         // ------------------------------------------------------------------ backpack

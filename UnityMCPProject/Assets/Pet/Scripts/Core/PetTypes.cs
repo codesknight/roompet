@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 
 namespace DshPet
@@ -48,7 +48,7 @@ namespace DshPet
     [Serializable]
     public struct ChatMessage
     {
-        public string Role;   // "user" or "pet"
+        public string Role;   // "user", "pet" or "system"
         public string Text;
         public float At;      // Time.realtimeSinceStartup when it happened
 
@@ -60,6 +60,14 @@ namespace DshPet
         }
 
         public bool IsUser => Role == "user";
+
+        /// <summary>
+        /// A note from the game rather than from the pet or the player.
+        ///
+        /// Rendered as a centred grey line, and kept out of the model's prompt: the pet must not
+        /// start answering the UI's own advice, and a hint is not part of the relationship.
+        /// </summary>
+        public bool IsSystem => Role == "system";
     }
 
     /// <summary>What the brain returns for one user turn.</summary>

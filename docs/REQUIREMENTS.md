@@ -160,6 +160,22 @@
 
 ---
 
+## 阶段 11：每只宠物一张状态卡、两个新小游戏、真机 TTS 修复
+
+| 编号 | 需求 | 实现 | 验收证据 |
+|---|---|---|---|
+| R11.1 | 多宠物要一一对应的状态 UI | `PetGameManager.Cards()`（每只宠物：名字/物种/性格/`PetNeeds`/控制器）+ `PetHud.DrawPetCards`：卡片顶部是**宠物名字页签**，选中态用样式（`_chipActive`）标出；`SelectPetObject` 让"点房间里那只宠物"= "切到它的卡片" | 单测：`UniqueName` 保证名字不重复（否则页签认不出人）；实测 3 只宠物 3 张页签、点页签与点宠物都能切换 ✅ |
+| R11.2 | 状态卡可隐藏 / 可打开 | 折叠态 = 页签 + 一行摘要 + `展开/地图/设置`；展开态 = 完整卡片。点已选中页签切换折叠；`ComputeCardLayout` 在空间不足时自动退回短卡 | 单测：7 种视口 × 手机/桌面 × 折叠/展开 × 主宠/同伴 × 3 种页签数量 —— 卡片高度恰好等于内容、不溢出、按钮行有余量、页签一个都没被丢掉 ✅ |
+| R11.3 | 删掉与背包重复的「换一只」卡片 | 删除 `DrawSpeciesSwitcher` 与它的调用，原处留注释说明为什么（重复 + 会静默换掉正在照顾的那只）；`ViewCardHeight` 让「视角」卡片独占该列 | 单测：卡片与视角卡、聊天面板两两不重叠（`Rect.Overlaps`）；截图 `docs/evidence/mobile_pet_cards.png` ✅ |
+| R11.4 | 同伴的状态要真的在动 | `TickCompanionNeeds`：以前只有主宠的 `PetNeeds` 被 tick，同伴的状态条是死的；现在每帧推进并按场景修正（`RoomThemeInfo`） | 实测：三只宠物同场时各自的状态条数值不同且在变化 ✅ |
+| R11.5 | 真机上听到宠物说话 | ①`MobileAndroidPackaging` 往清单写 `<queries>`（Android 11+ 包可见性——少了它语音引擎不可见、`onInit` 不回调、每句静默丢弃）；②`MobileTts` 初始化失败改为每 6 秒重试（原来一次失败=整局沉默）；③检查 `setLanguage(中文)` 的结果并回退到系统默认；④`StatusText`/`ShortStatus` 把引擎状态说给玩家；⑤「▶ 测试朗读」按钮（无视开关）；⑥第一次回复时在对话里提示一次开关 | 单测：`StatusText` 的四种状态各有各的说法、`Speech()` 去动作去 emoji、编辑器里一切调用都是空操作 ✅ ⚠️ **发音质量与延迟仍需真机验收** |
+| R11.6 | 拼图小游戏 | `PetPuzzle`（纯状态机：合法移动、可逆性、洗牌不可能无解、编码往返、防篡改）+ `PuzzleArt`（按房间与宠物程序化画 96×96 的图，`TileUv` 给每格切图）+ `PetHud.DrawPuzzle`（点击滑动、步数/计时/参考步数/看原图/打乱重来，拼好结算宠物币并写进对话与记事本） | 单测 8 条（含"从已解状态走 25 步再全部走回来必然还原"）；实测面板与拼图渲染正常（`docs/evidence/mobile_puzzle.png`）✅ |
+| R11.7 | 小鸟飞行小游戏 | 新程序集 `DshMiniGames` + 场景 `Assets/MiniGames/Scenes/FlyBird.unity`（由 `Tools/DSH Mini/Build FlyBird Scene` 从代码生成并注册进 Build Settings）：`FlyBirdRules`（纯逻辑）+ `FlyBirdGame`（玩法/相机取景/管道生成）+ `FlyBirdHud`（IMGUI）。`MiniGameLibrary` 加一行即可在地图里出现 | 单测 10 条：点击抬升、帧率无关、长帧钳位、速度与间隙的封顶、间隙永远可达、碰撞算鸟的宽度、金币单调且不为负；实测 50 秒游戏时间过 84 根管子、`RunCoins=100`、撞到后钱包 3930 → 4032 ✅ |
+| R11.8 | 相机按屏幕形状取景 | `FlyBirdGame.FitCamera`：同时满足"整条飞行走廊在竖直方向可见"与"鸟前方要有反应距离"（竖屏按高度取景会把鸟放到屏幕外——实测抓到），并在转屏时重新取景 | 实测：竖屏 0.45 宽高比下 `orthographicSize = 11.78`、鸟在屏内、管道与地面都可见 ✅ |
+| R11.9 | 系统提示不进模型的上下文 | `ChatMessage.IsSystem` + `Memory.AddSystem`：对话里居中灰字显示；`PetMemory.RecentLines`、`PetPrompting`、`OpenAiClient` 三处都跳过它 | 实测：提示出现在对话里，宠物不会去回答它 ✅ |
+
+---
+
 ## 非功能需求 / 设计约束
 
 | 约束 | 落地方式 |

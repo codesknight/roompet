@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 
@@ -26,6 +26,13 @@ namespace DshPet
         public void AddUser(string text) => Add(new ChatMessage("user", text, Time.realtimeSinceStartup));
         public void AddPet(string text) => Add(new ChatMessage("pet", text, Time.realtimeSinceStartup));
 
+        /// <summary>
+        /// A note from the game itself — "you can turn speech on in the settings", "the network
+        /// failed, this reply is local". Shown in the transcript, never sent to the model: the
+        /// pet would otherwise start replying to the UI's own advice.
+        /// </summary>
+        public void AddSystem(string text) => Add(new ChatMessage("system", text, Time.realtimeSinceStartup));
+
         public void Add(ChatMessage message)
         {
             if (string.IsNullOrWhiteSpace(message.Text)) return;
@@ -45,16 +52,22 @@ namespace DshPet
             while (_facts.Count > MaxFacts) _facts.RemoveAt(0);
         }
 
-        /// <summary>Recent turns as "role: text" lines, oldest first.</summary>
+        /// <summary>
+        /// Recent turns as "role: text" lines, oldest first.
+        ///
+        /// System notes are skipped: they are the UI talking to the player, and letting the pet
+        /// read them would have it answering the game's own advice.
+        /// </summary>
         public string[] RecentLines()
         {
-            var lines = new string[_recent.Count];
+            var lines = new List<string>(_recent.Count);
             for (int i = 0; i < _recent.Count; i++)
             {
                 var m = _recent[i];
-                lines[i] = (m.IsUser ? "主人" : "我") + "：" + m.Text;
+                if (m.IsSystem) continue;
+                lines.Add((m.IsUser ? "主人" : "我") + "：" + m.Text);
             }
-            return lines;
+            return lines.ToArray();
         }
 
         public string[] FactLines() => _facts.ToArray();

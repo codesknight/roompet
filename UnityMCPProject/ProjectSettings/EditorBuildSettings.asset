@@ -11,4 +11,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Main.unity
     guid: 07a826ac19625b44faa6ab9fa0ba68c0
+  - enabled: 1
+    path: Assets/MiniGames/Scenes/FlyBird.unity
+    guid: 00000000000000000000000000000000
   m_configObjects: {}

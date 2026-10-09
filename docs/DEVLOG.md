@@ -15,9 +15,9 @@
 | 项 | 状态 |
 |---|---|
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
-| 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物），两个都已在 Build Settings |
+| 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/FlyBird.unity`（小鸟飞行），三个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **169/169 通过**（虚拟宠物 120 + 跑酷 15 + 手机端 34），EditMode |
+| 测试 | **191/191 通过**（虚拟宠物 130 + 跑酷 15 + 手机端 34 + 小游戏 12），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -113,8 +113,24 @@
 | `Editor/MobileIconBuilder.cs` | 画应用图标（小屋 + 门口的猫 + 月亮）并按 Android 三类图标写进玩家设置 |
 | `Art/icon_*.png` | 生成出来的四个图标层（**要提交**：PlayerSettings 按 GUID 引用它们，缺了图标就没了） |
 | `Scripts/MobileHaptics.cs` | 振动反馈：`HapticGate`（限流 + 开关，可测）+ 安卓 `Vibrator`/`VibrationEffect` |
-| `Scripts/MobileTts.cs` | 语音输出：安卓 `TextToSpeech` + `AndroidJavaProxy`；`Speech()` 去掉括号动作与 emoji（纯函数，可测）；非安卓平台全部是无害空操作 |
+| `Scripts/MobileTts.cs` | 语音输出：安卓 `TextToSpeech` + `AndroidJavaProxy`；`Speech()` 去掉括号动作与 emoji（纯函数，可测）；引擎初始化失败每 6 秒重试；`StatusText` 把引擎状态翻成人话；非安卓平台全部是无害空操作（见坑 58–61） |
 | `Tests/Editor/MobileInputTests.cs` | 23 条测试（手势 / 摇杆 / 缩放 / 手机布局 / 坐标变换） |
+
+### 小游戏（`Assets/MiniGames/`，程序集 `DshMiniGames` + `DshMiniGames.Editor`）
+
+**这一层不引用宠物或跑酷**（和 `DshMobile` 一样），所以新玩法不需要动已有的两套代码。
+回房间走 `SceneManager.LoadScene("PetRoom")` + `dshpet.away` 这个 PlayerPrefs 标记，
+不建立程序集之间的引用。
+
+| 文件 | 职责 |
+|---|---|
+| `Scripts/FlyBird/FlyBirdRules.cs` | 小鸟飞行的纯逻辑：一步积分（含长帧钳位）、速度/间隙的难度曲线与封顶、间隙中心的可达范围、碰撞判定（算鸟的宽度）、金币与评价 |
+| `Scripts/FlyBird/FlyBirdGame.cs` | 玩法与场景内容（鸟/管道/地面都是 primitive 生成）、按屏幕形状取景（`FitCamera`）、管道生成与回收、点击输入、死亡与结算 |
+| `Scripts/FlyBird/FlyBirdHud.cs` | IMGUI：分数、最高分、宠物币、开始提示、结算面板（再来一次 / 回到宠物小屋）、`PointerOverPanel`（防"点按钮同时扇翅膀"） |
+| `Editor/FlyBirdSceneMenu.cs` | 菜单：`Tools/DSH Mini/{Build FlyBird Scene, Add Mini Game Scenes To Build Settings, Report Mini Games}` |
+| `Tests/Editor/FlyBirdRulesTests.cs` | 12 条测试（抬升与下落、帧率无关、长帧钳位、难度封顶、间隙永远可达、碰撞算宽度、金币单调） |
+
+在屋里玩的**拼图**没有独立场景：`DshPet` 里的 `PetPuzzle`（纯状态机）+ `PuzzleArt`（程序化画图）+ `PetHud.DrawPuzzle`（面板）。
 
 ### Shader（`Assets/Shaders/`）
 
@@ -144,6 +160,12 @@
    | `dshpet.audio.muted` / `dshpet.audio.volume` | 音频设置 |
    | `dshpet.view` | 视角模式（0 全景 / 1 自由 / 2 跟随主角） |
    | `dshpet.away` | "出去玩了"标记（小游戏往返用） |
+   | `dshpet.voice` | 宠物叫声开关（默认开） |
+   | `dshpet.tts` / `dshpet.tts.hinted` | 朗读开关（默认关）/ "已经提示过设置里能开朗读" |
+   | `dshpet.coins` | 宠物币（`DshMobile.PetWallet`） |
+   | `dshpet.collection` | 商城/仓库/背包的 JSON（`PetCollection`） |
+   | `dshpet.world.unlocked` / `dshpet.world.current` | 地图解锁列表 / 当前所在地 |
+   | `dshpet.traits.<speciesId>` | 每个物种的四维性格 |
 
 6. 日记存档是**独立 JSON 文件**，不在 PlayerPrefs 里：
    `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-<speciesId>.json`。
@@ -439,21 +461,59 @@
     "朗读宠物的话"默认**关**——手机突然开始说话是会被静音的那种功能。
     两个开关独立：想安静的人要能一次关掉两样，想听句子的人多半也想听叫声。
     `OnDestroy` 里要 `Stop()`：房间里最后那句话不该跟着玩家念到跑酷的加载画面上。
+58. **Android 11 起，应用看不见别的包——包括语音引擎。** "宠物在真机上一句话都不说"
+    的根因：清单里少了
+    `<queries><intent><action android:name="android.intent.action.TTS_SERVICE"/></intent></queries>`。
+    没有它，`TextToSpeech` 构造出来的对象**永远不会回调 `onInit`**，每一次 `speak()`
+    都被静默丢弃：真机上毫无反应、日志里什么都没有、编辑器里一切正常。
+    **凡是调用系统服务（TTS、识别、分享、相机 Intent），先去查这个 API 级别要不要 `queries`。**
+59. **失败不要记成永久状态。** 同一个功能的第二个 bug：第一版把"引擎初始化失败"写进一个
+    布尔，于是设备启动瞬间没有引擎、或者慢了一拍，**这一整局就再也不说话了**。
+    现在失败只表示"这次没成"，每 6 秒重试一次。**"试过了"和"不行"是两件事。**
+60. **玩家听不到的时候，要给一个能当场排查的按钮。** 光有一个开关和一个状态文案不够：
+    加「▶ 测试朗读」——它**无视开关**（开关是偏好，测试是诊断），并且把引擎的真实回答
+    （初始化状态码、`setLanguage` 的结果、`speak()` 的返回值）翻译成人话显示出来。
+    另一个坑：手机没有中文语音包时 `setLanguage` 返回负数，引擎**照样接受**文本然后放静音。
+61. **一个没人找到的开关等于没有功能。** 朗读默认关闭是对的（突然说话会被静音），
+    但只在设置面板里写一行字，等于只有打开设置的人知道它存在。第一次收到回复时
+    在对话里提示一次，用一个新消息类型（`system`）——它居中灰字显示，并且
+    **不进模型的提示词**：宠物不该开始回答 UI 自己的建议。
+62. **每加一只宠物，就多一处"哪个是真的"的歧义。** 房间里三只动物、面板只描述一只，
+    而且没有办法知道是哪只——这不是"多宠物模式"缺一个界面，而是状态面板从第一天起
+    就写死给了主宠。修法是让**宠物本身成为页签**，并且"点它"就是"看它"。
+    顺带发现：同伴的 `PetNeeds` **从来没有被 tick 过**（只有主宠每帧推进），
+    以前没人看见，因为它们是装饰品。
+63. **多出来的那张卡该删就删。** 「换一只」卡片和「宠物」面板的背包页做的是同一件事，
+    而且它那个按钮会**静默换掉你正在照顾的那只**（连记忆一起换），看起来却像页签。
+    **"两个入口做同一件事"不是方便，其中一个迟早会做错。**
+64. **相机取景必须同时看两个方向。** 小鸟飞行第一版按"飞行走廊的高度"取景，
+    竖屏（0.45 宽高比）下可视宽度只有 4.9 个世界单位，而鸟站在 x=-4.2 ——
+    **鸟本身在屏幕外**，画面上只有管道在飘。修法：取"按高度"和"按最小宽度"两者的大者，
+    并且转屏时重算。**竖屏不是"横屏裁掉两边"，是另一套取景。**
+65. **不要用 PowerShell 读写含中文的源码。** `Get-Content -Raw`（默认按 ANSI 代码页）
+    加 `Set-Content -Encoding UTF8` 会把整个文件按 GBK 解码再按 UTF-8 写出：
+    多字节字符的字节被"?"替换，注释与字符串全毁，而且**能编译的部分照样编译**
+    （错的是文本，不是语法）。这次是靠"文件在 git 里有上一版 + 逐行比对"才救回来的。
+    规则：**改 .cs 一律用编辑工具或 `[IO.File]::ReadAllText/WriteAllText` + 显式 UTF-8**，
+    绝对不要 `Get-Content`/`Set-Content` 直接改源码。恢复顺序：先在文件里数"损坏行"
+    （U+FFFD / 私有区字符 / 代理对残留），再对每一行去 git 的上一版里找原文，
+    最后只剩"本轮新写的行"需要人工重写。
 ---
 
 ## 七、下一步候选（按我建议的优先级）
 
-1. **更多小游戏**：`MiniGameLibrary` 加一行就是一个新活动。候选：接果子（左右移动接掉落物）、
-   记忆配对（翻牌找相同）。小游戏是宠物币的唯一来源，货架越宽，地图与商城越有意义。
-2. **真机验收 TTS**：发音是否自然、延迟多少、切到后台会不会继续念——
-   这些只能在手机上听（代码侧的坑已经在坑 56 里堵住了）。
-3. **宠物社区（联网）**：需要服务端（账号 / 在线状态 / 好友 / 跨用户互动），
+1. **超级玛丽式横版玩法**：三个例子里唯一还没做的。它需要一整套"能站的地面 + 跳跃手感 +
+   敌人 + 关卡"，值得单独一轮；骨架已经被拼图和小鸟飞行验证过两次
+   （一个场景 + 一个纯逻辑规则类 + 一个 IMGUI HUD）。
+2. **真机验收 TTS**：这一轮修掉了两个"真机上完全不响"的原因（见坑 58、59），
+   剩下的只有耳朵能判断：发音是否自然、延迟多少、切后台会不会继续念。
+3. **更多小游戏**：`MiniGameLibrary` 加一行 + 一个场景即可。接果子、记忆配对都还没做。
+4. **宠物社区（联网）**：需要服务端（账号 / 在线状态 / 好友 / 跨用户互动），
    本仓库是纯客户端，属于另一个工程而不是下一轮。
-4. **第 4 个场景**：一个场景 = 一组配色 + 几个道具 + 一组需求修正，成本已经很低；
-   等前三个被玩过再说（也许是"雨天阳台"或"雪山小屋"）。
-5. **语音输入（STT）**：等 TTS 在真机上验过之后再评估，两者共用同一套"宠物在说话"的时序。
-6. **扔球的地面落点指示**：现在有力蓄条和准星，但没有"球会落在哪"的地面标记。
-7. **云存档**：日记与记忆现在是本地文件 + PlayerPrefs。
+5. **第 4 个场景**：一个场景 = 一组配色 + 几个道具 + 一组需求修正（也许"雨天阳台"）。
+6. **语音输入（STT）**：等 TTS 在真机上验过之后再评估，两者共用同一套"宠物在说话"的时序。
+7. **扔球的地面落点指示**：现在有力蓄条和准星，但没有"球会落在哪"的地面标记。
+8. **云存档**：日记与记忆现在是本地文件 + PlayerPrefs。
 
 ---
 

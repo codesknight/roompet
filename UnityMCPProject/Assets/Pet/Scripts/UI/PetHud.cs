@@ -30,6 +30,7 @@ namespace DshPet
         private GUIStyle _panel;
         private GUIStyle _button;
         private GUIStyle _buttonSmall;
+        private GUIStyle _chipActive;
         private GUIStyle _thinking;
         private GUIStyle _nameField;
         private bool _nameFocused;
@@ -46,6 +47,7 @@ namespace DshPet
         private bool _showPromptPreview;
         private bool _showJournal;
         private bool _showCollection;
+        private bool _showPuzzle;
         private DateTime _journalMonth = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
         private DateTime _selectedDay = DateTime.Now.Date;
         private Vector2 _dayScroll;
@@ -121,6 +123,12 @@ namespace DshPet
 
             _button = new GUIStyle(GUI.skin.button) { fontSize = 16, padding = new RectOffset(12, 12, 7, 7) };
             _buttonSmall = new GUIStyle(GUI.skin.button) { fontSize = 14, padding = new RectOffset(8, 8, 5, 5) };
+
+            // The pet chip that is currently selected. Coloured rather than merely bold, because
+            // "which animal am I looking at" is the one thing the card must never be vague about.
+            _chipActive = new GUIStyle(_buttonSmall) { fontStyle = FontStyle.Bold };
+            _chipActive.normal.textColor = new Color(1f, 0.94f, 0.75f);
+            _chipActive.hover.textColor = new Color(1f, 0.97f, 0.85f);
 
             _sendButton = new GUIStyle(GUI.skin.button)
             {
@@ -200,10 +208,9 @@ namespace DshPet
             // left the modal's own text fields unable to take focus.
             bool modal = ModalOpen;
             if (modal) GUI.enabled = false;
-            DrawStatusPanel(gm, layout);
+            DrawPetCards(gm, layout);
             if (Mobile) DrawMobileChat(gm, layout);
             else DrawChat(gm, layout);
-            DrawSpeciesSwitcher(gm, layout);
             DrawViewSwitcher(gm, layout);
             if (!Mobile) DrawThrowMeter(gm, layout);
             else ShowMobileAimGuide(gm);
@@ -214,6 +221,7 @@ namespace DshPet
             if (Mobile) DrawMobileControls(gm, layout);
 
             if (gm.DoorPromptOpen) DrawMapPanel(gm);
+            if (_showPuzzle) DrawPuzzle(gm);
             if (_showSettings) DrawSettings(gm);
             if (_showPromptPreview) DrawPromptPreview(gm);
             if (_showJournal) DrawJournal(gm);
@@ -388,6 +396,8 @@ namespace DshPet
         /// <summary>Wide viewport: transcript on the right, one left column for everything else.</summary>
         private static HudLayout ComputeSidebarLayout(float w, float h, int speciesCount)
         {
+            _ = speciesCount;   // the card is sized by how many pets are in the room, not by species
+
             float margin = 14f;
             float chatWidth = Mathf.Clamp(w * 0.30f, 340f, 520f);
 
@@ -396,12 +406,11 @@ namespace DshPet
             // The left column is as wide as the space the sidebar leaves, capped so the status
             // panel does not stretch into a wall of text.
             float columnWidth = Mathf.Clamp(chat.x - margin * 2f - 8f, 220f, 340f);
-            float switchHeight = 34f + speciesCount * 30f;
 
             float left = margin;
-            var status = new Rect(left, margin, columnWidth, Mathf.Clamp(h * 0.44f, 190f, 380f));
+            var status = new Rect(left, margin, columnWidth, Mathf.Clamp(h * 0.44f, 190f, 400f));
             var switcher = new Rect(left, status.yMax + 10f, columnWidth,
-                Mathf.Min(switchHeight, Mathf.Max(60f, h - status.yMax - 20f)));
+                Mathf.Min(ViewCardHeight, Mathf.Max(60f, h - status.yMax - 20f)));
 
             return new HudLayout
             {
@@ -419,22 +428,23 @@ namespace DshPet
         /// <summary>Narrow viewport: the original top panels with the transcript underneath.</summary>
         private static HudLayout ComputeStackedLayout(float w, float h, int speciesCount)
         {
+            _ = speciesCount;
+
             // The transcript is the main event in this app, so it takes a third of the view.
             float chatHeight = Mathf.Clamp(h * 0.34f, 200f, 340f);
             var chat = new Rect(14f, h - chatHeight - 14f, Mathf.Max(260f, w - 28f), chatHeight);
 
-            // Right-aligned switcher, and a status panel narrow enough that the two can never
+            // Right-aligned view card, and a pet card narrow enough that the two can never
             // collide even on a small Game view.
             float switchWidth = Mathf.Clamp(w * 0.22f, 150f, 176f);
-            float switchHeight = 30f + speciesCount * 30f;
-            var switcher = new Rect(w - switchWidth - 14f, 14f, switchWidth, switchHeight);
+            var switcher = new Rect(w - switchWidth - 14f, 14f, switchWidth, ViewCardHeight);
 
             float statusWidth = Mathf.Clamp(w - switchWidth - 40f, 232f, 300f);
 
-            // The status panel gets whatever room is left above the chat panel, never less
-            // than enough for its pinned footer (62) plus the header (46) plus some detail.
+            // The pet card gets whatever room is left above the chat panel, never less than
+            // enough for its chips, its header and some detail.
             float available = chat.y - 14f - 10f;
-            var status = new Rect(14f, 14f, statusWidth, Mathf.Clamp(available, 168f, 360f));
+            var status = new Rect(14f, 14f, statusWidth, Mathf.Clamp(available, 168f, 440f));
 
             return new HudLayout
             {
@@ -447,6 +457,12 @@ namespace DshPet
                 Viewport = new Rect(0f, 0f, w, h)
             };
         }
+
+        /// <summary>
+        /// Height of the view card (视角). The species card that used to share this column is
+        /// gone — the backpack decides who lives here — so the view buttons now own it outright.
+        /// </summary>
+        public const float ViewCardHeight = 34f + 3f * 26f;
 
         /// <summary>A floating panel's rect, centred but always fully inside the viewport.</summary>
         public static Rect OverlayRect(float preferredWidth, float preferredHeight)
@@ -541,7 +557,8 @@ namespace DshPet
             {
                 var hud = _instance;
                 if (hud == null) return false;
-                if (hud._showSettings || hud._showJournal || hud._showPromptPreview || hud._showCollection) return true;
+                if (hud._showSettings || hud._showJournal || hud._showPromptPreview ||
+                    hud._showCollection || hud._showPuzzle) return true;
                 var gm = PetGameManager.Instance;
                 return gm != null && gm.DoorPromptOpen;
             }
@@ -610,65 +627,252 @@ namespace DshPet
             Diagnostics.PetName = gm.PetName;
         }
 
-        // ------------------------------------------------------------------ left panel
+        // ------------------------------------------------------------------ pet cards
+
+        /// <summary>Height of one row of pet chips.</summary>
+        private const float ChipHeight = 30f;
+
+        private const float ChipSpacing = 6f;
+
+        /// <summary>One card per pet, with the pets themselves as the tabs.</summary>
+        public struct PetCardLayout
+        {
+            public Rect Panel;
+
+            /// <summary>Whether the detail is drawn. False when the player collapsed it — or
+            /// when the card would not fit and fell back to the short form.</summary>
+            public bool Expanded;
+
+            public float ChipsHeight;
+            public float HeaderHeight;
+            public float FooterHeight;
+            public float ScrollHeight;
+            public string[][] FooterRows;
+            public int ChipRows;
+        }
 
         /// <summary>
-        /// Status panel. The detail lines scroll; the buttons are pinned below the scroll
-        /// area and always visible. An earlier version grew the content past the fixed
-        /// panel height, which pushed the "设置" and "记事本" buttons out of the clickable
-        /// region — the buttons must never depend on scrolling.
+        /// How many rows the pet chips need, and how tall that is.
+        ///
+        /// The chips carry the pets' names, which the player chooses, so their width is not
+        /// knowable in advance — the same packing rule the footer buttons use applies here, and
+        /// for the same reason: a chip pushed outside its area renders and cannot be tapped.
         /// </summary>
-        private void DrawStatusPanel(PetGameManager gm, HudLayout layout)
+        public static int ChipRowsFor(string[] names, float availableWidth, int fontSize)
+            => PackRows(names, Mathf.Max(60f, availableWidth - RowPackingSlack), fontSize,
+                buttonPadding: 20f, spacing: ChipSpacing).Length;
+
+        /// <summary>Name-row height in the expanded card: the editable name plus the mood line.</summary>
+        private const float CardHeaderHeight = 70f;
+
+        /// <summary>Name-row height in the collapsed card: one line only.</summary>
+        private const float CardHeaderCompactHeight = 28f;
+
+        /// <summary>Below this there is no room for a need bar worth reading.</summary>
+        private const float MinDetailHeight = 30f;
+
+        /// <summary>
+        /// Where everything in the pet card goes.
+        ///
+        /// Split out and static so the geometry — which is what "no overlapping UI" actually
+        /// means — can be tested at every viewport without a running game, exactly like the
+        /// footer packing above it. Three rules are encoded here:
+        ///  1. the card is only as tall as its content, so a collapsed card gives the room back;
+        ///  2. the detail is the only elastic part, and the pinned buttons are never pushed out
+        ///     of the card — the failure this whole file has a history of;
+        ///  3. when even the short form's buttons do not fit the space, the card falls back to
+        ///     the collapsed shape rather than drawing controls past its own edge.
+        /// </summary>
+        public static PetCardLayout ComputeCardLayout(Rect status, string[] chipNames,
+            bool expanded, bool primary, int chipFontSize, int buttonFontSize)
         {
-            // The header is the editable name row plus a 13pt subtitle. At 46px the subtitle
-            // spilled out of its area and printed straight over the first need bar ("饱食" got a
-            // "开心 亲密度" caption through it). GUILayout areas do not clip their children.
-            const float fullHeaderHeight = 86f;
+            var inner = new Rect(status.x + 14f, status.y + 12f, status.width - 28f, status.height - 24f);
 
-            // On a panel too short for both, the subtitle is the thing that goes: the name row
-            // and the buttons are controls, the subtitle is a decoration.
-            const float compactHeaderHeight = 56f;
+            int chipRows = ChipRowsFor(chipNames, inner.width, chipFontSize);
+            float chips = chipRows * ChipHeight + Mathf.Max(0, chipRows - 1) * ChipSpacing;
 
-            var rect = layout.Status;
+            var layout = new PetCardLayout { ChipRows = chipRows, ChipsHeight = chips };
+
+            if (expanded)
+            {
+                var rows = primary
+                    ? StatusFooterRows(Mobile, false, inner.width, buttonFontSize, collapsed: false)
+                    : new[] { CompanionFooterRow(inner.width, buttonFontSize, collapsed: false) };
+                float footer = FooterHeight(rows.Length);
+                float room = inner.height - chips - CardHeaderHeight - footer;
+
+                if (room >= MinDetailHeight)
+                {
+                    layout.Expanded = true;
+                    layout.HeaderHeight = CardHeaderHeight;
+                    layout.FooterHeight = footer;
+                    layout.FooterRows = rows;
+                    layout.ScrollHeight = room;
+                    layout.Panel = new Rect(status.x, status.y, status.width,
+                        Mathf.Min(status.height, 12f + chips + CardHeaderHeight + room + footer + 12f));
+                    return layout;
+                }
+            }
+
+            // Collapsed — either because the player asked for it, or because the space can only
+            // hold the short form. The chips and the navigation buttons stay: a collapsed card
+            // that hides the way to the notebook and the settings would be a trap.
+            var shortRows = primary
+                ? StatusFooterRows(Mobile, false, inner.width, buttonFontSize, collapsed: true)
+                : new[] { CompanionFooterRow(inner.width, buttonFontSize, collapsed: true) };
+            float shortFooter = FooterHeight(shortRows.Length);
+
+            // Last resort: trim the chip rows so the pinned buttons still fit. This only ever
+            // bites below the game's own limit of three pets in a room — the assertion that it
+            // never bites in practice is a test, not a hope — and trimming is the least bad of
+            // the three options, the others being buttons outside the panel (this file's oldest
+            // bug) and a card taller than the viewport (its second oldest).
+            float chipRoom = inner.height - CardHeaderCompactHeight - shortFooter;
+            int maxChipRows = Mathf.Max(1,
+                Mathf.FloorToInt((chipRoom + ChipSpacing) / (ChipHeight + ChipSpacing)));
+            if (chipRows > maxChipRows)
+            {
+                chipRows = maxChipRows;
+                chips = chipRows * ChipHeight + Mathf.Max(0, chipRows - 1) * ChipSpacing;
+                layout.ChipRows = chipRows;
+                layout.ChipsHeight = chips;
+            }
+
+            layout.Expanded = false;
+            layout.HeaderHeight = CardHeaderCompactHeight;
+            layout.FooterHeight = shortFooter;
+            layout.FooterRows = shortRows;
+            layout.ScrollHeight = 0f;
+            layout.Panel = new Rect(status.x, status.y, status.width,
+                Mathf.Min(status.height,
+                    12f + chips + CardHeaderCompactHeight + shortFooter + 12f));
+            return layout;
+        }
+
+        /// <summary>
+        /// Shortens a name so a chip cannot eat the whole row.
+        ///
+        /// Names are the player's to choose, and "一只名字很长的宠物" three times over would push
+        /// the chips into a stack taller than the card — at which point the pets stop being tabs
+        /// and become the panel. The full name is always in the card's header and in the 宠物
+        /// panel; the chip only has to be recognisable.
+        /// </summary>
+        public static string ShortenChip(string name, float maxWidth, int fontSize)
+        {
+            if (string.IsNullOrEmpty(name)) return "";
+            if (EstimatedLabelWidth(name, fontSize) <= maxWidth) return name;
+
+            string result = "";
+            foreach (char c in name)
+            {
+                if (EstimatedLabelWidth(result + c + "…", fontSize) > maxWidth) break;
+                result += c;
+            }
+            return result.Length == 0 ? name.Substring(0, 1) : result + "…";
+        }
+
+        /// <summary>The one row of buttons a companion's card gets.</summary>
+        private static string[] CompanionFooterRow(float availableWidth, int buttonFontSize,
+            bool collapsed)
+        {
+            var labels = collapsed
+                ? new[] { "展开", "在背包里管理" }
+                : new[] { "在背包里管理", "收起" };
+            var rows = PackRows(labels, Mathf.Max(60f, availableWidth - RowPackingSlack),
+                buttonFontSize);
+            return rows.Length > 0 ? rows[0] : labels;
+        }
+
+        /// <summary>
+        /// The status card: one pet, or one chip per pet when several are in the room.
+        ///
+        /// This used to be a single panel hard-wired to the primary pet, with a separate "换一只"
+        /// card listing the four species — which was both redundant (the backpack already decides
+        /// who lives here) and wrong the moment the backpack could hold three: the room showed
+        /// three animals and the panel described one of them with no way to tell which.
+        ///
+        /// The chips are the answer. They are the pets themselves, in the order they exist, and
+        /// tapping a pet in the room selects its chip — so "which animal is this card about" is
+        /// always the one the player just touched.
+        /// </summary>
+        private void DrawPetCards(PetGameManager gm, HudLayout layout)
+        {
+            var cards = gm.Cards();
+            if (cards.Count == 0) return;
+
+            int selected = Mathf.Clamp(gm.SelectedPetIndex, 0, cards.Count - 1);
+            var card = cards[selected];
+            bool expanded = gm.CardExpanded;
+
+            var names = new string[cards.Count];
+            float chipBudget = Mathf.Max(40f, (layout.Status.width - 28f) * 0.45f);
+            for (int i = 0; i < cards.Count; i++)
+            {
+                names[i] = ShortenChip(ChipLabel(cards[i], cards[i].Name), chipBudget,
+                    _buttonSmall.fontSize);
+            }
+
+            var plan = ComputeCardLayout(layout.Status, names, expanded, card.Primary,
+                _buttonSmall.fontSize, _buttonSmall.fontSize);
+
+            var rect = plan.Panel;
             GUI.Box(rect, GUIContent.none, _panel);
 
             var inner = new Rect(rect.x + 14f, rect.y + 12f, rect.width - 28f, rect.height - 24f);
 
-            // The footer is sized to the rows it actually has, rather than to a fixed 62px.
-            //
-            // Seven buttons on a narrow panel pack into three rows (90px), so with a fixed
-            // footer the last row — 重置, of all things — was laid out past the footer area,
-            // where a GUILayout area stops delivering input. It drew normally and did nothing.
-            // The horizontal half of this contract was already tested; this is the same bug in
-            // the other axis.
-            var footerRows = StatusFooterRows(Mobile, _statusDetail, inner.width, _buttonSmall.fontSize);
-            float footerHeight = FooterHeight(footerRows.Length);
+            // ---- the pets, as chips ----
+            float y = inner.y;
+            DrawPetChips(gm, cards, names, inner, plan.ChipRows, ref y);
 
-            float detailRoom = inner.height - footerHeight;
-            bool compactHeader = detailRoom - fullHeaderHeight < 60f;
-            float headerHeight = compactHeader ? compactHeaderHeight : fullHeaderHeight;
+            // ---- whose card this is ----
+            var headerRect = new Rect(inner.x, y, inner.width, plan.HeaderHeight);
+            GUILayout.BeginArea(headerRect);
 
-            // ---- header ----
-            GUILayout.BeginArea(new Rect(inner.x, inner.y, inner.width, headerHeight));
-            DrawNameRow(gm);
-            if (!compactHeader)
+            string mood = card.Needs != null ? PetUtil.MoodLabel(card.Needs.Mood) : "—";
+            string need = card.Needs != null ? card.Needs.DominantNeed : "";
+            string who = card.Species != null ? card.Species.DisplayName : "";
+            string summary = $"{mood}　·　{(string.IsNullOrEmpty(need) ? "状态不错" : "想要：" + need)}";
+
+            if (!plan.Expanded)
             {
-                GUILayout.Label($"{PetUtil.MoodLabel(gm.Needs.Mood)}　·　亲密度 {gm.Needs.Affection:P0}" +
-                                $"　·　{gm.Species.DisplayName}", _small);
+                // Collapsed: one line, nothing interactive but the chips and the footer buttons.
+                GUILayout.Label($"{card.Name}　·　{summary}", _label);
             }
-            GUILayout.EndArea();
+            else if (card.Primary)
+            {
+                DrawNameRow(gm);
+                GUILayout.Label($"{summary}　·　{who}", _small);
+            }
+            else
+            {
+                GUILayout.BeginHorizontal();
+                GUI.color = card.Species != null ? card.Species.Fur : Color.white;
+                GUILayout.Label("●", _label, GUILayout.Width(18f));
+                GUI.color = Color.white;
+                GUILayout.Label(card.Name + "（同伴）", _label);
+                GUILayout.EndHorizontal();
+                GUILayout.Label($"{summary}　·　{who}", _small);
+            }
 
-            // ---- scrollable detail ----
-            float scrollHeight = Mathf.Max(24f, detailRoom - headerHeight);
-            var scrollRect = new Rect(inner.x, inner.y + headerHeight, inner.width, scrollHeight);
+            GUILayout.EndArea();
+            y = headerRect.yMax;
+
+            if (!plan.Expanded)
+            {
+                DrawCardFooter(gm, inner, rect, plan);
+                return;
+            }
+
+            // ---- detail ----
+            var scrollRect = new Rect(inner.x, y, inner.width, plan.ScrollHeight);
             GUILayout.BeginArea(scrollRect);
             _statusScroll = GUILayout.BeginScrollView(_statusScroll, GUILayout.ExpandHeight(true));
 
-            // The "no brain configured" button lives in the scroll area rather than in the
-            // pinned footer. It is a one-off setup step, and a pinned footer that has to hold it
-            // plus the button rows is a footer that no longer fits a short panel.
-            if (!gm.BrainConfig.CanUseNetwork)
+            if (card.Primary && !gm.BrainConfig.CanUseNetwork)
             {
+                // The "no brain configured" button lives in the scroll area rather than in the
+                // pinned footer. It is a one-off setup step, and a pinned footer that has to hold
+                // it plus the button rows is a footer that no longer fits a short panel.
                 GUI.color = new Color(1f, 0.86f, 0.55f);
                 if (GUILayout.Button("⚙ 配置大脑连接（当前离线）", _buttonSmall, GUILayout.Height(FooterRowHeight)))
                 {
@@ -677,31 +881,24 @@ namespace DshPet
                 GUI.color = Color.white;
             }
 
-            Bar("饱食", gm.Needs.Hunger, new Color(0.95f, 0.62f, 0.30f));
-            Bar("精力", gm.Needs.Energy, new Color(0.45f, 0.80f, 0.95f));
-            Bar("开心", gm.Needs.Joy, new Color(0.98f, 0.80f, 0.35f));
-            Bar("清洁", gm.Needs.Cleanliness, new Color(0.60f, 0.90f, 0.65f));
+            DrawNeedsBars(card.Needs);
 
-            // The bladder only appears once it matters: a permanent bar that spends most of its
-            // life full is noise, while a bar that appears when the pet starts fidgeting is a
-            // warning the player actually reads.
-            if (gm.Needs.Bladder < 0.6f)
-            {
-                Bar("便意", gm.Needs.Bladder, new Color(0.85f, 0.72f, 0.45f));
-            }
-
-            GUILayout.Space(4f);
-            GUILayout.Label(string.IsNullOrEmpty(gm.Needs.DominantNeed) ? "状态不错" : "想要：" + gm.Needs.DominantNeed, _small);
-
-            if (gm.Personality != null)
+            if (card.Personality != null)
             {
                 GUILayout.Label("性格：" + gm.Personality.Archetype, _small);
-                if (!Mobile || _statusDetail) GUILayout.Label(gm.Personality.Summary, _small);
+                if (!Mobile || _statusDetail) GUILayout.Label(card.Personality.Summary, _small);
             }
 
-            // On a phone the panel is small and the debug lines are the first thing to go:
-            // they are for tuning, not for playing. The toggle in the footer brings them back.
-            if (!Mobile || _statusDetail)
+            GUILayout.Label("音色：" + PetVoice.Describe(card.Species, card.Personality), _small);
+
+            if (!card.Primary)
+            {
+                GUI.color = new Color(0.78f, 0.88f, 1f);
+                GUILayout.Label("同伴：自己走动、有自己的状态与音色，摸它有反应；它不接大脑，所以不花 token。", _small);
+                GUILayout.Label("想换主要照顾的那只，去「宠物」面板的背包页。", _small);
+                GUI.color = Color.white;
+            }
+            else if (!Mobile || _statusDetail)
             {
                 string mode = gm.Controller != null ? gm.Controller.CurrentMode.ToString() : "-";
                 string action = string.IsNullOrEmpty(gm.LastActionLabel) ? "休息中" : gm.LastActionLabel;
@@ -720,26 +917,37 @@ namespace DshPet
             }
 
             GUILayout.Space(2f);
-            GUILayout.Label($"{gm.Journal.Count} 条记忆　·　{gm.Needs.MoodScore:P0} 状态分", _small);
+            if (card.Primary)
+            {
+                GUILayout.Label($"{gm.Journal.Count} 条记忆　·　{card.Needs.MoodScore:P0} 状态分", _small);
+            }
+            else
+            {
+                GUILayout.Label($"状态分 {card.Needs.MoodScore:P0}　·　亲密度 {card.Needs.Affection:P0}", _small);
+            }
+
+            // A little air at the end of the scroll content, so the last line does not come to
+            // rest flush against the pinned buttons and read as if it were cut off by them.
+            GUILayout.Space(10f);
 
             GUILayout.EndScrollView();
             GUILayout.EndArea();
 
-            // ---- footer buttons (pinned) ----
-            var footer = new Rect(inner.x, inner.yMax - footerHeight, inner.width, footerHeight);
+            DrawCardFooter(gm, inner, rect, plan);
+        }
+
+        /// <summary>
+        /// The card's pinned buttons. Pinned, not part of the scroll: the notebook, the pets,
+        /// the map and the settings are how the player leaves this panel, and a navigation button
+        /// that can be scrolled out of reach is a trap.
+        /// </summary>
+        private void DrawCardFooter(PetGameManager gm, Rect inner, Rect rect, PetCardLayout plan)
+        {
+            var footer = new Rect(inner.x, rect.yMax - 12f - plan.FooterHeight, inner.width,
+                plan.FooterHeight);
             GUILayout.BeginArea(footer);
 
-            // The button row wraps to a second line on a phone.
-            //
-            // Five buttons with these labels need roughly 300px at this font size, and the
-            // status panel is 232-300 wide — so on the narrow end the last button was laid out
-            // past the panel's own footer rect, where a GUILayout area stops delivering input.
-            // It looked fine and did nothing, which is the worst way for a button to fail.
-            //
-            // The rows are packed to the width AVAILABLE (see StatusFooterRows) and the footer
-            // is sized to the number of rows that came out (see FooterHeight), which is what
-            // keeps the last one both inside the panel and inside its own area.
-            foreach (var row in footerRows)
+            foreach (var row in plan.FooterRows)
             {
                 GUILayout.BeginHorizontal();
                 foreach (string label in row)
@@ -753,6 +961,82 @@ namespace DshPet
             }
 
             GUILayout.EndArea();
+        }
+
+        /// <summary>The row (or rows) of pet chips, and the select/collapse behaviour.</summary>
+        private void DrawPetChips(PetGameManager gm, List<PetGameManager.PetCard> cards,
+            string[] names, Rect area, int maxRows, ref float y)
+        {
+            var packed = PackRows(names, Mathf.Max(60f, area.width - RowPackingSlack),
+                _buttonSmall.fontSize, buttonPadding: 20f, spacing: ChipSpacing);
+
+            int rowCount = Mathf.Clamp(maxRows, 0, packed.Length);
+            int index = 0;
+            float rowY = y;
+
+            for (int r = 0; r < rowCount; r++)
+            {
+                // Positioned by hand rather than by GUILayout: the wrap was decided against the
+                // estimated width, and GUILayout would re-measure every label with the real font
+                // and wrap again — which is how a chip ends up in a different row than the one it
+                // was measured for.
+                float x = area.x;
+                foreach (string label in packed[r])
+                {
+                    if (index >= cards.Count) break;
+
+                    float chipWidth = Mathf.Min(area.width,
+                        EstimatedLabelWidth(label, _buttonSmall.fontSize) + 20f);
+                    var chipRect = new Rect(x, rowY, chipWidth, ChipHeight);
+
+                    bool isSelected = index == gm.SelectedPetIndex;
+                    if (GUI.Button(chipRect, label, isSelected ? _chipActive : _buttonSmall))
+                    {
+                        gm.SelectPet(index, toggleIfSame: true);
+                    }
+
+                    x += chipWidth + ChipSpacing;
+                    index++;
+                }
+
+                rowY += ChipHeight + ChipSpacing;
+            }
+
+            y = rowCount > 0 ? rowY - ChipSpacing : y;
+        }
+
+        private static string ChipLabel(PetGameManager.PetCard card, string name)
+        {
+            if (card.Needs == null) return name;
+
+            // One mark per pet, so the row reads as three animals rather than three buttons.
+            //
+            // ASCII on purpose: "★" and "●" look right in a design tool and come out of Unity's
+            // built-in IMGUI font as a blank box, which is how the first version of this row ended
+            // up with three identical-looking chips and no way to tell which pet was which. The
+            // selected chip is coloured by its style, so the mark only has to carry "this one has
+            // something urgent" and "this one is the pet you are looking after".
+            if (!string.IsNullOrEmpty(card.Needs.DominantNeed)) return "! " + name;
+            return card.Primary ? "* " + name : name;
+        }
+
+        /// <summary>The four need bars plus the bladder when it matters, for one pet.</summary>
+        private void DrawNeedsBars(PetNeeds needs)
+        {
+            if (needs == null) return;
+
+            Bar("饱食", needs.Hunger, new Color(0.95f, 0.62f, 0.30f));
+            Bar("精力", needs.Energy, new Color(0.45f, 0.80f, 0.95f));
+            Bar("开心", needs.Joy, new Color(0.98f, 0.80f, 0.35f));
+            Bar("清洁", needs.Cleanliness, new Color(0.60f, 0.90f, 0.65f));
+
+            // The bladder only appears once it matters: a permanent bar that spends most of its
+            // life full is noise, while a bar that appears when the pet starts fidgeting is a
+            // warning the player actually reads.
+            if (needs.Bladder < 0.6f)
+            {
+                Bar("便意", needs.Bladder, new Color(0.85f, 0.72f, 0.45f));
+            }
         }
 
         /// <summary>Height of one packed footer row. Fixed, so the footer can be sized for it.</summary>
@@ -780,7 +1064,8 @@ namespace DshPet
             else if (label.EndsWith("设置")) OpenSettings(gm);
             else if (label == "提示词") OpenPromptPreview(gm);
             else if (label == "详情" || label == "简略") _statusDetail = !_statusDetail;
-            else if (label.Contains("宠物")) _showCollection = !_showCollection;
+            else if (label.Contains("宠物") || label.Contains("背包")) _showCollection = !_showCollection;
+            else if (label.Contains("收起")) gm.SelectPet(gm.SelectedPetIndex, toggleIfSame: true);
             else if (label.Contains("地图"))
             {
                 if (gm.DoorPromptOpen) gm.CloseDoorPrompt();
@@ -818,13 +1103,17 @@ namespace DshPet
         /// decoration.
         /// </summary>
         public static string[][] StatusFooterRows(bool mobile, bool detailOn, float availableWidth,
-            int fontSize)
+            int fontSize, bool collapsed = false)
         {
             string detailLabel = detailOn ? "简略" : "详情";
 
-            var labels = mobile
-                ? new[] { "本子", "宠物", "地图", "设置", "提示词", detailLabel, "重置" }
-                : new[] { "记事本", "宠物", "地图", "设置", "提示词", "重置" };
+            // Collapsed, the card keeps the way out and nothing else. 展开 first, because it is
+            // the button that undoes the state the player is in.
+            var labels = collapsed
+                ? new[] { "展开", "地图", "设置" }
+                : (mobile
+                    ? new[] { "收起", "本子", "宠物", "地图", "设置", "提示词", detailLabel, "重置" }
+                    : new[] { "收起", "记事本", "宠物", "地图", "设置", "提示词", "重置" });
 
             float budget = Mathf.Max(96f, availableWidth - RowPackingSlack);
             return PackRows(labels, budget, fontSize);
@@ -1075,7 +1364,7 @@ namespace DshPet
             if (rig == null) return;
 
             var switcher = layout.Switcher;
-            var rect = new Rect(switcher.x, switcher.yMax + 8f, switcher.width, 34f + 3f * 26f);
+            var rect = new Rect(switcher.x, switcher.y, switcher.width, ViewCardHeight);
             GUI.Box(rect, GUIContent.none, _panel);
 
             GUILayout.BeginArea(new Rect(rect.x + 12f, rect.y + 8f, rect.width - 24f, rect.height - 16f));
@@ -1183,7 +1472,15 @@ namespace DshPet
             var recent = gm.Memory.Recent;
             if (recent.Count == 0) return false;
             if (recent.Count <= _unreadMark) return false;
-            return !recent[recent.Count - 1].IsUser;
+
+            // A system note is not the pet talking: the unread dot means "it said something to
+            // you", and flashing it for a settings hint would be a lie.
+            for (int i = recent.Count - 1; i >= _unreadMark && i >= 0; i--)
+            {
+                if (recent[i].IsSystem) continue;
+                return !recent[i].IsUser;
+            }
+            return false;
         }
 
         private static string LastLine(PetGameManager gm)
@@ -1193,11 +1490,9 @@ namespace DshPet
 
             for (int i = recent.Count - 1; i >= 0; i--)
             {
-                if (!recent[i].IsUser)
-                {
-                    string text = recent[i].Text ?? "";
+                if (recent[i].IsUser || recent[i].IsSystem) continue;
+                string text = recent[i].Text ?? "";
                     return text.Length > 42 ? text.Substring(0, 42) + "…" : text;
-                }
             }
 
             return "（还没聊过）";
@@ -1419,6 +1714,25 @@ namespace DshPet
                 var line = recent[i];
                 string text = line.Text ?? "";
 
+                // A note from the game itself: centred, grey, no bubble on either side. It has to
+                // be readable as "the game is telling you something", not as the pet speaking.
+                if (line.IsSystem)
+                {
+                    var noteStyle = new GUIStyle(_small)
+                    {
+                        alignment = TextAnchor.MiddleCenter,
+                        wordWrap = true,
+                        fontStyle = FontStyle.Italic
+                    };
+                    noteStyle.normal.textColor = new Color(0.78f, 0.80f, 0.88f, 0.9f);
+
+                    float noteHeight = Mathf.Max(20f,
+                        noteStyle.CalcHeight(new GUIContent(text), rect.width - 40f));
+                    GUI.Label(new Rect(20f, y, rect.width - 40f, noteHeight), text, noteStyle);
+                    y += noteHeight + 10f;
+                    continue;
+                }
+
                 float maxWidth = rect.width * 0.78f;
                 float width = Mathf.Min(maxWidth, bubble.CalcSize(new GUIContent(text)).x + 24f);
                 width = Mathf.Max(width, 62f);
@@ -1531,30 +1845,208 @@ namespace DshPet
             GUILayout.EndArea();
         }
 
-        // ------------------------------------------------------------ species switch
+        // -------------------------------------------------------------------- puzzle
 
-        private void DrawSpeciesSwitcher(PetGameManager gm, HudLayout layout)
+        private PetPuzzle _puzzle;
+        private Texture2D _puzzleArt;
+        private bool _puzzlePaid;
+        private bool _puzzleShowFull;
+        private float _puzzleStartedAt;
+        private int _puzzleBestMoves;
+        private int _puzzleWins;
+
+        /// <summary>
+        /// Opens the picture puzzle — the mini game that lives indoors.
+        ///
+        /// The runner and this are deliberately different kinds of game. The runner is a reflex
+        /// game that needs its own scene, its own camera and a controller; this is a puzzle that
+        /// needs a board and a picture, and both of those are things the room can already draw.
+        /// Making it a scene would have meant a third .unity file for something that fits in a
+        /// panel.
+        /// </summary>
+        public void OpenPuzzle(PetGameManager gm)
         {
-            var rect = layout.Switcher;
-            GUI.Box(rect, GUIContent.none, _panel);
+            _showPuzzle = !_showPuzzle;
+            if (!_showPuzzle) return;
 
-            GUILayout.BeginArea(new Rect(rect.x + 12f, rect.y + 10f, rect.width - 24f, rect.height - 20f));
-            GUILayout.Label("换一只", _label);
+            // The picture is painted for this pet and this room, so the puzzle is always about
+            // somewhere the player has actually been.
+            if (_puzzleArt != null) Destroy(_puzzleArt);
+            var info = DshPet.RoomThemeInfo.Get(DshPet.PetWorldMap.Current);
+            _puzzleArt = PuzzleArt.Paint(gm.Species, info, UnityEngine.Random.Range(0, 1 << 30));
 
-            for (int i = 0; i < PetSpecies.Count; i++)
+            _puzzle = PetPuzzle.Start(UnityEngine.Random.Range(0, 1 << 30));
+            _puzzlePaid = false;
+            _puzzleShowFull = false;
+            _puzzleStartedAt = Time.realtimeSinceStartup;
+        }
+
+        private void DrawPuzzle(PetGameManager gm)
+        {
+            if (_puzzle == null || _puzzleArt == null) OpenPuzzle(gm);
+
+            float w = Mathf.Min(680f, DesignWidth - 32f);
+            float h = Mathf.Min(700f, DesignHeight - 32f);
+            var rect = OverlayRect(w, h);
+            ModalBackdrop(rect);
+
+            var inner = new Rect(rect.x + 18f, rect.y + 14f, rect.width - 36f, rect.height - 28f);
+
+            GUI.Label(new Rect(inner.x, inner.y, inner.width * 0.5f, 32f), "拼图", _title);
+
+            var reward = new GUIStyle(_title) { alignment = TextAnchor.MiddleRight };
+            GUI.color = new Color(1f, 0.9f, 0.6f);
+            GUI.Label(new Rect(inner.x + inner.width * 0.5f, inner.y, inner.width * 0.5f - 84f, 32f),
+                $"🐾 {DshMobile.PetWallet.Coins:N0}", reward);
+            GUI.color = Color.white;
+
+            if (GUI.Button(new Rect(inner.xMax - 76f, inner.y + 2f, 76f, 30f), "关闭", _button))
             {
-                var species = PetSpecies.Get(i);
-                bool active = species.Id == gm.Species.Id;
-                string label = (active ? "● " : "○ ") + species.DisplayName;
+                _showPuzzle = false;
+                return;
+            }
 
-                if (GUILayout.Button(label, _buttonSmall, GUILayout.Height(24f)) && !active)
+            float par = PetPuzzle.Par;
+            string status = _puzzle.IsSolved
+                ? $"拼好了！用了 {_puzzle.Moves} 步（参考 {par:F0} 步）"
+                : $"{_puzzle.Moves} 步　·　参考 {par:F0} 步　·　" +
+                  $"{(int)(Time.realtimeSinceStartup - _puzzleStartedAt)} 秒";
+            GUI.Label(new Rect(inner.x, inner.y + 36f, inner.width, 22f), status, _small);
+
+            if (!string.IsNullOrEmpty(_puzzleMessage))
+            {
+                var style = new GUIStyle(_small) { alignment = TextAnchor.MiddleLeft };
+                GUI.color = _puzzleError ? new Color(1f, 0.65f, 0.55f) : new Color(0.7f, 0.95f, 0.75f);
+                GUI.Label(new Rect(inner.x, inner.y + 58f, inner.width, 22f), _puzzleMessage, style);
+                GUI.color = Color.white;
+            }
+
+            // ---- the board ----
+            const float footer = 78f;
+            float boardTop = inner.y + 84f;
+            float boardRoom = inner.yMax - footer - boardTop;
+            float side = Mathf.Min(inner.width * 0.72f, boardRoom);
+            side = Mathf.Max(side, 120f);
+
+            var board = new Rect(inner.x + (inner.width - side) * 0.5f, boardTop, side, side);
+            UiSkin.Panel(new Rect(board.x - 6f, board.y - 6f, board.width + 12f, board.height + 12f),
+                12f, new Color(0f, 0f, 0f, 0.35f), new Color(1f, 1f, 1f, 0.18f), 1.5f);
+
+            float cell = side / PetPuzzle.Size;
+            for (int i = 0; i < PetPuzzle.TileCount; i++)
+            {
+                int row = i / PetPuzzle.Size, column = i % PetPuzzle.Size;
+                var cellRect = new Rect(board.x + column * cell + 1f, board.y + row * cell + 1f,
+                    cell - 2f, cell - 2f);
+                int value = _puzzle[i];
+
+                if (value == PetPuzzle.Empty)
                 {
-                    gm.SwitchSpecies(i);
+                    GUI.color = new Color(0f, 0f, 0f, 0.45f);
+                    GUI.DrawTexture(cellRect, Texture2D.whiteTexture);
+                    GUI.color = Color.white;
+                    continue;
+                }
+
+                // The tile shows the slice of the picture that belongs in this cell when solved...
+                GUI.DrawTextureWithTexCoords(cellRect, _puzzleArt, PuzzleArt.TileUv(value - 1));
+
+                // ...and its number, because a painted picture has large flat areas and two
+                // pieces of sky are genuinely hard to tell apart. The number is what makes the
+                // puzzle solvable by thinking instead of by squinting.
+                var numberStyle = new GUIStyle(_small) { alignment = TextAnchor.UpperLeft };
+                numberStyle.normal.textColor = new Color(1f, 1f, 1f, 0.72f);
+                GUI.Label(new Rect(cellRect.x + 5f, cellRect.y + 3f, cellRect.width - 8f, 18f),
+                    value.ToString(), numberStyle);
+
+                if (_puzzle.IsSolved) continue;
+
+                bool movable = _puzzle.CanSlide(i);
+                if (movable && GUI.Button(cellRect, GUIContent.none, GUIStyle.none))
+                {
+                    if (_puzzle.TrySlide(i))
+                    {
+                        PetAudioDirector.Instance?.Play(SfxId.PickUp);
+                        DshMobile.MobileHaptics.Light();
+                        if (_puzzle.IsSolved) FinishPuzzle(gm);
+                    }
                 }
             }
 
+            // ---- footer ----
+            var footerArea = new Rect(inner.x, inner.yMax - footer + 8f, inner.width, footer - 8f);
+            GUILayout.BeginArea(footerArea);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("打乱重来", _button, GUILayout.Height(34f)))
+            {
+                _puzzle = PetPuzzle.Start(UnityEngine.Random.Range(0, 1 << 30));
+                _puzzlePaid = false;
+                _puzzleStartedAt = Time.realtimeSinceStartup;
+                SetPuzzleMessage("重新打乱了，慢慢来。");
+            }
+
+            _puzzleShowFull = GUILayout.Toggle(_puzzleShowFull, " 看原图", _small, GUILayout.Width(90f));
+            GUILayout.FlexibleSpace();
+            GUILayout.Label($"拼好 {_puzzleWins} 次　·　最少 {(_puzzleBestMoves > 0 ? _puzzleBestMoves.ToString() : "-")} 步", _small);
+            GUILayout.EndHorizontal();
             GUILayout.EndArea();
+
+            // The reference picture, drawn small in the corner while the toggle is on.
+            if (_puzzleShowFull)
+            {
+                var preview = new Rect(inner.xMax - 84f, board.yMax + 6f, 72f, 72f);
+                if (preview.yMax < inner.yMax - footer)
+                {
+                    GUI.color = new Color(1f, 1f, 1f, 0.9f);
+                    GUI.DrawTexture(preview, _puzzleArt, ScaleMode.ScaleToFit);
+                    GUI.color = Color.white;
+                }
+            }
+
+            DrawModalEscape();
         }
+
+        private string _puzzleMessage = "";
+        private bool _puzzleError;
+
+        private void SetPuzzleMessage(string message, bool error = false)
+        {
+            _puzzleMessage = message;
+            _puzzleError = error;
+        }
+
+        /// <summary>Pays out once, records it, and says so in the conversation.</summary>
+        private void FinishPuzzle(PetGameManager gm)
+        {
+            _puzzleWins++;
+            if (_puzzleBestMoves == 0 || _puzzle.Moves < _puzzleBestMoves) _puzzleBestMoves = _puzzle.Moves;
+
+            if (_puzzlePaid)
+            {
+                SetPuzzleMessage("又拼好了一次。");
+                return;
+            }
+
+            _puzzlePaid = true;
+            int coins = PetPuzzle.Reward(_puzzle.Moves);
+            DshMobile.PetWallet.Add(coins);
+            DshMobile.MobileHaptics.Medium();
+
+            gm.Memory.AddPet($"（和你一起把拼图拼好了，{_puzzle.Moves} 步）");
+            gm.Journal.Add(MemoryKind.Play, "一起拼好了拼图",
+                $"{_puzzle.Moves} 步，赚了 {coins} 个宠物币", 0.5f);
+            gm.AnnounceChat();
+
+            SetPuzzleMessage($"拼好了！赚了 {coins} 个宠物币（宠物币可以在地图里换新房间）。");
+        }
+
+        // The "换一只" card used to live here: four buttons, one per species, that swapped the
+        // pet outright. It is gone, and deliberately. Once the backpack could hold three pets and
+        // the shop could sell a fourth, that card was a second, worse way to do what the
+        // collection panel already does — and it silently *replaced* the animal you had been
+        // looking after, memory and all, from a button that looked like a tab. Which pet lives in
+        // this room is a decision for the 宠物 panel; the card is for reading the pets that are
+        // already here.
 
         // ------------------------------------------------------------------- overlays
 
@@ -1644,6 +2136,16 @@ namespace DshPet
                     GUILayout.Space(6f);
                 }
             }
+
+            GUILayout.Space(4f);
+            GUILayout.Label("出去走走（赚宠物币）", _label);
+            if (GUILayout.Button("🧩  拼图", _button, GUILayout.Height(38f)))
+            {
+                gm.CloseDoorPrompt();
+                OpenPuzzle(gm);
+                GUIUtility.ExitGUI();
+            }
+            GUILayout.Label("　　把这间屋子的画拼回去，步数越少宠物币越多。", _small);
 
             GUILayout.EndScrollView();
             GUILayout.EndArea();
@@ -1884,9 +2386,14 @@ namespace DshPet
             // are part of the character, the speech is an accessibility-and-convenience switch,
             // and a player who wants a quiet room wants both off while one who wants to hear the
             // sentences may well want the chirps too.
+            //
+            // This block is deliberately chatty about what the engine is doing. The first version
+            // shipped a toggle, a status line that said "准备中" forever on a real phone, and no
+            // way to tell whether the problem was the phone, the engine or the setting.
             GUILayout.Space(6f);
             if (DshMobile.MobileTts.Available)
             {
+                GUILayout.BeginHorizontal();
                 bool speechOn = GUILayout.Toggle(DshMobile.MobileTts.Enabled, " 朗读宠物的话（语音输出）", _small);
                 if (speechOn != DshMobile.MobileTts.Enabled)
                 {
@@ -1896,9 +2403,38 @@ namespace DshPet
                     if (speechOn) DshMobile.MobileTts.WarmUp();
                     else DshMobile.MobileTts.Stop();
                 }
-                GUILayout.Label(DshMobile.MobileTts.Ready
-                    ? "语音引擎已就绪，会用这只宠物的音色朗读。"
-                    : "语音引擎准备中；只朗读说的话，括号里的动作不会念。", _small);
+
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button("▶ 测试朗读", _buttonSmall, GUILayout.Height(26f)))
+                {
+                    // The switch is a preference, the test is a diagnostic: it speaks even with
+                    // the switch off, because "I hear nothing" has to be answerable from here.
+                    float testPitch, testRate;
+                    PetVoice.SpeechParams(gm.Species, gm.Personality, out testPitch, out testRate);
+                    bool spoke = DshMobile.MobileTts.Test(testPitch, testRate);
+                    SetVoiceMessage(spoke
+                        ? "已经念了一句，听到了吗？听不到就把手机音量调大一点（用的是媒体音量）。"
+                        : "没能念出来：" + DshMobile.MobileTts.LastError, spoke);
+                }
+                GUILayout.EndHorizontal();
+
+                GUI.color = DshMobile.MobileTts.Ready
+                    ? new Color(0.7f, 0.95f, 0.75f)
+                    : new Color(1f, 0.85f, 0.6f);
+                GUILayout.Label("语音引擎：" + DshMobile.MobileTts.StatusText(
+                    DshMobile.MobileTts.Enabled, DshMobile.MobileTts.Ready, true,
+                    DshMobile.MobileTts.InitStatus, DshMobile.MobileTts.LanguageStatus,
+                    DshMobile.MobileTts.LastError), _small);
+                GUI.color = Color.white;
+
+                if (!string.IsNullOrEmpty(_voiceMessage))
+                {
+                    GUI.color = _voiceError ? new Color(1f, 0.65f, 0.55f) : new Color(0.7f, 0.95f, 0.75f);
+                    GUILayout.Label(_voiceMessage, _small);
+                    GUI.color = Color.white;
+                }
+
+                GUILayout.Label("只朗读说的话，括号里的动作不会念；引擎没起来时会每隔几秒重试一次。", _small);
             }
             else
             {
@@ -2013,7 +2549,7 @@ namespace DshPet
             }
 
             _testing = true;
-            _testResult = "测试中……";
+            _testResult = "";
 
             StartCoroutine(OpenAiClient.Chat(config, "你是一只宠物，只回答很短的一句。", null,
                 "在吗？",
@@ -2129,6 +2665,7 @@ namespace DshPet
             _showSettings = false;
             _showJournal = false;
             _showCollection = false;
+            _showPuzzle = false;
             var gm = PetGameManager.Instance;
             if (gm != null && gm.DoorPromptOpen) gm.CloseDoorPrompt();
             e.Use();
@@ -2482,6 +3019,15 @@ namespace DshPet
         private string _collectionMessage = "";
         private bool _collectionError;
         private Vector2 _collectionScroll;
+
+        private string _voiceMessage = "";
+        private bool _voiceError;
+
+        private void SetVoiceMessage(string message, bool error = false)
+        {
+            _voiceMessage = message;
+            _voiceError = error;
+        }
 
         private void SetCollectionMessage(string message, bool error = false)
         {

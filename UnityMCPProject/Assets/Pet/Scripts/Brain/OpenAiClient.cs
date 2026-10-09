@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
@@ -87,6 +87,7 @@ namespace DshPet
                 for (int i = 0; i < history.Count; i++)
                 {
                     var turn = history[i];
+                    if (turn.IsSystem) continue;   // the UI's own notes are not conversation
                     messages.Add(new Message(turn.IsUser ? "user" : "assistant", turn.Text));
                 }
             }

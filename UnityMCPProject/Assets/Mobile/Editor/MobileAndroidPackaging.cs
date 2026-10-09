@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text;
 using UnityEditor;
 using UnityEditor.Android;
@@ -92,8 +92,9 @@ namespace DshMobileEditor
 
         /// <summary>
         /// Adds what the game needs from the manifest and Unity cannot express: the VIBRATE
-        /// permission for haptics, and — where the insecure-http policy allows it — cleartext
-        /// for a local gateway.
+        /// permission for haptics, the Android 11 package-visibility declaration the speech
+        /// engine needs to be visible at all, and — where the insecure-http policy allows it —
+        /// cleartext for a local gateway.
         /// </summary>
         private void ApplyManifestExtensions(string path)
         {
@@ -110,13 +111,26 @@ namespace DshMobileEditor
 
             // Vibration needs a normal permission, and Unity has no player setting for it
             // (only INTERNET has one). Without it every pulse is silently dropped.
-            if (!patched.Contains("android.permission.VIBRATE"))
+            bool vibrate = !patched.Contains("android.permission.VIBRATE");
+            if (vibrate)
             {
                 patched = patched.Insert(ApplicationAnchor(patched),
                     "<uses-permission android:name=\"android.permission.VIBRATE\" />\n  ");
             }
 
-            if (AllowsCleartext() && !patched.Contains("usesCleartextTraffic"))
+            // Text-to-speech, and this is the one that made "the pet never talks on my phone"
+            // happen: from Android 11 (API 30) an app can only see other packages it declares
+            // an intent for. Without this <queries> block the speech engine is invisible, the
+            // TextToSpeech constructor never calls back, and every utterance is dropped — on the
+            // device only, with nothing in the log and nothing in the editor to reproduce it.
+            bool queries = !patched.Contains("android.intent.action.TTS_SERVICE");
+            if (queries)
+            {
+                patched = patched.Insert(ApplicationAnchor(patched), TtsQueries);
+            }
+
+            bool cleartext = AllowsCleartext() && !patched.Contains("usesCleartextTraffic");
+            if (cleartext)
             {
                 patched = patched.Insert(ApplicationAnchor(patched) + "<application ".Length,
                     "android:usesCleartextTraffic=\"true\" ");
@@ -132,13 +146,29 @@ namespace DshMobileEditor
             // ahead of the XML declaration trips some parsers.
             File.WriteAllText(manifestPath, patched, new UTF8Encoding(false));
 
-            Debug.Log($"[DshMobile] Manifest patched: VIBRATE" +
-                      (AllowsCleartext()
-                          ? $", cleartext http ({(IsDevelopmentBuild() ? "development" : "release")} build, " +
-                            $"InsecureHttpOption.{PlayerSettings.insecureHttpOption})"
-                          : ", no cleartext (secure default)") +
-                      ".");
+            var added = new System.Collections.Generic.List<string>();
+            if (vibrate) added.Add("VIBRATE");
+            if (queries) added.Add("TTS queries (Android 11+ package visibility)");
+            added.Add(cleartext
+                ? $"cleartext http ({(IsDevelopmentBuild() ? "development" : "release")} build, " +
+                  $"InsecureHttpOption.{PlayerSettings.insecureHttpOption})"
+                : "no cleartext (secure default)");
+            Debug.Log("[DshMobile] Manifest patched: " + string.Join(", ", added.ToArray()) + ".");
         }
+
+        /// <summary>
+        /// The package-visibility declaration for text-to-speech.
+        ///
+        /// A direct child of &lt;manifest&gt;, which is why it is inserted at the &lt;application&gt;
+        /// anchor rather than inside it.
+        /// </summary>
+        private const string TtsQueries =
+            "<!-- Android 11+ package visibility: the speech engine is invisible without this. -->\n" +
+            "  <queries>\n" +
+            "    <intent>\n" +
+            "      <action android:name=\"android.intent.action.TTS_SERVICE\" />\n" +
+            "    </intent>\n" +
+            "  </queries>\n  ";
 
         /// <summary>Offset of the <c>&lt;application&gt;</c> element, or -1.</summary>
         private static int ApplicationAnchor(string manifest)

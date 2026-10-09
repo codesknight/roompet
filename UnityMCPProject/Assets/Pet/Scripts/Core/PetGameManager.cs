@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -331,6 +331,8 @@ namespace DshPet
 
                 _companions.Add(go);
             }
+            // The pet that was selected may no longer exist, or may be a different animal now.
+            ResetSelection();
         }
 
         public void DespawnCompanions()
@@ -346,6 +348,176 @@ namespace DshPet
 
         /// <summary>How many pets are walking around right now, including the primary one.</summary>
         public int PetsInRoom => 1 + _companions.Count;
+
+        /// <summary>
+        /// Tells the HUD the transcript changed, for the few places the UI itself writes to it —
+        /// the puzzle paying out, for instance.
+        /// </summary>
+        public void AnnounceChat() => ChatChanged?.Invoke();
+
+        /// <summary>
+        /// Everything one status card needs to know about one pet in the room.
+        ///
+        /// A struct returned by value rather than a live reference to the manager's own fields:
+        /// the HUD draws a card per pet per frame, and a companion's needs live on its own
+        /// controller, so "which pet is this card about" has to be answerable without the HUD
+        /// knowing how companions are stored.
+        /// </summary>
+        public struct PetCard
+        {
+            public bool Primary;
+            public string Name;
+            public PetSpecies Species;
+            public PetPersonality Personality;
+            public PetNeeds Needs;
+            public PetController Controller;
+        }
+
+        /// <summary>
+        /// One card per pet currently in the room, primary first.
+        ///
+        /// Companions are read from the scene objects rather than from the collection records,
+        /// because the card is a *status* card: it has to show the needs the controller is
+        /// actually acting on, which are the ones that decay and drive behaviour.
+        /// </summary>
+        public List<PetCard> Cards()
+        {
+            var cards = new List<PetCard>
+            {
+                new PetCard
+                {
+                    Primary = true,
+                    Name = PetName,
+                    Species = Species,
+                    Personality = Personality,
+                    Needs = Needs,
+                    Controller = Controller
+                }
+            };
+
+            for (int i = 0; i < _companions.Count; i++)
+            {
+                var go = _companions[i];
+                if (go == null) continue;
+
+                var controller = go.GetComponent<PetController>();
+                var avatar = go.GetComponent<PetAvatar>();
+                var target = go.GetComponent<PetClickTarget>();
+                var needs = controller != null ? controller.Needs : null;
+
+                cards.Add(new PetCard
+                {
+                    Primary = false,
+                    Name = go.name.StartsWith("Companion_")
+                        ? go.name.Substring("Companion_".Length)
+                        : go.name,
+                    Species = avatar != null ? avatar.Species : Species,
+                    Personality = needs != null && needs.Personality != null
+                        ? needs.Personality
+                        : (target != null ? target.Personality : Personality),
+                    Needs = needs,
+                    Controller = controller
+                });
+            }
+
+            return cards;
+        }
+
+        /// <summary>Which pet the status card is showing. 0 is the primary pet.</summary>
+        public int SelectedPetIndex { get; private set; }
+
+        /// <summary>Whether the status card shows its detail or just the row of pets.</summary>
+        public bool CardExpanded { get; private set; } = true;
+
+        /// <summary>
+        /// Points the status card at one pet, and opens it.
+        ///
+        /// Called from two places with the same meaning: tapping a pet in the room, and tapping
+        /// its chip in the card. Tapping the chip of the pet already selected toggles the card
+        /// open and shut, which is the only way to get the room back on a small screen without
+        /// hiding the pets themselves.
+        /// </summary>
+        public void SelectPet(int index, bool toggleIfSame = false)
+        {
+            int count = PetsInRoom;
+            if (index < 0 || index >= count) index = 0;
+
+            if (toggleIfSame && index == SelectedPetIndex)
+            {
+                CardExpanded = !CardExpanded;
+            }
+            else
+            {
+                SelectedPetIndex = index;
+                CardExpanded = true;
+            }
+
+            ChatChanged?.Invoke();
+        }
+
+        /// <summary>Forgets which pet was selected, after the room changes under it.</summary>
+        public void ResetSelection()
+        {
+            SelectedPetIndex = 0;
+            CardExpanded = true;
+        }
+
+        /// <summary>
+        /// Points the card at whichever pet was clicked in the room.
+        ///
+        /// Clicking a pet is the gesture the player already makes to touch it, so it is also the
+        /// one that has to answer "which of these three is this card about" — otherwise the card
+        /// shows one animal's numbers while the player is looking at another.
+        /// </summary>
+        public void SelectPetObject(GameObject petObject)
+        {
+            if (petObject == null) return;
+
+            if (Avatar != null && petObject == Avatar.gameObject)
+            {
+                SelectPet(0);
+                return;
+            }
+
+            for (int i = 0; i < _companions.Count; i++)
+            {
+                if (_companions[i] == petObject)
+                {
+                    SelectPet(i + 1);
+                    return;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Ticks the companions' needs.
+        ///
+        /// The manager ticks the primary pet's needs, and companions used to get none at all —
+        /// their bars sat at their starting values forever, which nobody noticed while they were
+        /// decorative and is obvious the moment each pet has a status card of its own. They are
+        /// ticked with the same place modifiers, so a companion in the garden gets dirty just as
+        /// fast as the pet you are looking after.
+        /// </summary>
+        private void TickCompanionNeeds(float dt)
+        {
+            if (_companions.Count == 0) return;
+
+            var info = RoomThemeInfo.Get(Room != null ? Room.Theme : PetWorldMap.Current);
+            for (int i = 0; i < _companions.Count; i++)
+            {
+                var go = _companions[i];
+                if (go == null) continue;
+
+                var controller = go.GetComponent<PetController>();
+                var needs = controller != null ? controller.Needs : null;
+                if (needs == null) continue;
+
+                needs.JoyDrainScale = info.JoyDrainScale;
+                needs.EnergyDrainScale = info.EnergyDrainScale;
+                needs.CleanDrainScale = info.CleanDrainScale;
+                needs.Tick(dt);
+            }
+        }
 
         /// <summary>Creates the walkable character and hands the camera a two-subject rig.</summary>
         /// <summary>
@@ -596,6 +768,7 @@ namespace DshPet
         {
             ApplyThemeToNeeds();
             Needs.Tick(Time.deltaTime);
+            TickCompanionNeeds(Time.deltaTime);
             TickThinkWatchdog();
             TickBehaviors(Time.deltaTime);
             TickNudges(Time.deltaTime);
@@ -926,9 +1099,29 @@ namespace DshPet
             PetVoice.SpeechParams(Species, Personality, out speechPitch, out speechRate);
             DshMobile.MobileTts.Speak(reply.Speech, speechPitch, speechRate);
 
+            HintAboutSpeech();
+
             SaveNeeds();
             Memory.Save(Species.Id);
             ChatChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// Tells the player once, in the conversation itself, that the pet can speak.
+        ///
+        /// A switch nobody finds is a feature nobody has. The first version defaulted to off and
+        /// said so only inside the settings panel, which is exactly where a player who has never
+        /// opened the settings will never look — and the report back was "I never heard it talk".
+        /// Once, only where a speech engine exists, and never again after the switch is touched.
+        /// </summary>
+        private void HintAboutSpeech()
+        {
+            if (!DshMobile.MobileTts.Available) return;
+            if (DshMobile.MobileTts.Enabled) return;
+            if (DshMobile.MobileTts.HintShown) return;
+
+            DshMobile.MobileTts.HintShown = true;
+            Memory.AddSystem("（设置里可以打开「朗读宠物的话」，它就能把说的话念出来）");
         }
 
         private static float ActionDuration(PetAction action)
@@ -1137,6 +1330,9 @@ namespace DshPet
         /// </summary>
         public PokeReaction PokePet()
         {
+            // Touching the pet is also "show me this one": the card follows the hand.
+            SelectPet(0);
+
             var reaction = PetInteraction.Choose(BuildBehaviorContext(), (float)_pokeRng.NextDouble());
 
             LastPokeReaction = reaction;

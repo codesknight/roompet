@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
@@ -71,6 +71,7 @@ namespace DshPet
                 sb.AppendLine("【最近聊过】");
                 foreach (var turn in ctx.History)
                 {
+                    if (turn.IsSystem) continue;   // the UI's own notes are not the pet's memory
                     sb.AppendLine((turn.IsUser ? "主人" : "我") + "：" + turn.Text);
                 }
                 sb.AppendLine();
