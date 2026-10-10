@@ -227,6 +227,8 @@ namespace DshPet
             {
                 Room.Interactables[i].Clicked += OnInteractableClicked;
             }
+            Room.MessSpawned -= OnMessSpawned;
+            Room.MessSpawned += OnMessSpawned;
 
             // The pet is wired to the ball here, so a throw can be noticed even though the
             // player character owns the actual throwing.
@@ -307,6 +309,9 @@ namespace DshPet
                 item.Clicked -= OnInteractableClicked;
                 item.Clicked += OnInteractableClicked;
             }
+
+            Room.MessSpawned -= OnMessSpawned;
+            Room.MessSpawned += OnMessSpawned;
 
             if (Controller != null)
             {
@@ -861,6 +866,7 @@ namespace DshPet
                 {
                     if (Room.Interactables[i] != null) Room.Interactables[i].Clicked -= OnInteractableClicked;
                 }
+                Room.MessSpawned -= OnMessSpawned;
                 if (Room.Ball != null) Room.Ball.Thrown -= OnBallThrown;
             }
         }
@@ -1684,6 +1690,16 @@ namespace DshPet
         public string PreviewSystemPrompt() => PetPrompting.BuildSystemPrompt(BuildContext(""));
 
         // --------------------------------------------------------------- interaction
+
+        /// <summary>
+        /// Wires up a mess that appeared at runtime. Messes spawn after the room is built, so
+        /// they are not in the interactable list that was subscribed during the build — without
+        /// this, a puddle renders but ignores clicks.
+        /// </summary>
+        private void OnMessSpawned(Interactable mess)
+        {
+            if (mess != null) mess.Clicked += OnInteractableClicked;
+        }
 
         private void OnInteractableClicked(Interactable target)
         {

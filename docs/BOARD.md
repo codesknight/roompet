@@ -62,13 +62,13 @@
 
 ---
 
-## 这一轮（第 29 轮）的验收清单
+## 这一轮（第 30 轮）的验收清单
 
-- [x] **露台换 Kenney 家具**：Furniture Kit（140 FBX，CC0）入库，沙发/茶几/地毯/盆栽/落地灯/长椅替换原来的方块躺椅
-- [x] **花园用满 Nature Kit**：一圈 6 棵不同树 + 灌木/岩石/树桩/圆木/蘑菇/草丛；修掉 `tree_pineRoundB` 写错的旧 bug
-- [x] **每步跑测试**：358/358 全绿；运行中数对象零报错
-- [x] 文档：本文件 + REQUIREMENTS 阶段 29 + CHANGELOG 第 29 轮 + DEVLOG 坑 140 + THIRD_PARTY（Furniture Kit）
-- [ ] ⏳ **真机确认**：花园/露台新模型的观感
+- [x] **修「排泄物擦不掉」**：`SpawnMess` 加进 `Interactables` + `MessSpawned` 事件接上点击；`RemoveMess` 对称移除。运行中验证：生成污渍 → 装备铲子 → `Interact()` → 污渍清除、金币 +5
+- [x] **修「收起后『展开』没反应」**：`HandleFooterButton` 给「展开」补上和「收起」同一条折叠/展开路由。反射验证：收起→折叠、展开→重新展开
+- [x] **测试**：358/358 全绿
+- [x] 文档：本文件 + REQUIREMENTS 阶段 30 + CHANGELOG 第 30 轮 + DEVLOG 坑 141 + README 坑计数
+- [ ] ⏳ **真机确认**：① 装备铲子点污渍能清掉并 +5 币；② 「收起」折叠后「展开」能重新展开
 
 ## 明确推迟或不做
 

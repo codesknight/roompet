@@ -1,3 +1,4 @@
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -1538,6 +1539,13 @@ namespace DshPet
         /// report "there is something to clean up" without scanning everything.</summary>
         public readonly List<Interactable> Messes = new List<Interactable>();
 
+        /// <summary>
+        /// Raised when a mess appears at runtime. Messes are created after the room is built,
+        /// so the manager that wires up <see cref="Interactable.Clicked"/> has to be told about
+        /// them — otherwise a freshly spawned puddle is drawn but cannot be clicked clean.
+        /// </summary>
+        public event Action<Interactable> MessSpawned;
+
         private Transform _messRoot;
 
         /// <summary>
@@ -1590,6 +1598,8 @@ namespace DshPet
             interactable.Label = "地上的污渍（按 E 擦掉）";
             interactable.ApproachPoint = new Vector3(position.x, 0f, position.z - 1.1f);
             Messes.Add(interactable);
+            Interactables.Add(interactable);
+            MessSpawned?.Invoke(interactable);
             return interactable;
         }
 
@@ -1598,6 +1608,7 @@ namespace DshPet
         {
             if (mess == null) return;
             Messes.Remove(mess);
+            Interactables.Remove(mess);
             if (Application.isPlaying) Destroy(mess.gameObject);
             else DestroyImmediate(mess.gameObject);
         }

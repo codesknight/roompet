@@ -419,6 +419,15 @@
 | R29.3 | 每步跑测试 | 素材替换无新单测，但全套回归 358/358 通过 | 测试全绿 ✅ |
 
 
+## 阶段 30：修两个真机 bug（排泄物擦不掉 / 展开按钮没反应）
+
+| 编号 | 需求 | 实现 | 验收证据 |
+|---|---|---|---|
+| R30.1 | 地上的排泄物能擦掉 | `PetRoom.SpawnMess` 原来只把污渍加进 `Messes`，没加进 `Interactables` 也没接 `Clicked`，点击永远到不了 `CleanMess`。现在 spawn 时加进 `Interactables` 并触发新的 `MessSpawned` 事件，`PetGameManager` 在首次加载与每次 `RebindRoom` 都订阅它把新污渍接上点击；`RemoveMess` 对称移除 | 运行中：生成污渍 → 装备铲子 → `Interact()`（与点击同一条路）→ 污渍清除、金币 +5 ✅ |
+| R30.2 | 收起后「展开」按钮能重新展开 | `PetHud.HandleFooterButton` 折叠态那排是「展开/地图/设置」，但路由只写了 `Contains("收起")` 没写「展开」。现在两者走同一个 `SelectPet(SelectedPetIndex, toggleIfSame: true)` | 反射调 `HandleFooterButton`：收起→折叠、展开→重新展开 ✅ |
+| R30.3 | 全套回归 | 修 bug 无新单测，358/358 全绿 | 测试全绿 ✅ |
+
+
 ## 非功能需求 / 设计约束
 
 

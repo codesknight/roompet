@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **312/312 通过**（虚拟宠物 174 + 跑酷 15 + 手机端 44 + 小游戏 79），EditMode |
+| 测试 | **358/358 通过**（虚拟宠物 213 + 跑酷 15 + 手机端 49 + 小游戏 81），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -920,6 +920,16 @@
     没人发现少了一棵树。这轮加了一条硬规矩：**上线素材前，在运行中的游戏里数一遍对象**（6 棵树、
     5 岩石、11 灌木/树桩/蘑菇——每个名字都对上），而不是只看"没报错"。**凡是"资源按名字加载"的，
     都要有一个"名字到底有没有加载到"的验证，而不是把"没报错"当成"加载到了"。**
+141. **"运行时才生成的东西"要接上"点击"这条线，否则它画出来了却点不动。** 排泄物是在事故发生时
+    `SpawnMess` 现场生成的，而点击订阅只在房间构建/重建时对 `Interactables` 做一次——`SpawnMess`
+    只把污渍加进 `Messes`，既没加进 `Interactables`、也没接 `Clicked`，于是污渍渲染正常但点击走
+    `Interact()` 时一个订阅者都没有，永远到不了 `CleanMess`（玩家看到的就是"擦不掉"）。修法是
+    `SpawnMess` 加进 `Interactables` 并触发 `MessSpawned` 事件，`PetGameManager` 在首次加载与每次
+    `RebindRoom` 都订阅它给新污渍接点击。**凡是"后来才 AddComponent 出来的可交互物"，都要有
+    一条把它的 `Clicked` 接回管理器的事件——不能假设"构建时那一次订阅"会覆盖它。** 同轮另一个
+    小坑：状态卡折叠态的「展开」按钮，路由 `HandleFooterButton` 只写了 `Contains("收起")` 没写
+    `Contains("展开")`——**成对出现的"开/关、收起/展开"按钮，路由要两条都写，否则其中一个就是
+    纯装饰。**
 
 ---
 

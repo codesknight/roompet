@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using DshMobile;
 using UnityEngine;
@@ -1101,7 +1101,7 @@ namespace DshPet
                 _showFurnish = !_showFurnish;
                 if (_showFurnish) _furnishMessage = "";
             }
-            else if (label.Contains("收起")) gm.SelectPet(gm.SelectedPetIndex, toggleIfSame: true);
+            else if (label.Contains("展开") || label.Contains("收起")) gm.SelectPet(gm.SelectedPetIndex, toggleIfSame: true);
             else if (label.Contains("地图"))
             {
                 if (gm.DoorPromptOpen) gm.CloseDoorPrompt();

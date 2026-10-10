@@ -39,6 +39,10 @@
   `tree_pineRoundB`）。下一步：逐步替换宠物身体，最后 IMGUI→uGUI；每步跑测试。
   来源与顺序见 `docs/ASSETS_RESEARCH.md`。
 
+- [x] **修两个真机 bug**：第 30 轮做了——① 排泄物擦不掉（`SpawnMess` 没把污渍接上点击，加
+  `MessSpawned` 事件与 `Interactables` 注册修掉）；② 收起后「展开」按钮没反应（`HandleFooterButton`
+  补上「展开」路由）。DEVLOG 坑 141。
+
 - [x] **语音输出（TTS）**：第 10 轮做了，第 11 轮修掉了**真机上完全不响**的两个原因
   （Android 11+ 的 `queries` 包可见性、初始化失败被永久记住），并加了引擎状态自述、
   「▶ 测试朗读」按钮与对话里的开关提示。**发音质量仍需要真机听一次**。
