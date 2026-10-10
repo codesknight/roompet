@@ -48,3 +48,41 @@ UI 方面本项目是 **IMGUI 程序化绘制**（不依赖 Sprite 资源），�
 - 只用**许可明确、可商用、可再分发**的素材（CC0 优先，CC-BY 需署名并记录来源）。
 - 逐件记录来源与许可（参考 `THIRD_PARTY.md` / `docs/MUSIC_SOURCES.md` 的格式）。
 - 不引入需要登录/Key 的资产仓库，不引入本机路径。
+
+---
+
+## 第 39 轮：宠物身体替换 · 素材已入库 + 版本管理已就绪
+
+**已完成（本轮）**
+
+- 版本管理：固定基线 tag **`v0.2.0-prebodyswap`**（指向 5f8ff6b，永不移动）+ 专用分支
+  **`feature/pet-body`**（从 5f8ff6b 切出）。失败时 `git checkout feature/android-mobile` 即可回退。
+- 素材入库：下载并导入 Kenney **Cube Pets 2.0**（24 种方块动物，CC0 1.0，约 2.8 MB），
+  放在 `Assets/Resources/Kenney/Pets/`（FBX + `colormap.png` 图集），原始下载留档在 `.assets/`
+  （已加入 `.gitignore`，不入库）。
+
+**7 个物种 → 模型映射**
+
+| 物种 | 模型 |
+|---|---|
+| fox 小狐狸 | animal-fox |
+| cat 小猫咪 | animal-cat |
+| rabbit 小兔子 | animal-bunny |
+| bear 小熊 | animal-polar（北极熊，最接近） |
+| red_panda 小熊猫 | animal-panda（熊猫，最接近） |
+| penguin 小企鹅 | animal-penguin |
+| hamster 小仓鼠 | animal-hog（小猪，最接近的小圆身子） |
+
+**关键设计决策（下一轮要定的）**
+
+Cube Pets 是**静态单网格**（每只 5–7 个子网格 + 1 张 colormap，**没有骨骼**）。而现在的
+`PetAvatar` 是一套**骨骼（头/尾/四条腿）+ 方块网格 + 逐部分动画**（腿摆、摇尾、点头、呼吸、
+坐/睡下蹲）。直接换成静态模型会**失去逐部分动画**。下一步二选一：
+
+1. **静态模型 + 简化动画**（推荐先做）：整只模型替代 Rig，保留**上下起伏/转向/蹦跳/下蹲**（靠
+   整体 transform + Y 缩放），牺牲腿摆/摇尾/点头的精细度，换来更像动物的外观；
+2. **保留骨骼 + 只换网格**：需要分部位（头/身/尾/腿）的 rigged 模型（Quaternius 才有），
+   Cube Pets 不是分部位的，做不了这一条。
+
+**下一步**：按映射逐个物种接入，每换一个跑一遍 377 条测试；`PetAvatarTests` 里"造型部件/物种映射"
+相关断言可能要跟着改成"模型名正确"。做完验证再 merge 回 `feature/android-mobile`/`main`。

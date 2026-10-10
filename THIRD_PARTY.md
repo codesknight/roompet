@@ -17,7 +17,8 @@
 | 自然装饰（树/灌木/花/蘑菇等 40 个 FBX） | `UnityMCPProject/Assets/Resources/Runner/Nature/` |
 | 道具物件（8 个 FBX） | `UnityMCPProject/Assets/Resources/Runner/Items/` |
 | 家具（Furniture Kit，140 个 FBX，露台沙发/茶几/盆栽/落地灯等） | `UnityMCPProject/Assets/Resources/Kenney/Furniture/` |
-| 原始下载留档 | `.assets/kenney/` |
+| 宠物身体候选（Cube Pets 2.0，24 种方块动物 FBX + colormap 图集，待接入 `PetAvatar`） | `UnityMCPProject/Assets/Resources/Kenney/Pets/` |
+| 原始下载留档 | `.assets/`（git 忽略，仅本地留档） |
 
 CC0 全文：<https://creativecommons.org/publicdomain/zero/1.0/>
 
