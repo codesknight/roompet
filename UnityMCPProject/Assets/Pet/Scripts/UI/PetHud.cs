@@ -128,6 +128,20 @@ namespace DshPet
         private RectTransform _mapContent;
         private bool _mapBuilt;
 
+        // uGUI settings panel (fourth slice, third piece).
+        private UnityEngine.UI.Image _settingsPanel;
+        private RectTransform _settingsContent;
+        private UnityEngine.UI.InputField _baseUrlField;
+        private UnityEngine.UI.InputField _modelField;
+        private UnityEngine.UI.InputField _keyField;
+        private UnityEngine.UI.Text _settingsStatus;
+        private readonly List<UnityEngine.UI.Text> _toggleLabels = new List<UnityEngine.UI.Text>();
+        private readonly List<string> _toggleTexts = new List<string>();
+        private readonly List<System.Func<bool>> _toggleGetters = new List<System.Func<bool>>();
+        private readonly List<System.Action<bool>> _toggleSetters = new List<System.Action<bool>>();
+        private UnityEngine.UI.Slider _musicSlider;
+        private UnityEngine.UI.Text _musicVolumeLabel;
+
         /// <summary>Set by hoverable world objects; shown near the cursor.</summary>
         public static void SetCursorHint(string hint) => _cursorHint = hint;
 
@@ -320,7 +334,7 @@ namespace DshPet
             // The map panel (door prompt) is now uGUI — see SyncMapPanel.
             if (_showPuzzle) DrawPuzzle(gm);
             if (_showMemory) DrawMemoryMatch(gm);
-            if (_showSettings) DrawSettings(gm);
+            // The settings panel is now uGUI — see SyncSettingsPanel.
             if (_showPromptPreview) DrawPromptPreview(gm);
             if (_showJournal) DrawJournal(gm);
             if (_showCollection) DrawCollection(gm);
@@ -681,6 +695,7 @@ namespace DshPet
             BuildPetCard();
             BuildPlacementBar();
             BuildMapPanel();
+            BuildSettingsPanel();
         }
 
         private void Update()
@@ -708,6 +723,7 @@ namespace DshPet
             SyncPetCard();
             SyncPlacementBar();
             SyncMapPanel();
+            SyncSettingsPanel();
         }
 
         /// <summary>
@@ -1590,6 +1606,230 @@ namespace DshPet
             }
 
             return y + 92f;
+        }
+
+        // ----------------------------------------------------------------- settings (uGUI)
+
+        private void BuildSettingsPanel()
+        {
+            _settingsPanel = DshMobile.Ugui.Panel("SettingsPanel", _root, 18f,
+                new Color(0.11f, 0.10f, 0.14f, 1f), new Color(1f, 1f, 1f, 0.14f), 2f);
+            _settingsPanel.gameObject.SetActive(false);
+            var p = _settingsPanel.rectTransform;
+
+            var title = DshMobile.Ugui.Text("Title", p, "宠物大脑设置", 24, new Color(1f, 0.94f, 0.82f), UnityEngine.TextAnchor.MiddleLeft, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 18f, 14f, 300f, 30f);
+
+            var sub = DshMobile.Ugui.Text("Sub", p, "默认指向 DeepSeek 官方接口；任何 OpenAI 兼容端点都可以填在这里。", 14,
+                new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(sub.rectTransform, 18f, 44f, 460f, 20f);
+
+            var viewport = new GameObject("Viewport", typeof(RectTransform));
+            viewport.transform.SetParent(p, false);
+            viewport.AddComponent<UnityEngine.UI.RectMask2D>();
+            var viewportImg = viewport.AddComponent<UnityEngine.UI.Image>();
+            viewportImg.color = new Color(0f, 0f, 0f, 0f);
+            viewportImg.raycastTarget = true;
+            var scroll = p.gameObject.AddComponent<UnityEngine.UI.ScrollRect>();
+            scroll.viewport = viewport.GetComponent<RectTransform>();
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = UnityEngine.UI.ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 30f;
+            scroll.viewport.anchorMin = new Vector2(0f, 0f);
+            scroll.viewport.anchorMax = new Vector2(1f, 1f);
+            scroll.viewport.offsetMin = new Vector2(16f, 56f);
+            scroll.viewport.offsetMax = new Vector2(-16f, -70f);
+
+            var content = new GameObject("Content", typeof(RectTransform));
+            content.transform.SetParent(viewport.transform, false);
+            _settingsContent = content.GetComponent<RectTransform>();
+            _settingsContent.anchorMin = new Vector2(0f, 1f);
+            _settingsContent.anchorMax = new Vector2(1f, 1f);
+            _settingsContent.pivot = new Vector2(0.5f, 1f);
+            scroll.content = _settingsContent;
+
+            float y = 4f;
+            y = BuildSettingsField(_settingsContent, y, "Base URL", 300, out _baseUrlField);
+            y = BuildSettingsField(_settingsContent, y, "模型", 120, out _modelField);
+            y = BuildSettingsField(_settingsContent, y, "API Key（留空则使用离线大脑）", 200, out _keyField, password: true);
+            y += 4f;
+
+            y = BuildSettingsToggle(_settingsContent, y, "允许无鉴权（本地网关）", () => _editAnonymous, v => _editAnonymous = v);
+            y = BuildSettingsToggle(_settingsContent, y, "强制离线模式", () => _editOffline, v => _editOffline = v);
+            y = BuildSettingsToggle(_settingsContent, y, "振动反馈（轻/中/重）", () => DshMobile.MobileHaptics.Enabled, v => DshMobile.MobileHaptics.Enabled = v);
+            y = BuildSettingsToggle(_settingsContent, y, "背景音乐", () => DshMobile.MobileMusic.Enabled, v => DshMobile.MobileMusic.Enabled = v);
+            y = BuildSettingsToggle(_settingsContent, y, "宠物叫声", () => PetVoice.Enabled, v => { PetVoice.Enabled = v; });
+            y = BuildSettingsToggle(_settingsContent, y, "朗读宠物的话（语音输出）", () => DshMobile.MobileTts.Enabled,
+                v => { DshMobile.MobileTts.Enabled = v; if (v) DshMobile.MobileTts.WarmUp(); else DshMobile.MobileTts.Stop(); });
+            y = BuildSettingsToggle(_settingsContent, y, "显示麦克风按钮", () => DshMobile.MobileStt.Enabled,
+                v => { DshMobile.MobileStt.Enabled = v; if (!v) DshMobile.MobileStt.Cancel(); });
+
+            // Music volume slider.
+            var volLabel = DshMobile.Ugui.Text("VolLabel", _settingsContent, "", 14,
+                new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleLeft);
+            volLabel.rectTransform.anchorMin = volLabel.rectTransform.anchorMax = new Vector2(0f, 1f);
+            volLabel.rectTransform.pivot = new Vector2(0f, 1f);
+            volLabel.rectTransform.anchoredPosition = new Vector2(2f, -y);
+            volLabel.rectTransform.sizeDelta = new Vector2(120f, 24f);
+            _musicVolumeLabel = volLabel;
+
+            _musicSlider = DshMobile.Ugui.Slider("MusicVol", _settingsContent, 0f, 1f, DshMobile.MobileMusic.Volume,
+                new Color(0.35f, 0.6f, 0.9f), Color.white);
+            _musicSlider.GetComponent<RectTransform>().anchorMin = _musicSlider.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 1f);
+            _musicSlider.GetComponent<RectTransform>().pivot = new Vector2(0f, 1f);
+            _musicSlider.GetComponent<RectTransform>().anchoredPosition = new Vector2(130f, -y);
+            _musicSlider.GetComponent<RectTransform>().sizeDelta = new Vector2(200f, 22f);
+            _musicSlider.onValueChanged.AddListener(v => { if (_overlaysBuilt) DshMobile.MobileMusic.Volume = v; });
+            y += 30f;
+
+            // Status / result line.
+            _settingsStatus = DshMobile.Ugui.Text("Status", _settingsContent, "", 14,
+                new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.UpperLeft);
+            _settingsStatus.horizontalOverflow = HorizontalWrapMode.Wrap;
+            _settingsStatus.rectTransform.anchorMin = new Vector2(0f, 1f);
+            _settingsStatus.rectTransform.anchorMax = new Vector2(1f, 1f);
+            _settingsStatus.rectTransform.pivot = new Vector2(0f, 1f);
+            _settingsStatus.rectTransform.anchoredPosition = new Vector2(2f, -y);
+            _settingsStatus.rectTransform.sizeDelta = new Vector2(-4f, 90f);
+            y += 96f;
+
+            // Personality + brain config buttons.
+            y = BuildSettingsAction(_settingsContent, y, "换一个性格", () => { var g = PetGameManager.Instance; if (g != null) g.RerollPersonality(); });
+            y = BuildSettingsAction(_settingsContent, y, "打开系统语音设置（装中文语音）", () =>
+            {
+                bool opened = DshMobile.MobileTts.OpenSystemSettings();
+                SetVoiceMessage(opened ? "已经打开系统的「文字转语音」设置。" : "这台设备打不开系统语音设置。", !opened);
+            });
+            y = BuildSettingsAction(_settingsContent, y, "申请麦克风权限", () => DshMobile.MobileStt.RequestPermission());
+            y = BuildSettingsAction(_settingsContent, y, "重置识别器（识别不动时点一下）", () =>
+            {
+                DshMobile.MobileStt.ResetRecognizer();
+                SetVoiceMessage("识别器已经重建，再点一次麦克风试试。", false);
+            });
+            y += 10f;
+
+            _settingsContent.sizeDelta = new Vector2(-4f, y);
+
+            // Footer (pinned).
+            var save = DshMobile.Ugui.Button("Save", p, "保存并应用", 16, new Color(0.30f, 0.55f, 0.35f));
+            DshMobile.Ugui.SetRect(save.GetComponent<RectTransform>(), 16f, -46f, 150f, 40f);
+            save.onClick.AddListener(OnSaveSettings);
+
+            var test = DshMobile.Ugui.Button("Test", p, "测试连接", 16, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRect(test.GetComponent<RectTransform>(), 176f, -46f, 130f, 40f);
+            test.onClick.AddListener(() => TestConnection());
+
+            var env = DshMobile.Ugui.Button("Env", p, "读环境变量", 16, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRect(env.GetComponent<RectTransform>(), 316f, -46f, 130f, 40f);
+            env.onClick.AddListener(OnReadEnv);
+
+            var cancel = DshMobile.Ugui.Button("Cancel", p, "取消", 16, new Color(0.75f, 0.35f, 0.35f));
+            DshMobile.Ugui.SetRect(cancel.GetComponent<RectTransform>(), -162f, -46f, 130f, 40f);
+            cancel.onClick.AddListener(() => _showSettings = false);
+        }
+
+        private static float BuildSettingsField(RectTransform content, float y, string label, int charLimit,
+            out UnityEngine.UI.InputField field, bool password = false)
+        {
+            var lab = DshMobile.Ugui.Text("Label", content, label, 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.UpperLeft);
+            lab.rectTransform.anchorMin = lab.rectTransform.anchorMax = new Vector2(0f, 1f);
+            lab.rectTransform.pivot = new Vector2(0f, 1f);
+            lab.rectTransform.anchoredPosition = new Vector2(2f, -y);
+            lab.rectTransform.sizeDelta = new Vector2(300f, 20f);
+            y += 20f;
+
+            field = DshMobile.Ugui.InputField("Field", content);
+            if (password) field.contentType = UnityEngine.UI.InputField.ContentType.Password;
+            field.characterLimit = charLimit;
+            field.GetComponent<RectTransform>().anchorMin = field.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 1f);
+            field.GetComponent<RectTransform>().pivot = new Vector2(0f, 1f);
+            field.GetComponent<RectTransform>().anchoredPosition = new Vector2(2f, -y);
+            field.GetComponent<RectTransform>().sizeDelta = new Vector2(Mathf.Min(charLimit * 1.2f + 40f, 360f), 30f);
+            return y + 34f;
+        }
+
+        private float BuildSettingsToggle(RectTransform content, float y, string label,
+            System.Func<bool> getter, System.Action<bool> setter)
+        {
+            var btn = DshMobile.Ugui.Button("Toggle", content, "", 14, new Color(0.30f, 0.40f, 0.58f));
+            btn.GetComponent<RectTransform>().anchorMin = btn.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 1f);
+            btn.GetComponent<RectTransform>().pivot = new Vector2(0f, 1f);
+            btn.GetComponent<RectTransform>().anchoredPosition = new Vector2(2f, -y);
+            btn.GetComponent<RectTransform>().sizeDelta = new Vector2(360f, 28f);
+            var lab = btn.GetComponentInChildren<UnityEngine.UI.Text>();
+            lab.alignment = UnityEngine.TextAnchor.MiddleLeft;
+            _toggleLabels.Add(lab);
+            _toggleTexts.Add(label);
+            _toggleGetters.Add(getter);
+            _toggleSetters.Add(setter);
+            int index = _toggleLabels.Count - 1;
+            btn.onClick.AddListener(() => _toggleSetters[index](!_toggleGetters[index]()));
+            return y + 32f;
+        }
+
+        private static float BuildSettingsAction(RectTransform content, float y, string label, UnityEngine.Events.UnityAction onClick)
+        {
+            var btn = DshMobile.Ugui.Button("Action", content, label, 14, new Color(0.30f, 0.40f, 0.58f));
+            btn.GetComponent<RectTransform>().anchorMin = btn.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 1f);
+            btn.GetComponent<RectTransform>().pivot = new Vector2(0f, 1f);
+            btn.GetComponent<RectTransform>().anchoredPosition = new Vector2(2f, -y);
+            btn.GetComponent<RectTransform>().sizeDelta = new Vector2(360f, 28f);
+            btn.onClick.AddListener(onClick);
+            return y + 32f;
+        }
+
+        private void SyncSettingsPanel()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            bool open = _showSettings;
+            _settingsPanel.gameObject.SetActive(open);
+            _modalScrim.gameObject.SetActive(open || (gm.DoorPromptOpen));
+            if (!open) return;
+
+            var w = Mathf.Min(520f, DesignWidth - 32f);
+            var h = Mathf.Min(660f, DesignHeight - 40f);
+            _settingsPanel.rectTransform.anchorMin = _settingsPanel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            _settingsPanel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            _settingsPanel.rectTransform.anchoredPosition = Vector2.zero;
+            _settingsPanel.rectTransform.sizeDelta = new Vector2(w, h);
+
+            if (_baseUrlField.text != (_editBaseUrl ?? "") && !_baseUrlField.isFocused) _baseUrlField.text = _editBaseUrl ?? "";
+            if (_baseUrlField.isFocused) _editBaseUrl = _baseUrlField.text;
+            if (_modelField.text != (_editModel ?? "") && !_modelField.isFocused) _modelField.text = _editModel ?? "";
+            if (_modelField.isFocused) _editModel = _modelField.text;
+            if (_keyField.text != (_editKey ?? "") && !_keyField.isFocused) _keyField.text = _editKey ?? "";
+            if (_keyField.isFocused) _editKey = _keyField.text;
+
+            for (int i = 0; i < _toggleLabels.Count; i++)
+            {
+                bool on = _toggleGetters[i]();
+                _toggleLabels[i].text = (on ? "☑ " : "☐ ") + _toggleTexts[i];
+            }
+            _musicVolumeLabel.text = "音量 " + Mathf.RoundToInt(DshMobile.MobileMusic.Volume * 100f) + "%";
+            _settingsStatus.text = _testResult + (string.IsNullOrEmpty(_voiceMessage) ? "" : "\n" + _voiceMessage);
+        }
+
+        private void OnSaveSettings()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            ApplyEditConfig(gm);
+            gm.BrainConfig.Save();
+            gm.RebuildBrain();
+            _showSettings = false;
+        }
+
+        private void OnReadEnv()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            var resolved = PetBrainConfig.FromEnvironment();
+            gm.BrainConfig = resolved;
+            gm.RebuildBrain();
+            FillEditConfig(gm);
+            _testResult = "已从环境变量重新读取：" + resolved.Describe();
         }
 
         /// <summary>
