@@ -115,6 +115,10 @@ namespace DshPet
         private int _builtPetIndex = -1;
         private bool _builtCardExpanded;
 
+        // uGUI placement bar (fourth slice, first piece).
+        private UnityEngine.UI.Image _placementBar;
+        private UnityEngine.UI.Text _placementText;
+
         /// <summary>Set by hoverable world objects; shown near the cursor.</summary>
         public static void SetCursorHint(string hint) => _cursorHint = hint;
 
@@ -312,7 +316,7 @@ namespace DshPet
             if (_showJournal) DrawJournal(gm);
             if (_showCollection) DrawCollection(gm);
             if (_showFurnish) DrawFurnish(gm);
-            if (_placeMode) DrawPlacementHud(gm);
+            // The placement bar is now uGUI — see SyncPlacementBar.
 
             GUI.matrix = previousMatrix;
         }
@@ -666,6 +670,7 @@ namespace DshPet
 
             BuildChat();
             BuildPetCard();
+            BuildPlacementBar();
         }
 
         private void Update()
@@ -691,6 +696,7 @@ namespace DshPet
 
             SyncChat();
             SyncPetCard();
+            SyncPlacementBar();
         }
 
         /// <summary>
@@ -1294,6 +1300,46 @@ namespace DshPet
                 }
                 y -= FooterRowHeight + 4f;
             }
+        }
+
+        private void BuildPlacementBar()
+        {
+            _placementBar = DshMobile.Ugui.Panel("PlacementBar", _root, 14f,
+                new Color(0.08f, 0.09f, 0.13f, 0.94f), new Color(0.6f, 0.9f, 1f, 0.5f), 1.5f);
+            _placementBar.gameObject.SetActive(false);
+            _placementText = DshMobile.Ugui.Text("PlacementText", _placementBar.rectTransform,
+                "自由摆放中：按住家具拖到新位置", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleLeft);
+            _placementText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            DshMobile.Ugui.Stretch(_placementText.rectTransform);
+            _placementText.rectTransform.offsetMin = new Vector2(14f, 8f);
+            _placementText.rectTransform.offsetMax = new Vector2(-110f, -8f);
+
+            var done = DshMobile.Ugui.Button("Done", _placementBar.rectTransform, "完成", 16,
+                new Color(0.30f, 0.55f, 0.35f));
+            done.GetComponent<RectTransform>().anchorMin = done.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 0.5f);
+            done.GetComponent<RectTransform>().pivot = new Vector2(1f, 0.5f);
+            done.GetComponent<RectTransform>().anchoredPosition = new Vector2(-10f, 0f);
+            done.GetComponent<RectTransform>().sizeDelta = new Vector2(84f, 36f);
+            done.onClick.AddListener(OnDonePlacement);
+        }
+
+        private void SyncPlacementBar()
+        {
+            _placementBar.gameObject.SetActive(_placeMode);
+            if (_placeMode)
+            {
+                _placementBar.rectTransform.anchorMin = _placementBar.rectTransform.anchorMax = new Vector2(0.5f, 1f);
+                _placementBar.rectTransform.pivot = new Vector2(0.5f, 1f);
+                _placementBar.rectTransform.anchoredPosition = new Vector2(0f, -12f);
+                _placementBar.rectTransform.sizeDelta = new Vector2(440f, 54f);
+            }
+        }
+
+        private void OnDonePlacement()
+        {
+            _placeMode = false;
+            PlacementDragger.SetActive(false);
+            DshMobile.MobileHaptics.Light();
         }
 
         /// <summary>
