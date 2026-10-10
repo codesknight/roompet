@@ -177,6 +177,18 @@ namespace DshPet
         private UnityEngine.UI.InputField _promptEdit;
         private UnityEngine.UI.Text _promptSaveLabel;
 
+        // uGUI memory match panel (fourth slice, eighth piece).
+        private UnityEngine.UI.Image _memoryPanel;
+        private UnityEngine.UI.Text _memoryStats;
+        private UnityEngine.UI.Text _memoryMsg;
+        private RectTransform _memoryBoard;
+        private readonly List<UnityEngine.UI.Button> _memoryCards = new List<UnityEngine.UI.Button>();
+        private readonly List<UnityEngine.UI.Image> _memoryCardBgs = new List<UnityEngine.UI.Image>();
+        private readonly List<UnityEngine.UI.RawImage> _memoryCardFaces = new List<UnityEngine.UI.RawImage>();
+        private readonly List<UnityEngine.UI.Text> _memoryLevelLabels = new List<UnityEngine.UI.Text>();
+        private UnityEngine.UI.Text _memoryFooter;
+        private int _builtMemoryBoardCount = -1;
+
         /// <summary>Set by hoverable world objects; shown near the cursor.</summary>
         public static void SetCursorHint(string hint) => _cursorHint = hint;
 
@@ -368,7 +380,7 @@ namespace DshPet
 
             // The map panel (door prompt) is now uGUI — see SyncMapPanel.
             if (_showPuzzle) DrawPuzzle(gm);
-            if (_showMemory) DrawMemoryMatch(gm);
+            // The memory match panel is now uGUI — see SyncMemoryPanel.
             // The settings panel is now uGUI — see SyncSettingsPanel.
             // The prompt preview is now uGUI — see SyncPromptPanel.
             // The journal (calendar) is now uGUI — see SyncJournalPanel.
@@ -735,6 +747,7 @@ namespace DshPet
             BuildCollectionPanel();
             BuildFurnishPanel();
             BuildPromptPanel();
+            BuildMemoryPanel();
         }
 
         private void Update()
@@ -767,6 +780,7 @@ namespace DshPet
             SyncCollectionPanel();
             SyncFurnishPanel();
             SyncPromptPanel();
+            SyncMemoryPanel();
         }
 
         /// <summary>
@@ -2916,6 +2930,190 @@ namespace DshPet
             string preview = gm.PreviewSystemPrompt();
             GUIUtility.systemCopyBuffer = preview +
                 (string.IsNullOrWhiteSpace(_editExtraInstructions) ? "" : "\n\n【主人的额外要求】\n" + _editExtraInstructions.Trim());
+        }
+
+        // ------------------------------------------------------------- memory match (uGUI)
+
+        private void BuildMemoryPanel()
+        {
+            _memoryPanel = DshMobile.Ugui.Panel("MemoryPanel", _root, 18f,
+                new Color(0.11f, 0.10f, 0.14f, 1f), new Color(1f, 1f, 1f, 0.14f), 2f);
+            _memoryPanel.gameObject.SetActive(false);
+            var p = _memoryPanel.rectTransform;
+
+            var title = DshMobile.Ugui.Text("Title", p, "记忆配对", 24, new Color(1f, 0.94f, 0.82f), UnityEngine.TextAnchor.MiddleLeft, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 18f, 14f, 200f, 32f);
+
+            var close = DshMobile.Ugui.Button("Close", p, "关闭", 16, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRect(close.GetComponent<RectTransform>(), -94f, 16f, 76f, 30f);
+            close.onClick.AddListener(() => { _showMemory = false; SyncMusic(); });
+
+            _memoryStats = DshMobile.Ugui.Text("Stats", p, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleLeft);
+            DshMobile.Ugui.SetRect(_memoryStats.rectTransform, 18f, 50f, 600f, 22f);
+
+            for (int i = 0; i < 3; i++)
+            {
+                var level = PetMemoryMatch.ClampDifficulty(i);
+                var btn = DshMobile.Ugui.Button("Level", p, "", 14, new Color(0.24f, 0.26f, 0.34f));
+                DshMobile.Ugui.SetRect(btn.GetComponent<RectTransform>(), 18f + i * 170f, 76f, 162f, 34f);
+                _memoryLevelLabels.Add(btn.GetComponentInChildren<UnityEngine.UI.Text>());
+                MemoryDifficulty captured = level;
+                btn.onClick.AddListener(() => { if (_memoryLevel != captured) { SetMemoryLevel(PetGameManager.Instance, captured); PetAudioDirector.Instance?.Play(SfxId.UiClick); _builtMemoryBoardCount = -1; } });
+            }
+
+            _memoryMsg = DshMobile.Ugui.Text("Msg", p, "", 14, new Color(0.85f, 0.88f, 0.95f), UnityEngine.TextAnchor.MiddleLeft);
+            DshMobile.Ugui.SetRect(_memoryMsg.rectTransform, 18f, 116f, 600f, 22f);
+
+            _memoryBoard = new GameObject("Board", typeof(RectTransform)).GetComponent<RectTransform>();
+            _memoryBoard.SetParent(p, false);
+
+            var restart = DshMobile.Ugui.Button("Restart", p, "重开一局", 16, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRect(restart.GetComponent<RectTransform>(), 18f, -44f, 150f, 34f);
+            restart.onClick.AddListener(() => { DealMemoryBoard(PetGameManager.Instance, $"重新洗牌了。{PetMemoryMatch.Describe(_memoryLevel)}"); _builtMemoryBoardCount = -1; });
+
+            _memoryFooter = DshMobile.Ugui.Text("Footer", p, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleRight);
+            DshMobile.Ugui.SetRect(_memoryFooter.rectTransform, -170f, -40f, 160f, 22f);
+        }
+
+        private void SyncMemoryPanel()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            if (_memory == null && _showMemory) OpenMemoryMatch(gm);
+            bool open = _showMemory && _memory != null;
+            _memoryPanel.gameObject.SetActive(open);
+            _modalScrim.gameObject.SetActive(open || _showSettings || _showJournal || _showCollection || _showFurnish || _showPromptPreview || gm.DoorPromptOpen);
+            if (!open) return;
+
+            var w = Mathf.Min(640f, DesignWidth - 32f);
+            var h = Mathf.Min(700f, DesignHeight - 32f);
+            _memoryPanel.rectTransform.anchorMin = _memoryPanel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            _memoryPanel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            _memoryPanel.rectTransform.anchoredPosition = Vector2.zero;
+            _memoryPanel.rectTransform.sizeDelta = new Vector2(w, h);
+
+            _memoryStats.text = $"{(int)(Time.realtimeSinceStartup - _memoryOpenedAt)} 秒　·　{_memory.Moves} 步　·　消掉 {_memory.Matched}/{_memory.Pairs} 对　·　{PetMemoryMatch.NameOf(_memory.Difficulty)}";
+            _memoryMsg.text = _memoryMessage;
+            _memoryMsg.color = _memory.IsSolved ? new Color(0.7f, 0.95f, 0.75f) : new Color(0.85f, 0.88f, 0.95f);
+            _memoryFooter.text = $"玩成 {_memoryWins} 次　·　最少 {(_memoryBestMoves > 0 ? _memoryBestMoves.ToString() : "-")} 步";
+
+            for (int i = 0; i < _memoryLevelLabels.Count; i++)
+            {
+                var level = PetMemoryMatch.ClampDifficulty(i);
+                bool active = level == _memoryLevel;
+                _memoryLevelLabels[i].text = $"{PetMemoryMatch.NameOf(level)}　{PetMemoryMatch.BaseRewardFor(level)} 币";
+                _memoryLevelLabels[i].color = active ? new Color(1f, 0.92f, 0.7f) : Color.white;
+                _memoryLevelLabels[i].transform.parent.GetComponent<UnityEngine.UI.Image>().color = active
+                    ? new Color(0.36f, 0.66f, 0.44f, 0.6f) : new Color(0.24f, 0.26f, 0.34f, 0.6f);
+            }
+
+            if (_memory.WaitingToHide && Time.realtimeSinceStartup - _memoryFlipAt > 0.85f) _memory.HideMismatch();
+
+            if (_builtMemoryBoardCount != _memory.Count)
+            {
+                RebuildMemoryBoard(w);
+                _builtMemoryBoardCount = _memory.Count;
+            }
+            SyncMemoryCards(w);
+        }
+
+        private void RebuildMemoryBoard(float w)
+        {
+            for (int i = _memoryBoard.childCount - 1; i >= 0; i--) Destroy(_memoryBoard.GetChild(i).gameObject);
+            _memoryCards.Clear();
+            _memoryCardBgs.Clear();
+            _memoryCardFaces.Clear();
+
+            int columns = PetMemoryMatch.Columns;
+            int rows = Mathf.CeilToInt(_memory.Count / (float)columns);
+            float cell = Mathf.Max(52f, Mathf.Min((w - 36f - (columns - 1) * 8f) / columns, (380f - (rows - 1) * 8f) / Mathf.Max(1, rows)));
+
+            for (int i = 0; i < _memory.Count; i++)
+            {
+                int row = i / columns, col = i % columns;
+                var card = DshMobile.Ugui.Button("Card", _memoryBoard, "", 14, new Color(0.28f, 0.36f, 0.55f));
+                float x = 18f + col * (cell + 8f) + cell * 0.5f;
+                float y = 150f + row * (cell + 8f) + cell * 0.5f;
+                DshMobile.Ugui.Place(card.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(0.5f, 0.5f),
+                    new Vector2(x, -y), new Vector2(cell, cell));
+                var bg = card.GetComponent<UnityEngine.UI.Image>();
+                bg.color = new Color(0.28f, 0.36f, 0.55f, 1f);
+
+                var face = DshMobile.Ugui.RawImage("Face", card.transform, null, Color.white);
+                DshMobile.Ugui.Stretch(face.rectTransform);
+                face.rectTransform.offsetMin = new Vector2(cell * 0.12f, cell * 0.12f);
+                face.rectTransform.offsetMax = new Vector2(-cell * 0.12f, -cell * 0.12f);
+
+                int index = i;
+                card.onClick.AddListener(() => OnFlipCard(index));
+                _memoryCards.Add(card);
+                _memoryCardBgs.Add(bg);
+                _memoryCardFaces.Add(face);
+            }
+        }
+
+        private void OnFlipCard(int index)
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null || _memory == null) return;
+            if (_memory.IsSolved || !_memory.CanFlip(index)) return;
+            if (_memory.Flip(index))
+            {
+                _memoryFlipAt = Time.realtimeSinceStartup;
+                PetAudioDirector.Instance?.Play(SfxId.PickUp);
+                DshMobile.MobileHaptics.Light();
+                if (_memory.LastFlipMatched) FinishMemoryPair(gm);
+            }
+        }
+
+        private void SyncMemoryCards(float w)
+        {
+            float now = Time.realtimeSinceStartup;
+            for (int i = 0; i < _memoryCards.Count; i++)
+            {
+                bool taken = _memory.IsTaken(i);
+                var bg = _memoryCardBgs[i];
+                var face = _memoryCardFaces[i];
+                var btn = _memoryCards[i];
+
+                if (taken && !_memoryClearedSeen[i] && i < _memoryClearedSeen.Length)
+                {
+                    _memoryClearedSeen[i] = true;
+                    _memoryClearedAt[i] = now;
+                }
+
+                if (taken)
+                {
+                    float age = i < _memoryClearedAt.Length ? now - _memoryClearedAt[i] : 1f;
+                    float fade = Mathf.Clamp01(age / MemoryClearSeconds);
+                    btn.interactable = false;
+                    if (fade >= 1f)
+                    {
+                        bg.color = new Color(1f, 1f, 1f, 0.035f);
+                        face.gameObject.SetActive(false);
+                        continue;
+                    }
+                    bg.color = new Color(0.42f, 0.78f, 0.48f, 0.75f * (1f - fade));
+                    face.texture = PetAvatarArt.TextureFor(_memory.FaceAt(i));
+                    face.gameObject.SetActive(true);
+                    face.color = new Color(1f, 1f, 1f, 1f - fade);
+                    continue;
+                }
+
+                btn.interactable = !_memory.IsSolved && _memory.CanFlip(i);
+                if (_memory.IsFaceUp(i))
+                {
+                    bg.color = new Color(0.98f, 0.94f, 0.86f, 1f);
+                    face.texture = PetAvatarArt.TextureFor(_memory.FaceAt(i));
+                    face.gameObject.SetActive(true);
+                    face.color = Color.white;
+                }
+                else
+                {
+                    bg.color = new Color(0.28f, 0.36f, 0.55f, 1f);
+                    face.gameObject.SetActive(false);
+                }
+            }
         }
 
         /// <summary>

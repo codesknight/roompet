@@ -123,6 +123,20 @@ namespace DshMobile
         }
 
         /// <summary>
+        /// Creates a RawImage, for runtime <see cref="Texture2D"/> that has no Sprite (e.g. the
+        /// pet's generated avatar art). RawImage renders the texture directly.
+        /// </summary>
+        public static RawImage RawImage(string name, Transform parent, Texture2D texture, Color color)
+        {
+            var rt = Rect(name, parent);
+            var img = rt.gameObject.AddComponent<RawImage>();
+            img.texture = texture;
+            img.color = color;
+            img.raycastTarget = false;
+            return img;
+        }
+
+        /// <summary>
         /// Creates a rounded panel Image, rasterised into a nine-slice sprite so it scales
         /// cleanly. Returns the Image so callers can tint or replace it.
         /// </summary>
