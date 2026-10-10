@@ -99,6 +99,21 @@
 - [x] 文档：本文件 + CHANGELOG 第 42 轮 + DEVLOG 坑 159–161 + README 计数
 - [ ] ⏳ **真机确认**：① 各面板文字对齐、聊天文字在气泡内；② 摇杆/圆键在手指下方；③ 地图能正常关闭；④ 进小游戏无主页 UI 残留；⑤ 左上角宠物卡页脚按钮能点
 
+## 这一轮（第 43 轮）的验收清单
+
+- [x] **宠物卡重叠/穿透/回闪**：需求条钉到页眉下方（不再和宠物芯片重叠）；`Interactable`/`PetClickTarget` 的 `OnMouseDown/Enter` 加 `IsPointerOverGameObject`（点面板按钮不再误触发场景物体）
+- [x] **聊天不更新**：`RebuildTranscript` 按完整条数守卫 + `ForceUpdateCanvases` 后钉最新一条
+- [x] **家具/设置/记忆/拼图关闭按钮出页面**：右/下对齐按钮全改 `SetRectRight/SetRectBottomLeft/SetRectBottomRight`
+- [x] **记事本底部错位**：当天记录区统一顶锚点（标签/删除键/列表不再互相叠）
+- [x] **详情按钮没反应**：`RebuildDetail` 加 `_statusDetail` 守卫 + `ComputeCardLayout` 传 `detailOn`（详情/简略标签切换）
+- [x] **提示词显示不全**：滚动区 content 高度设成文本折行高
+- [x] **移动摇杆不跟手**：`ScreenPointToLocalPointInRectangle` 前把 `MobileTouch` 的顶左原点 Y 翻回底左
+- [x] **隧道过门滴滴声**：删除 `PlayPass`，保留轻震动
+- [x] **拼图/记忆配对卡死**：关闭/重开/看原图按钮归位 + `Board` 容器 `Stretch`
+- [x] **验证**：388/388 全绿（纯修复，无新增单测）
+- [x] 文档：本文件 + CHANGELOG 第 43 轮 + DEVLOG 坑 162–166 + README 计数
+- [ ] ⏳ **真机确认**：① 宠物卡不重叠、文字完整；② 点面板按钮不误触发、点宠物不异常回闪；③ 聊天实时刷新；④ 各面板关闭/详情/提示词/记事本正常；⑤ 摇杆跟手；⑥ 拼图/记忆可玩可关
+
 ## 明确推迟或不做
 
 | 项 | 状态 | 原因 |

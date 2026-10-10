@@ -1082,6 +1082,29 @@
      **漏进小游戏场景**——凡是 `Ugui.Root()` 建出的容器，`OnDestroy` 里都要 Destroy；② 模态遮罩
      （`ModalScrim`）默认 `raycastTarget=false`，等于没遮住，点遮罩会**穿透**点到背后的宠物卡按钮——
      遮罩要显式 `raycastTarget=true`（它在模态面板之下、宠物卡之上，正好挡住背景、放行面板自己的按钮）。
+162. **`ScreenPointToLocalPointInRectangle` 要「底左原点」屏幕坐标，自建触控层给的往往是「顶左原点」。** PetHud
+     的浮动摇杆画在左上角、不跟手，就是这里：`MobileTouch` 存指位时做了 `Screen.height - y`（顶左原点，为了和
+     IMGUI 一致），而 `RectTransformUtility.ScreenPointToLocalPointInRectangle` 按 Unity 标准（底左原点）解释入参，
+     结果摇杆被**垂直镜像**到上方。隧道那套之所以跟手，是因为它直接传 `Input.mousePosition`（底左原点）。修法：
+     转换前 `new Vector2(p.x, Screen.height - p.y)` 翻回来。**凡是「自建输入层 → uGUI 摆位」的桥，先对一下两边的
+     原点约定。**
+163. **uGUI 的「棋盘/卡片容器」要是裸 RectTransform 没拉伸，里面的块就相对一个点/小盒子摆，全偏。** 拼图/记忆
+     配对的 `Board` 容器建出来从没 `Stretch`，卡片用 `Place(anchor(0,1), …)` 摆位就相对容器的默认小矩形（约在面板
+     中心），整块棋盘偏移、点到也别扭。修法：建完容器立刻 `Stretch`，让 `anchor(0,1)` 落在面板真正的左上角。
+     **凡是「先建空容器、再往里塞子物体摆位」的，先问容器是不是撑满了父面板。**
+164. **ScrollRect 的 content 高度必须设成内容实际高度，否则内容被裁成「显示不全」。** 提示词预览只 `SetSizeWithCurrentAnchors`
+     设了 Text 的高度，没设 content 的高度 → content 高 0，长提示词被裁。修法：把 content 的 `sizeDelta.y` 设成文本
+     折行高（`preferredHeight + 余量`）。聊天、记事本、图鉴、商城这些可滚动区都是同一套：**内容多高，content 就多高，
+     只设子 Text 不设 content 是白设。**
+165. **同一个面板里「顶锚点」和「底锚点」混用，两个区块就会叠在一起。** 记事本的当天记录：记录列表用顶锚点
+     （网格下方），「N 条」标签和「删除这一天」却用底锚点（距底 150）→ 标签压在记录上；宠物卡的需求条也从 y=12
+     起画，和宠物芯片（同样 y=12）重叠。修法：一个面板内部统一用同一种原点，钉在页眉下方就都顶锚点，钉在页脚
+     上方才用底锚点。**凡是有「固定区块 + 弹性区块」的面板，先画一张从上到下的占位图，再决定每个块用哪个锚点。**
+166. **物理点击（`OnMouseDown`）不被 uGUI 面板挡住——别只查 `ModalOpen`，要查 `IsPointerOverGameObject`。** 玩家点
+     宠物卡/移动键的同时，Unity 会把主触摸合成成 `OnMouseDown` 打到背后的家具/宠物上，宠物就朝那个东西走（「点按钮
+     碰到场景物体」「回闪」）。旧的 `ModalOpen` 只挡模态，挡不住常驻宠物卡和移动键。修法：`OnMouseDown/OnMouseEnter`
+     开头 `EventSystem.current != null && IsPointerOverGameObject()` 就 return。**世界物体的点击入口，永远先问
+     「指针在不在 UI 上」，而不是只问「有没有模态」。**
 
 ## 八、一分钟速查
 

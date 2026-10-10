@@ -51,6 +51,7 @@ namespace DshPet
 
         private void OnMouseEnter()
         {
+            if (PointerOverUi()) return;
             // A panel is open over the room: the world is not the thing being pointed at.
             if (PetHud.ModalOpen) return;
 
@@ -66,12 +67,17 @@ namespace DshPet
 
         private void OnMouseDown()
         {
-            // OnMouseDown is a physics event, so it is NOT blocked by an open panel the way an
-            // IMGUI control would be. Clicking the notebook would otherwise also send the pet
-            // to whatever interactable sits behind it.
+            // A tap over a uGUI panel/button belongs to the UI, not the object behind it. The
+            // old ModalOpen check misses the always-on pet card and the mobile touch buttons, so
+            // tapping a panel button also walked the pet to whatever interactable sat behind it.
+            if (PointerOverUi()) return;
             if (PetHud.ModalOpen) return;
             Interact();
         }
+
+        private static bool PointerOverUi()
+            => UnityEngine.EventSystems.EventSystem.current != null &&
+               UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
 
         /// <summary>Raise the click. Public so the player character's "press E" path can use
         /// exactly the same route as a mouse click.</summary>

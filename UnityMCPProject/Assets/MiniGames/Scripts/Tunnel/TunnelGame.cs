@@ -269,7 +269,6 @@ namespace DshMiniGames
                         if (TunnelRules.IsInsideHole(_shipPos, o.Hole, o.Shape, o.Radius))
                         {
                             Score++;
-                            PlayPass();
                             DshMobile.MobileHaptics.Light();
                         }
                         else
@@ -420,12 +419,6 @@ namespace DshMiniGames
             if (RunCoins > 0) DshMobile.PetWallet.Add(RunCoins);
             PlaySfx(PrismAudio.Tone(150f, 0.4f, 0.5f, 0.18f));
             DshMobile.MobileHaptics.Heavy();
-        }
-
-        /// <summary>A short bright chime for passing a gate.</summary>
-        private void PlayPass()
-        {
-            PlaySfx(PrismAudio.Tone(880f, 0.14f, 0.25f, 0.08f));
         }
 
         private void PlaySfx(float[] samples)

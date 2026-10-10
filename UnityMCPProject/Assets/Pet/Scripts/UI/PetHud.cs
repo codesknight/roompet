@@ -114,6 +114,7 @@ namespace DshPet
         private readonly List<UnityEngine.UI.Button> _footerButtons = new List<UnityEngine.UI.Button>();
         private int _builtPetIndex = -1;
         private bool _builtCardExpanded;
+        private bool _builtStatusDetail;
 
         // uGUI placement bar (fourth slice, first piece).
         private UnityEngine.UI.Image _placementBar;
@@ -1040,8 +1041,11 @@ namespace DshPet
             int start = Mathf.Max(0, recent.Count - MaxLogLines);
             int count = recent.Count - start;
 
-            if (count == _builtMessageCount) return;
-            _builtMessageCount = count;
+            // Guard on the FULL count, not the capped display window: once the log passes
+            // MaxLogLines the window size stays pinned and a count-based guard would never fire
+            // again, so the newest replies stop appearing.
+            if (recent.Count == _builtMessageCount) return;
+            _builtMessageCount = recent.Count;
 
             foreach (var b in _bubbles) if (b != null) Destroy(b);
             _bubbles.Clear();
@@ -1104,7 +1108,10 @@ namespace DshPet
             }
 
             _chatContent.sizeDelta = new Vector2(-20f, y + 12f);
-            _chatScroll.normalizedPosition = new Vector2(0f, 0f);
+            // The content was just resized: force a layout pass so the scroll rect's bounds are
+            // fresh, then pin to the newest message (top-anchored content → 0 = bottom).
+            Canvas.ForceUpdateCanvases();
+            _chatScroll.verticalNormalizedPosition = 0f;
         }
 
         private void OnCloseChat() { _chatExpanded = false; }
@@ -1238,7 +1245,7 @@ namespace DshPet
             float chipBudget = Mathf.Max(40f, (layout.Status.width - 28f) * 0.45f);
             for (int i = 0; i < cards.Count; i++) names[i] = ShortenChip(ChipLabel(cards[i], cards[i].Name), chipBudget, 14);
 
-            var plan = ComputeCardLayout(layout.Status, names, expanded, card.Primary, 14, 14);
+            var plan = ComputeCardLayout(layout.Status, names, expanded, card.Primary, 14, 14, _statusDetail);
             ApplyDesignRect(_cardPanel.rectTransform, plan.Panel);
             var p = _cardPanel.rectTransform;
 
@@ -1277,20 +1284,23 @@ namespace DshPet
             IsTextInputFocused = IsTextInputFocused || _renameField.isFocused;
 
             // Detail (needs bars + text), rebuilt when the selected pet/expansion changes.
+            // The needs bars are pinned below the header; the scroll viewport sits below them.
             float detailY = 12f + plan.ChipsHeight + plan.HeaderHeight;
+            float barsH = 5f * 24f;   // four needs + the bladder slot
             float footerH = plan.FooterHeight + 12f;
 
             _detailScroll.viewport.anchorMin = new Vector2(0f, 0f);
             _detailScroll.viewport.anchorMax = new Vector2(1f, 1f);
             _detailScroll.viewport.offsetMin = new Vector2(12f, footerH);
-            _detailScroll.viewport.offsetMax = new Vector2(-12f, -detailY);
+            _detailScroll.viewport.offsetMax = new Vector2(-12f, -(detailY + barsH));
 
-            if (_builtCardExpanded != expanded)
+            if (_builtCardExpanded != expanded || _builtStatusDetail != _statusDetail)
             {
                 RebuildDetail(gm, card, expanded);
                 _builtCardExpanded = expanded;
+                _builtStatusDetail = _statusDetail;
             }
-            SyncNeedsBars(card.Needs, plan.Panel.width);
+            SyncNeedsBars(card.Needs, plan.Panel.width, detailY);
 
             // Footer buttons (rebuilt when the plan changes).
             RebuildFooter(gm, plan, p, plan.Panel.width);
@@ -1372,7 +1382,7 @@ namespace DshPet
             _detailText.rectTransform.anchoredPosition = new Vector2(0f, -4f);
         }
 
-        private void SyncNeedsBars(PetNeeds needs, float designWidth)
+        private void SyncNeedsBars(PetNeeds needs, float designWidth, float topY)
         {
             var bars = new[] {
                 new { Label = "饱食", Value = needs != null ? needs.Hunger : 0f, Color = new Color(0.95f, 0.62f, 0.30f) },
@@ -1384,7 +1394,7 @@ namespace DshPet
 
             var p = _cardPanel.rectTransform;
             bool showBladder = needs != null && needs.Bladder < 0.6f;
-            float y = 12f + 0f;
+            float y = topY;
 
             for (int i = 0; i < 5; i++)
             {
@@ -1835,19 +1845,19 @@ namespace DshPet
 
             // Footer (pinned).
             var save = DshMobile.Ugui.Button("Save", p, "保存并应用", 16, new Color(0.30f, 0.55f, 0.35f));
-            DshMobile.Ugui.SetRect(save.GetComponent<RectTransform>(), 16f, -46f, 150f, 40f);
+            DshMobile.Ugui.SetRectBottomLeft(save.GetComponent<RectTransform>(), 16f, 8f, 150f, 40f);
             save.onClick.AddListener(OnSaveSettings);
 
             var test = DshMobile.Ugui.Button("Test", p, "测试连接", 16, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRect(test.GetComponent<RectTransform>(), 176f, -46f, 130f, 40f);
+            DshMobile.Ugui.SetRectBottomLeft(test.GetComponent<RectTransform>(), 176f, 8f, 130f, 40f);
             test.onClick.AddListener(() => TestConnection());
 
             var env = DshMobile.Ugui.Button("Env", p, "读环境变量", 16, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRect(env.GetComponent<RectTransform>(), 316f, -46f, 130f, 40f);
+            DshMobile.Ugui.SetRectBottomLeft(env.GetComponent<RectTransform>(), 316f, 8f, 130f, 40f);
             env.onClick.AddListener(OnReadEnv);
 
             var cancel = DshMobile.Ugui.Button("Cancel", p, "取消", 16, new Color(0.75f, 0.35f, 0.35f));
-            DshMobile.Ugui.SetRect(cancel.GetComponent<RectTransform>(), -162f, -46f, 130f, 40f);
+            DshMobile.Ugui.SetRectBottomRight(cancel.GetComponent<RectTransform>(), 16f, 8f, 130f, 40f);
             cancel.onClick.AddListener(() => _showSettings = false);
         }
 
@@ -2096,10 +2106,18 @@ namespace DshPet
 
             var journal = gm.Journal;
             var entries = journal.ForDay(_selectedDay);
+
+            // The day detail sits below the 6-row month grid (grid top = 96) and is laid out
+            // top-anchored like the original IMGUI. The label/button used to be BOTTOM-anchored,
+            // which landed them on top of the entry list — that was the "delete button / bottom
+            // record misaligned" bug.
+            float cellH = Mathf.Clamp((Mathf.Min(560f, DesignHeight - 32f) - 78f - 20f - 116f) / 6f, 24f, 46f);
+            float detailY = 96f + 6f * cellH + 14f;
+
             _journalDayLabel.text = $"{_selectedDay:yyyy-MM-dd}　{entries.Count} 条";
-            _journalDayLabel.rectTransform.anchorMin = _journalDayLabel.rectTransform.anchorMax = new Vector2(0f, 0f);
-            _journalDayLabel.rectTransform.pivot = new Vector2(0f, 0f);
-            _journalDayLabel.rectTransform.anchoredPosition = new Vector2(18f, 150f);
+            _journalDayLabel.rectTransform.anchorMin = _journalDayLabel.rectTransform.anchorMax = new Vector2(0f, 1f);
+            _journalDayLabel.rectTransform.pivot = new Vector2(0f, 1f);
+            _journalDayLabel.rectTransform.anchoredPosition = new Vector2(18f, -detailY);
             _journalDayLabel.rectTransform.sizeDelta = new Vector2(400f, 22f);
 
             _deleteDayButton.gameObject.SetActive(entries.Count > 0);
@@ -2107,13 +2125,13 @@ namespace DshPet
             {
                 bool armed = _journalConfirmDay == _selectedDay.Date;
                 _deleteDayLabel.text = armed ? $"真的删掉 {entries.Count} 条？" : "删除这一天";
-                _deleteDayButton.GetComponent<RectTransform>().anchorMin = _deleteDayButton.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 0f);
-                _deleteDayButton.GetComponent<RectTransform>().pivot = new Vector2(1f, 0f);
-                _deleteDayButton.GetComponent<RectTransform>().anchoredPosition = new Vector2(-18f, 148f);
+                _deleteDayButton.GetComponent<RectTransform>().anchorMin = _deleteDayButton.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 1f);
+                _deleteDayButton.GetComponent<RectTransform>().pivot = new Vector2(1f, 1f);
+                _deleteDayButton.GetComponent<RectTransform>().anchoredPosition = new Vector2(-18f, -(detailY - 2f));
                 _deleteDayButton.GetComponent<RectTransform>().sizeDelta = new Vector2(130f, 26f);
             }
 
-            DshMobile.Ugui.SetRect(_journalDayContent, 18f, 180f, w - 36f, h - 200f);
+            DshMobile.Ugui.SetRect(_journalDayContent, 18f, detailY + 26f, w - 36f, Mathf.Max(40f, h - detailY - 26f - 16f));
 
             float y = 4f;
             if (entries.Count == 0)
@@ -2514,7 +2532,7 @@ namespace DshPet
             DshMobile.Ugui.SetRect(title.rectTransform, 18f, 14f, 300f, 32f);
 
             var close = DshMobile.Ugui.Button("Close", p, "关闭", 16, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRect(close.GetComponent<RectTransform>(), -94f, 16f, 76f, 30f);
+            DshMobile.Ugui.SetRectRight(close.GetComponent<RectTransform>(), 18f, 16f, 76f, 30f);
             close.onClick.AddListener(() => _showFurnish = false);
 
             string[] tabNames = { "商城", "背包", "仓库" };
@@ -2970,7 +2988,13 @@ namespace DshPet
             _promptPanel.rectTransform.sizeDelta = new Vector2(w, h);
 
             _promptText.text = gm.PreviewSystemPrompt();
-            _promptText.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, Mathf.Max(200f, _promptText.preferredHeight + 12f));
+            // Size the scroll CONTENT to the wrapped text (the text is stretched to it), so the
+            // whole prompt is reachable — sizing only the Text left the content at zero height,
+            // which clipped the preview ("显示不全").
+            float promptH = Mathf.Max(200f, _promptText.preferredHeight + 12f);
+            var promptContent = _promptText.rectTransform.parent.GetComponent<RectTransform>();
+            if (promptContent != null) promptContent.sizeDelta = new Vector2(0f, promptH);
+            _promptText.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, promptH);
 
             if (!_promptEdit.isFocused) _promptEdit.text = _editExtraInstructions ?? "";
             if (_promptEdit.isFocused) _editExtraInstructions = _promptEdit.text;
@@ -3011,7 +3035,7 @@ namespace DshPet
             DshMobile.Ugui.SetRect(title.rectTransform, 18f, 14f, 200f, 32f);
 
             var close = DshMobile.Ugui.Button("Close", p, "关闭", 16, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRect(close.GetComponent<RectTransform>(), -94f, 16f, 76f, 30f);
+            DshMobile.Ugui.SetRectRight(close.GetComponent<RectTransform>(), 18f, 16f, 76f, 30f);
             close.onClick.AddListener(() => { _showMemory = false; SyncMusic(); });
 
             _memoryStats = DshMobile.Ugui.Text("Stats", p, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleLeft);
@@ -3032,9 +3056,10 @@ namespace DshPet
 
             _memoryBoard = new GameObject("Board", typeof(RectTransform)).GetComponent<RectTransform>();
             _memoryBoard.SetParent(p, false);
+            DshMobile.Ugui.Stretch(_memoryBoard);   // cards are laid out against the whole panel
 
             var restart = DshMobile.Ugui.Button("Restart", p, "重开一局", 16, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRect(restart.GetComponent<RectTransform>(), 18f, -44f, 150f, 34f);
+            DshMobile.Ugui.SetRectBottomLeft(restart.GetComponent<RectTransform>(), 18f, 8f, 150f, 34f);
             restart.onClick.AddListener(() => { DealMemoryBoard(PetGameManager.Instance, $"重新洗牌了。{PetMemoryMatch.Describe(_memoryLevel)}"); _builtMemoryBoardCount = -1; });
 
             _memoryFooter = DshMobile.Ugui.Text("Footer", p, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleRight);
@@ -3195,7 +3220,7 @@ namespace DshPet
             DshMobile.Ugui.SetRect(title.rectTransform, 18f, 14f, 200f, 32f);
 
             var close = DshMobile.Ugui.Button("Close", p, "关闭", 16, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRect(close.GetComponent<RectTransform>(), -94f, 16f, 76f, 30f);
+            DshMobile.Ugui.SetRectRight(close.GetComponent<RectTransform>(), 18f, 16f, 76f, 30f);
             close.onClick.AddListener(() => { _showPuzzle = false; SyncMusic(); });
 
             _puzzleStatus = DshMobile.Ugui.Text("Status", p, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleLeft);
@@ -3206,6 +3231,7 @@ namespace DshPet
 
             _puzzleBoard = new GameObject("Board", typeof(RectTransform)).GetComponent<RectTransform>();
             _puzzleBoard.SetParent(p, false);
+            DshMobile.Ugui.Stretch(_puzzleBoard);   // tiles are laid out against the whole panel
 
             for (int i = 0; i < PetPuzzle.TileCount; i++)
             {
@@ -3232,11 +3258,11 @@ namespace DshPet
             _puzzlePreview.gameObject.SetActive(false);
 
             var restart = DshMobile.Ugui.Button("Restart", p, "打乱重来", 16, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRect(restart.GetComponent<RectTransform>(), 18f, -44f, 150f, 34f);
+            DshMobile.Ugui.SetRectBottomLeft(restart.GetComponent<RectTransform>(), 18f, 8f, 150f, 34f);
             restart.onClick.AddListener(OnShufflePuzzle);
 
             var toggle = DshMobile.Ugui.Button("Toggle", p, "看原图", 14, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRect(toggle.GetComponent<RectTransform>(), 178f, -44f, 90f, 34f);
+            DshMobile.Ugui.SetRectBottomLeft(toggle.GetComponent<RectTransform>(), 178f, 8f, 90f, 34f);
             _puzzleToggleLabel = toggle.GetComponentInChildren<UnityEngine.UI.Text>();
             toggle.onClick.AddListener(() => _puzzleShowFull = !_puzzleShowFull);
 
@@ -3433,11 +3459,15 @@ namespace DshPet
             _stickKnob.gameObject.SetActive(showControls && MobileTouch.Stick.Active);
             if (MobileTouch.Stick.Active)
             {
+                // MobileTouch reports thumb positions with a TOP-left origin (it flips
+                // Input.mousePosition/touch.position), but RectTransformUtility expects Unity's
+                // BOTTOM-left screen space — passing it through un-flipped mirrored the stick to
+                // the top of the screen. Flip Y back before converting.
                 Vector2 originLocal, knobLocal;
                 RectTransformUtility.ScreenPointToLocalPointInRectangle(_mobileRoot.GetComponent<RectTransform>(),
-                    MobileTouch.Stick.Origin, null, out originLocal);
+                    new Vector2(MobileTouch.Stick.Origin.x, Screen.height - MobileTouch.Stick.Origin.y), null, out originLocal);
                 RectTransformUtility.ScreenPointToLocalPointInRectangle(_mobileRoot.GetComponent<RectTransform>(),
-                    MobileTouch.Stick.Knob, null, out knobLocal);
+                    new Vector2(MobileTouch.Stick.Knob.x, Screen.height - MobileTouch.Stick.Knob.y), null, out knobLocal);
                 _stickBase.rectTransform.anchoredPosition = originLocal;
                 _stickKnob.rectTransform.anchoredPosition = knobLocal;
             }
@@ -3889,7 +3919,7 @@ namespace DshPet
         ///     the collapsed shape rather than drawing controls past its own edge.
         /// </summary>
         public static PetCardLayout ComputeCardLayout(Rect status, string[] chipNames,
-            bool expanded, bool primary, int chipFontSize, int buttonFontSize)
+            bool expanded, bool primary, int chipFontSize, int buttonFontSize, bool detailOn = false)
         {
             var inner = new Rect(status.x + 14f, status.y + 12f, status.width - 28f, status.height - 24f);
 
@@ -3901,7 +3931,7 @@ namespace DshPet
             if (expanded)
             {
                 var rows = primary
-                    ? StatusFooterRows(Mobile, false, inner.width, buttonFontSize, collapsed: false)
+                    ? StatusFooterRows(Mobile, detailOn, inner.width, buttonFontSize, collapsed: false)
                     : new[] { CompanionFooterRow(inner.width, buttonFontSize, collapsed: false) };
                 float footer = FooterHeight(rows.Length);
                 float room = inner.height - chips - CardHeaderHeight - footer;
@@ -3923,7 +3953,7 @@ namespace DshPet
             // hold the short form. The chips and the navigation buttons stay: a collapsed card
             // that hides the way to the notebook and the settings would be a trap.
             var shortRows = primary
-                ? StatusFooterRows(Mobile, false, inner.width, buttonFontSize, collapsed: true)
+                ? StatusFooterRows(Mobile, detailOn, inner.width, buttonFontSize, collapsed: true)
                 : new[] { CompanionFooterRow(inner.width, buttonFontSize, collapsed: true) };
             float shortFooter = FooterHeight(shortRows.Length);
 

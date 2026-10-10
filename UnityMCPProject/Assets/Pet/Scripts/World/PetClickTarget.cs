@@ -37,6 +37,7 @@ namespace DshPet
 
         private void OnMouseEnter()
         {
+            if (PointerOverUi()) return;
             if (PetHud.ModalOpen) return;
             PetHud.SetCursorHint("摸一摸它");
         }
@@ -45,6 +46,7 @@ namespace DshPet
 
         private void OnMouseDown()
         {
+            if (PointerOverUi()) return;
             if (PetHud.ModalOpen) return;
 
             // Which pet is being touched is also which pet the status card should be about, and
@@ -77,5 +79,9 @@ namespace DshPet
 
             if (manager != null) manager.PokePet();
         }
+
+        private static bool PointerOverUi()
+            => UnityEngine.EventSystems.EventSystem.current != null &&
+               UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
     }
 }
