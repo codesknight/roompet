@@ -67,7 +67,19 @@
   `IsPointerOverGameObject()` 挡掉，指针在按钮上就归按钮、不在就归弹弓。
 - 验证：385/385 全绿；运行中探针 五按钮/四面板/关卡文案/剩猪剩鸟文本正确、关卡生成后 state=Ready ✅。
 
-⏳ **其余 HUD**（Tunnel / Prism / 跑酷 / PetHud / StartMenuHud）
+**🚇 第六、七个 HUD 已迁（本轮续）：Tunnel（窒息隧道）+ Prism（棱镜）——小游戏全部迁完（7/7）**
+
+- `TunnelHud` 迁到 uGUI：菜单（玩法/主题/灵敏度/开始/最高分）/ 运行分数 / 结算面板 / 回到小屋按钮。
+  **浮动摇杆**：输入仍是 HUD 的 `Update` 读鼠标+发布 `Stick`，绘制换成**两个圆形精灵**（新增
+  `UguiRounded.Circle`）每帧用 `ScreenPointToLocalPointInRectangle` 摆到手指下；**灵敏度**换成
+  uGUI `Slider`（新增 `Ugui.Slider` 工厂）。
+- `PrismHud` 迁到 uGUI：菜单（难度锁 + 模式 + 开始 + 最高分）/ 序列长度·进度·竞速倒计时 / 结算面板。
+  **棋盘垫子**是世界物体（`PrismPad.OnMouseDown`），不是 UI——原来读 `PointerOverPanel`，现在改成
+  `IsPointerOverGameObject()` 挡掉面板上的点击。
+- 验证：385/385 全绿；运行中探针 Tunnel 菜单/滑条/摇杆构建、`StartRun`→Running；Prism 难度锁（best=0 时
+  光谱/棱镜禁用）、`StartRun`→Playback、6 个垫子生成 ✅。
+
+⏳ **剩余 HUD**（跑酷 HudController / PetHud / StartMenuHud——三个最大的）
 逐个迁到 uGUI，全部迁完才 merge 回 main 并发布。
 
 ### 第 40 轮：宠物身体替换——程序化方块换成 Kenney Cube Pets

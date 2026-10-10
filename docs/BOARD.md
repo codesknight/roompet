@@ -76,12 +76,13 @@
 - [x] **uGUI 基础层**：`com.unity.ugui` 包 + `UguiFont`（动态中文字体）+ `Ugui`（运行时 Canvas/Scaler/Raycaster/EventSystem + Text/Image/圆角九宫格精灵/按钮工厂）
 - [x] **版本管理**：固定基线 tag `v0.2.0-preuGUI` + `feature/uGUI` 分支，可回退
 - [x] **验证**：385/385 全绿（+7 条 `UguiTests`）；运行中探针 Text 用 Noto Sans CJK SC、中文算出 `preferredWidth>0`、圆角 Sprite 2r+2 且 Sliced
-- [x] 文档：本文件 + REQUIREMENTS 阶段 41 + CHANGELOG 第 41 轮 + DEVLOG 坑 151–155 + README 计数 + GAMEPLAY 取舍更新
+- [x] 文档：本文件 + REQUIREMENTS 阶段 41 + CHANGELOG 第 41 轮 + DEVLOG 坑 151–156 + README 计数 + GAMEPLAY 取舍更新
 - [x] **FlyBird HUD 迁到 uGUI**：全屏透明按钮吃点击 + 面板遮挡，游戏里的鼠标/触控扇翅膀路径删除；运行中探针 `FlapTarget.onClick` → Ready→Flying ✅
 - [x] **Slice HUD 迁到 uGUI**：分数/命数/四面板/三按钮迁到 uGUI，刀光保持世界空间不动、滑动输入不动；运行中探针 文本正确、StartRun→Playing、SetPaused 开关 ✅
 - [x] **JumpQuest + CatchFruit HUD 迁到 uGUI**：JumpQuest 用 `HoldArea`（全屏透明 + `IPointerDown/Up`）替代共享触控层的按住蓄力注册，游戏鼠标蓄力路径删除；CatchFruit 只迁显示、左右滑动输入不动。运行中探针 `HoldArea.Pressed/Released`、`DragBy`→Playing ✅
 - [x] **AngryBirds HUD 迁到 uGUI**：四面板/五按钮迁到 uGUI，弹弓拖拽输入不动；顺手修掉 `PointerOverPanel` 死代码导致"点按钮也拉弓白打一发"的 bug（`PointerWorld` 用 `IsPointerOverGameObject` 挡）。运行中探针 文本正确、state=Ready ✅
-- [ ] ⏳ **后续轮**：其余 HUD（Tunnel / Prism / HudController / PetHud / StartMenuHud）逐个迁到 uGUI，全部迁完才 merge 回 main 并发布
+- [x] **Tunnel + Prism HUD 迁到 uGUI（小游戏全部迁完 7/7）**：Tunnel 浮动摇杆用圆形精灵 + `ScreenPointToLocalPointInRectangle` 绘制、灵敏度用 `Ugui.Slider`；Prism 难度锁禁用 + `PrismPad` 用 `IsPointerOverGameObject` 挡 UI。运行中探针 Tunnel `StartRun`→Running、Prism `StartRun`→Playback + 6 垫子 ✅
+- [ ] ⏳ **后续轮**：剩余 HUD（HudController / PetHud / StartMenuHud）逐个迁到 uGUI，全部迁完才 merge 回 main 并发布
 - [ ] ⏳ **真机确认**：uGUI 中文字体渲染、按钮可点、缩放/安全区正确（FlyBird 已可在真机看全屏点按 + 面板遮挡）
 
 ## 明确推迟或不做

@@ -1039,6 +1039,13 @@
      `if (EventSystem.current.IsPointerOverGameObject()) return null;`——指针在按钮上就归按钮、不在就归弹弓。
      **凡是有"世界空间拖拽 + 屏幕按钮"的游戏，都在"读指针"那一处挡，而不是在"画 UI"那一处记状态**——
      记状态有一帧延迟，指针一进一出按钮，拖拽状态就被带歪了。
+156. **把 IMGUI 的"浮动摇杆"迁到 uGUI，别用设计像素坐标，用 `ScreenPointToLocalPointInRectangle`。** 隧道
+     摇杆是"手指落在哪、摇杆就出现在哪"，手指位置是**屏幕像素**（`Input.mousePosition`，左下角原点），而
+     uGUI 元素活在 **CanvasScaler 缩放后的参考坐标**里，两套坐标直接混用就画到别处去（和当年 `GUI.matrix`
+     二次缩放是同一个坑的 uGUI 版）。修法：把摇杆底座/旋钮做成锚点居中的 Image，每帧
+     `RectTransformUtility.ScreenPointToLocalPointInRectangle(root, screenPoint, null, out local)` 转成
+     Canvas 局部坐标再 `anchoredPosition`。旋钮偏移注意 Y 轴方向：屏幕/IMGUI 是"上负下正"，Canvas 是
+     "上正下负"，`Stick.y` 直接加、别取反。摇杆本体用运行时生成的圆形 Sprite（别拿圆角矩形当圆）。
 
 ---
 
