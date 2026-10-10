@@ -1105,6 +1105,15 @@
      碰到场景物体」「回闪」）。旧的 `ModalOpen` 只挡模态，挡不住常驻宠物卡和移动键。修法：`OnMouseDown/OnMouseEnter`
      开头 `EventSystem.current != null && IsPointerOverGameObject()` 就 return。**世界物体的点击入口，永远先问
      「指针在不在 UI 上」，而不是只问「有没有模态」。**
+167. **换建模别每处各写一套「加载 + 量包围盒 + 缩放 + 贴地 + 剥碰撞体」——抽成一个共享加载器，多程序集都能用。** 宠物
+     身体替换时这套逻辑写死在 `PetAvatar.TryBuildModel`，小游戏（独立程序集，够不到宠物代码）想复用就得重写。做法：
+     在共享的 `DshMobile` 层放一个 `KenneyModel.Load(name, parent, height, centerVertically)`，`Resources.Load` +
+     世界包围盒量高度缩放 + `InverseTransformPoint` 转局部后 X/Z 居中、Y 贴地（或垂直居中）+ 剥碰撞体 + 失败返回 null
+     回退程序化身体。**模型加载这类「跨程序集的通用资源动作」，跟着资源本身走（放共享层），别跟着第一个使用方走。**
+     另一个细节：**整只静态模型当「Rig」**（`_rig = model`），整体 bob/tilt/下蹲照常，逐部位（腿/尾/耳）骨头为 null 时
+     动画代码要能空判 no-op——`PetAvatar` 和 `AnimalAvatar` 都是先判 null 再动，才能让「换模型」不掉动画。还有一条测试
+     教训：程序化身体有 15 个渲染器，合并网格的模型只有 6 个，断言「>=10 个部件」会在换模型后误报——**把「部件数」断言
+     换成「至少一个可见网格 + 包围盒尺寸/贴地」这类对两种实现都成立的断言。**
 
 ## 八、一分钟速查
 

@@ -124,6 +124,19 @@ namespace DshRunner
 
         private void Construct()
         {
+            // Prefer the imported Kenney fox over the primitive cube fox. The whole model is the
+            // "rig", so the PlayerController bob/tilt still applies while the per-part animation
+            // (legs/tail/ears) no-ops because those bones stay null.
+            var model = DshMobile.KenneyModel.Load("animal-fox", transform, 1f, centerVertically: true);
+            if (model != null)
+            {
+                _rig = model;
+                _head = _tail = _tailMid = _tailTip = _earLeft = _earRight = null;
+                _hips.Clear();
+                _legs.Clear();
+                return;
+            }
+
             _rig = Bone("Rig", transform, Vector3.zero);
 
             // ---- torso ----

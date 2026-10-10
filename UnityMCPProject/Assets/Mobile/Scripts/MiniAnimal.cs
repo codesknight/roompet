@@ -88,6 +88,21 @@ namespace DshMobile
             }
         }
 
+        private static string ModelNameFor(MiniAnimalKind kind)
+        {
+            switch (kind)
+            {
+                case MiniAnimalKind.Cat: return "animal-cat";
+                case MiniAnimalKind.Dog: return "animal-dog";
+                case MiniAnimalKind.Rabbit: return "animal-bunny";
+                case MiniAnimalKind.Bear: return "animal-polar";
+                case MiniAnimalKind.Fox: return "animal-fox";
+                case MiniAnimalKind.Panda: return "animal-panda";
+                case MiniAnimalKind.Pig: return "animal-pig";
+                default: return null;   // Frog: no Kenney model, keep the primitives
+            }
+        }
+
         private static readonly Color Dark = new Color(0.16f, 0.13f, 0.16f);
         private static readonly Color White = new Color(0.98f, 0.98f, 0.99f);
         private static readonly Color Pink = new Color(0.93f, 0.62f, 0.68f);
@@ -101,6 +116,15 @@ namespace DshMobile
         {
             var root = new GameObject("MiniAnimal_" + Name(kind)).transform;
             if (parent != null) root.SetParent(parent, false);
+
+            // Prefer the imported Kenney Cube Pets model; fall back to the primitive body when the
+            // species has no matching model (frog) or the resource is missing.
+            string model = ModelNameFor(kind);
+            if (!string.IsNullOrEmpty(model))
+            {
+                var loaded = KenneyModel.Load(model, root, height);
+                if (loaded != null) return root;
+            }
 
             float s = Mathf.Max(0.05f, height);
             Color fur = Fur(kind);

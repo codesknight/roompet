@@ -963,8 +963,11 @@ namespace DshMobile.Tests
             try
             {
                 var renderers = root.GetComponentsInChildren<Renderer>();
-                Assert.GreaterOrEqual(renderers.Length, 10,
-                    "an animal needs a body, a head, ears, a tail, feet and a face");
+                // The primitive build has ~15 parts; the imported Kenney model has a handful of
+                // merged meshes. Either way, "a real animal" means at least one visible mesh, no
+                // stray colliders, and the right footprint.
+                Assert.GreaterOrEqual(renderers.Length, 1,
+                    "an animal needs at least one visible mesh");
                 Assert.AreEqual(0, root.GetComponentsInChildren<Collider>().Length,
                     "decorative parts must not have colliders");
 

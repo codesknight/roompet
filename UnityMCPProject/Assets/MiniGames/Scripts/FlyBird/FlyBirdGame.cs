@@ -111,6 +111,16 @@ namespace DshMiniGames
             var root = new GameObject("Bird").transform;
             root.SetParent(transform, false);
 
+            // Prefer the Kenney chick over the sphere-and-box bird. The whole-body tilt in
+            // ApplyBird carries the animation, so the separate flapping wing is dropped.
+            var model = DshMobile.KenneyModel.Load("animal-chick", root, 0.55f, centerVertically: true);
+            if (model != null)
+            {
+                model.localRotation = Quaternion.Euler(0f, -90f, 0f);   // face +X, toward the pipes
+                _birdWing = null;
+                return root;
+            }
+
             var body = Sphere("Body", Vector3.zero, 0.42f, new Color(1f, 0.84f, 0.3f));
             body.SetParent(root, false);
             body.localPosition = Vector3.zero;
