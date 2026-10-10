@@ -5,8 +5,9 @@ using UnityEngine.SceneManagement;
 namespace DshMiniGames
 {
     /// <summary>
-    /// 窒息隧道: fly a ship down a themed 3D tunnel with one virtual stick (up/down/left/right).
-    /// Survival mode threads moving gate holes; mine mode dodges obstacles.
+    /// 窒息隧道: fly a ship down a neon 3D tunnel with one virtual stick. The tunnel is a run of
+    /// glowing rings scrolling past a fixed ship, which is what sells the sense of forward motion;
+    /// survival mode threads moving gate holes, mine mode dodges obstacles.
     /// </summary>
     public class TunnelGame : MonoBehaviour
     {
@@ -17,16 +18,19 @@ namespace DshMiniGames
         public TunnelTheme Theme { get; private set; } = TunnelTheme.Neon;
         public int Score { get; private set; }
         public int RunCoins => TunnelRules.CoinsFor(Score);
-
-        /// <summary>Best score of the session.</summary>
         public int Best { get; private set; }
 
-        private const float ForwardSpeed = 6f;
+        private const float ForwardSpeed = 7f;
+        private const float RingSpacing = 2.2f;
+        private const int RingCount = 24;
+        private const float RingRadius = 1.9f;
+        private const int RingSegments = 18;
 
         private Camera _camera;
         private Transform _ship;
         private Vector2 _shipPos;
         private readonly List<Obstacle> _obstacles = new List<Obstacle>();
+        private readonly List<Transform> _rings = new List<Transform>();
         private float _spawnTimer;
         private float _deathAt;
 
@@ -34,7 +38,7 @@ namespace DshMiniGames
         {
             public Transform Root;
             public bool IsGate;
-            public Vector2 Hole;      // gate: the hole centre; mine: the obstacle centre
+            public Vector2 Hole;
             public float Radius;
             public bool Scored;
         }
@@ -60,12 +64,12 @@ namespace DshMiniGames
             }
             existing.orthographic = false;
             existing.fieldOfView = 60f;
-            existing.transform.position = new Vector3(0f, 0f, -6.5f);
+            existing.transform.position = new Vector3(0f, 0f, -6.6f);
             existing.transform.rotation = Quaternion.identity;
             existing.clearFlags = CameraClearFlags.SolidColor;
-            existing.backgroundColor = new Color(0.02f, 0.02f, 0.05f);
-            existing.nearClipPlane = 0.1f;
-            existing.farClipPlane = 60f;
+            existing.backgroundColor = new Color(0.02f, 0.02f, 0.06f);
+            existing.nearClipPlane = 0.05f;
+            existing.farClipPlane = 120f;
             _camera = existing;
 
             if (FindObjectOfType<Light>() == null)
@@ -73,80 +77,97 @@ namespace DshMiniGames
                 var light = new GameObject("Sun").AddComponent<Light>();
                 light.type = LightType.Directional;
                 light.color = new Color(1f, 0.97f, 0.9f);
-                light.intensity = 1.05f;
+                light.intensity = 0.9f;
                 light.transform.rotation = Quaternion.Euler(50f, -25f, 0f);
             }
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.4f, 0.4f, 0.48f);
+            RenderSettings.ambientLight = new Color(0.35f, 0.35f, 0.42f);
+
+            // A faint fog gives the tunnel depth: far rings fade into the vanishing point.
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.ExponentialSquared;
+            RenderSettings.fogColor = new Color(0.02f, 0.02f, 0.06f);
+            RenderSettings.fogDensity = 0.10f;
 
             BuildShip();
             BuildTunnel();
+            BuildVanishingPoint();
         }
 
         private void BuildShip()
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            go.name = "Ship";
-            go.transform.SetParent(transform, false);
-            go.transform.localPosition = Vector3.zero;
-            go.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);  // point down the tunnel
-            go.transform.localScale = new Vector3(0.4f, 0.7f, 0.4f);
-            var mat = new Material(Shader.Find("Standard")) { name = "Ship" };
-            mat.color = new Color(1f, 0.9f, 0.4f);
-            mat.EnableKeyword("_EMISSION");
-            mat.SetColor("_EmissionColor", new Color(1f, 0.75f, 0.2f) * 0.6f);
-            go.GetComponent<Renderer>().sharedMaterial = mat;
-            go.GetComponent<Collider>().enabled = false;
-            _ship = go.transform;
+            var root = new GameObject("Ship").transform;
+            root.SetParent(transform, false);
+
+            // A little rocket: a body, a nose, and a glowing engine cone.
+            Prim("Body", PrimitiveType.Cylinder, root,
+                new Vector3(0f, 0f, 0.2f), new Vector3(0.34f, 0.62f, 0.34f),
+                Quaternion.Euler(90f, 0f, 0f), new Color(0.85f, 0.9f, 1f), 0.25f);
+            Prim("Nose", PrimitiveType.Cylinder, root,
+                new Vector3(0f, 0f, 0.62f), new Vector3(0.18f, 0.34f, 0.18f),
+                Quaternion.Euler(90f, 0f, 0f), new Color(0.95f, 0.95f, 1f), 0.25f);
+            Prim("Engine", PrimitiveType.Cylinder, root,
+                new Vector3(0f, 0f, -0.28f), new Vector3(0.26f, 0.16f, 0.26f),
+                Quaternion.Euler(90f, 0f, 0f), new Color(1f, 0.55f, 0.2f), 0.9f);
+            Prim("Glow", PrimitiveType.Sphere, root,
+                new Vector3(0f, 0f, -0.4f), new Vector3(0.5f, 0.5f, 0.5f),
+                Quaternion.identity, new Color(1f, 0.7f, 0.3f), 1.3f);
+
+            _ship = root;
         }
 
         private void BuildTunnel()
         {
-            var tunnel = new GameObject("Tunnel").transform;
-            tunnel.SetParent(transform, false);
-            var baseColor = TunnelRules.TunnelColor(TunnelTheme.Neon, false);
-            var accent = TunnelRules.TunnelColor(TunnelTheme.Neon, true);
-
-            for (int i = 0; i < 12; i++)
+            for (int i = 0; i < RingCount; i++)
             {
-                float z = -4f + i * 2.2f;
-                var ring = new GameObject("Ring" + i).transform;
-                ring.SetParent(tunnel, false);
-                ring.localPosition = new Vector3(0f, 0f, z);
-
-                for (int side = 0; side < 4; side++)
-                {
-                    float a = side * 90f;
-                    var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                    box.name = "Side";
-                    box.transform.SetParent(ring, false);
-                    box.transform.localRotation = Quaternion.Euler(0f, 0f, a);
-                    box.transform.localPosition = new Vector3(0f, 1.9f, 0f);
-                    box.transform.localScale = new Vector3(3.8f, 0.12f, 0.12f);
-                    var m = new Material(Shader.Find("Standard")) { name = "Ring" };
-                    m.color = side % 2 == 0 ? accent : baseColor;
-                    box.GetComponent<Renderer>().sharedMaterial = m;
-                    box.GetComponent<Collider>().enabled = false;
-                }
+                var ring = BuildRing();
+                ring.SetParent(transform, false);
+                ring.localPosition = new Vector3(0f, 0f, -7f + i * RingSpacing);
+                _rings.Add(ring);
             }
+            ApplyRingTheme();
         }
 
-        private void ApplyTheme()
+        private Transform BuildRing()
         {
-            var tunnel = transform.Find("Tunnel");
-            if (tunnel == null) return;
+            var ring = new GameObject("TunnelRing").transform;
+            for (int s = 0; s < RingSegments; s++)
+            {
+                float angle = s * Mathf.PI * 2f / RingSegments;
+                Prim("Seg", PrimitiveType.Cube, ring,
+                    new Vector3(Mathf.Cos(angle) * RingRadius, Mathf.Sin(angle) * RingRadius, 0f),
+                    new Vector3(0.42f, 0.10f, 0.10f),
+                    Quaternion.Euler(0f, 0f, angle * Mathf.Rad2Deg),
+                    Color.white, 0.3f);
+            }
+            return ring;
+        }
+
+        /// <summary>A distant bright dot at the tunnel's vanishing point.</summary>
+        private void BuildVanishingPoint()
+        {
+            Prim("VanishingPoint", PrimitiveType.Sphere, transform,
+                new Vector3(0f, 0f, 40f), new Vector3(2.5f, 2.5f, 0.2f),
+                Quaternion.identity, new Color(1f, 0.9f, 0.8f), 2.5f);
+        }
+
+        private void ApplyRingTheme()
+        {
             var accent = TunnelRules.TunnelColor(Theme, true);
             var baseColor = TunnelRules.TunnelColor(Theme, false);
-            for (int i = 0; i < tunnel.childCount; i++)
+            if (_camera != null) _camera.backgroundColor = baseColor * 0.12f;
+            RenderSettings.fogColor = baseColor * 0.12f;
+
+            for (int i = 0; i < _rings.Count; i++)
             {
-                var ring = tunnel.GetChild(i);
-                for (int side = 0; side < ring.childCount; side++)
+                var ring = _rings[i];
+                if (ring == null) continue;
+                for (int s = 0; s < ring.childCount; s++)
                 {
-                    var r = ring.GetChild(side).GetComponent<Renderer>();
-                    if (r != null) r.sharedMaterial.color = side % 2 == 0 ? accent : baseColor;
+                    var r = ring.GetChild(s).GetComponent<Renderer>();
+                    if (r != null) Paint(r, s % 2 == 0 ? accent : baseColor, s % 2 == 0 ? 0.9f : 0.35f);
                 }
             }
-            if (_camera != null) _camera.backgroundColor = baseColor * 0.15f;
         }
 
         // ------------------------------------------------------------------ run
@@ -161,28 +182,36 @@ namespace DshMiniGames
             foreach (var o in _obstacles) if (o.Root != null) Destroy(o.Root.gameObject);
             _obstacles.Clear();
             _spawnTimer = 0f;
-            ApplyTheme();
+            ApplyRingTheme();
             State = Phase.Running;
         }
 
         private void Update()
         {
             if (State == Phase.Dead && Time.time - _deathAt > 0.9f) return;
-
             if (State == Phase.Running) TickRunning();
-            else if (State == Phase.Dead) TickDeath();
         }
 
         private void TickRunning()
         {
-            // Ship moves in the cross-section, driven by the HUD's single stick.
-            Vector2 stick = TunnelHud.Stick;
-            _shipPos += stick * TunnelRules.ShipSpeed * Time.deltaTime;
+            float dt = Time.deltaTime;
+
+            // The ship moves in the cross-section, driven by the HUD's single stick.
+            _shipPos += TunnelHud.Stick * TunnelRules.ShipSpeed * dt;
             _shipPos = TunnelRules.ClampToTunnel(_shipPos);
             _ship.localPosition = new Vector3(_shipPos.x, _shipPos.y, 0f);
 
-            // Obstacles fly toward the ship.
-            float dt = Time.deltaTime;
+            // Rings scroll past the ship and wrap, which is the forward-motion illusion.
+            for (int i = 0; i < _rings.Count; i++)
+            {
+                var ring = _rings[i];
+                if (ring == null) continue;
+                var p = ring.localPosition;
+                p.z -= ForwardSpeed * dt;
+                if (p.z < -7f) p.z += RingCount * RingSpacing;
+                ring.localPosition = p;
+            }
+
             for (int i = _obstacles.Count - 1; i >= 0; i--)
             {
                 var o = _obstacles[i];
@@ -214,7 +243,7 @@ namespace DshMiniGames
                     return;
                 }
 
-                if (p.z < -4f)
+                if (p.z < -5f)
                 {
                     Destroy(o.Root.gameObject);
                     _obstacles.RemoveAt(i);
@@ -231,75 +260,91 @@ namespace DshMiniGames
 
         private void SpawnObstacle(float z)
         {
-            float r1 = Random.value;
-            float r2 = Random.value;
             var root = new GameObject(Mode == TunnelMode.Survival ? "Gate" : "Mine").transform;
             root.SetParent(transform, false);
             root.localPosition = new Vector3(0f, 0f, z);
 
             var o = new Obstacle { Root = root, IsGate = Mode == TunnelMode.Survival };
-
             if (o.IsGate)
             {
-                o.Hole = TunnelRules.NextGateHole(_shipPos, r1, r2);
+                o.Hole = TunnelRules.NextGateHole(_shipPos, Random.value, Random.value);
                 o.Radius = TunnelRules.GateHoleRadius;
                 BuildGate(root, o.Hole);
             }
             else
             {
-                o.Hole = TunnelRules.NextMine(_shipPos, r1, r2);
+                o.Hole = TunnelRules.NextMine(_shipPos, Random.value, Random.value);
                 o.Radius = TunnelRules.MineRadius;
                 BuildMine(root, o.Hole);
             }
             _obstacles.Add(o);
         }
 
+        /// <summary>A "wall with a hole": radial spokes from the hole rim out to the tunnel wall.</summary>
         private void BuildGate(Transform root, Vector2 hole)
         {
-            // A solid wall with a round hole: four boxes around the hole.
             var accent = TunnelRules.TunnelColor(Theme, true);
             float r = TunnelRules.GateHoleRadius;
-            var panel = new GameObject("Panel").transform;
-            panel.SetParent(root, false);
-            panel.localPosition = new Vector3(hole.x, hole.y, 0f);
-
-            for (int side = 0; side < 4; side++)
+            int spokes = 20;
+            for (int s = 0; s < spokes; s++)
             {
-                float a = side * 90f;
-                var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                box.transform.SetParent(panel, false);
-                box.transform.localRotation = Quaternion.Euler(0f, 0f, a);
-                box.transform.localPosition = new Vector3(0f, r + 1.4f, 0f);
-                box.transform.localScale = new Vector3(4f, 2.8f, 0.14f);
-                SetObstacleMaterial(box, accent, true);
+                float angle = s * Mathf.PI * 2f / spokes;
+                float midR = (r + RingRadius) * 0.5f;
+                float length = RingRadius - r;
+                Prim("Spoke", PrimitiveType.Cube, root,
+                    new Vector3(hole.x + Mathf.Cos(angle) * midR, hole.y + Mathf.Sin(angle) * midR, 0f),
+                    new Vector3(length, 0.14f, 0.12f),
+                    Quaternion.Euler(0f, 0f, angle * Mathf.Rad2Deg),
+                    accent, 0.85f);
+            }
+            // A glowing rim around the hole, so the target reads as "fly through here".
+            for (int s = 0; s < 12; s++)
+            {
+                float angle = s * Mathf.PI * 2f / 12;
+                Prim("Rim", PrimitiveType.Cube, root,
+                    new Vector3(hole.x + Mathf.Cos(angle) * r, hole.y + Mathf.Sin(angle) * r, 0f),
+                    new Vector3(0.34f, 0.16f, 0.14f),
+                    Quaternion.Euler(0f, 0f, angle * Mathf.Rad2Deg),
+                    new Color(1f, 0.95f, 0.6f), 1.2f);
             }
         }
 
         private void BuildMine(Transform root, Vector2 at)
         {
-            var mine = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            mine.transform.SetParent(root, false);
-            mine.transform.localPosition = new Vector3(at.x, at.y, 0f);
-            mine.transform.localScale = Vector3.one * (TunnelRules.MineRadius * 2f);
-            SetObstacleMaterial(mine, new Color(0.95f, 0.35f, 0.3f), true);
+            Prim("MineBody", PrimitiveType.Sphere, root,
+                new Vector3(at.x, at.y, 0f), Vector3.one * (TunnelRules.MineRadius * 2f),
+                Quaternion.identity, new Color(0.95f, 0.32f, 0.28f), 1.2f);
         }
 
-        private void SetObstacleMaterial(GameObject go, Color color, bool glow)
+        // ------------------------------------------------------------------ helpers
+
+        private GameObject Prim(string name, PrimitiveType type, Transform parent, Vector3 localPos,
+            Vector3 localScale, Quaternion localRot, Color color, float emission)
         {
-            var m = new Material(Shader.Find("Standard")) { name = "Obstacle" };
-            m.color = color;
-            if (glow)
+            var go = GameObject.CreatePrimitive(type);
+            go.name = name;
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPos;
+            go.transform.localScale = localScale;
+            go.transform.localRotation = localRot;
+
+            var collider = go.GetComponent<Collider>();
+            if (collider != null) collider.enabled = false;
+            Paint(go.GetComponent<Renderer>(), color, emission);
+            return go;
+        }
+
+        private void Paint(Renderer renderer, Color color, float emission)
+        {
+            if (renderer == null) return;
+            var mat = new Material(Shader.Find("Standard")) { name = "Tunnel" };
+            mat.color = color;
+            if (emission > 0f)
             {
-                m.EnableKeyword("_EMISSION");
-                m.SetColor("_EmissionColor", color * 0.5f);
+                mat.EnableKeyword("_EMISSION");
+                mat.SetColor("_EmissionColor", color * emission);
             }
-            go.GetComponent<Renderer>().sharedMaterial = m;
-            go.GetComponent<Collider>().enabled = false;
-        }
-
-        private void TickDeath()
-        {
-            // Idle on the result screen.
+            renderer.sharedMaterial = mat;
         }
 
         private void Die()
@@ -320,7 +365,6 @@ namespace DshMiniGames
             SceneManager.LoadScene("PetRoom");
         }
 
-        /// <summary>Back to the menu, clearing the run.</summary>
         public void BackToMenu()
         {
             State = Phase.Menu;

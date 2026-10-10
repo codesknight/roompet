@@ -64,13 +64,15 @@ namespace DshMiniGames
 
         private void Update()
         {
+            // Screen coords, bottom-left origin (the same frame as Input.mousePosition). 130px up
+            // from the bottom is where a thumb rests.
             _stickScreenCentre = new Vector2(
                 _stickOnLeft ? 120f : Screen.width - 120f,
-                Screen.height - 130f);
+                130f);
 
             Vector2 mouse = Input.mousePosition;
 
-            if (Input.GetMouseButtonDown(0) && Vector2.Distance(mouse, _stickScreenCentre) < StickRadius * 1.6f)
+            if (Input.GetMouseButtonDown(0) && Vector2.Distance(mouse, _stickScreenCentre) < StickRadius * 2f)
             {
                 _dragging = true;
             }
@@ -84,6 +86,8 @@ namespace DshMiniGames
             {
                 Vector2 delta = mouse - _stickScreenCentre;
                 Stick = Vector2.ClampMagnitude(delta / StickRadius, 1f);
+                // A small deadzone so a resting thumb does not make the ship drift.
+                if (Stick.magnitude < 0.16f) Stick = Vector2.zero;
             }
         }
 
@@ -201,17 +205,20 @@ namespace DshMiniGames
 
         private void DrawStick()
         {
-            // Drawn in screen space, not the scaled design space, so it sits under the thumb.
+            // The stick centre is in screen (bottom-left) coords; GUI draws in top-left coords,
+            // so convert. Drawn with an identity matrix so it sits under the thumb, not the panel.
             GUI.matrix = Matrix4x4.identity;
-            var baseRect = new Rect(_stickScreenCentre.x - StickRadius, _stickScreenCentre.y - StickRadius,
+            Vector2 centre = GUIUtility.ScreenToGUIPoint(_stickScreenCentre);
+
+            var baseRect = new Rect(centre.x - StickRadius, centre.y - StickRadius,
                 StickRadius * 2f, StickRadius * 2f);
-            GUI.color = new Color(1f, 1f, 1f, 0.35f);
+            GUI.color = new Color(1f, 1f, 1f, 0.30f);
             GUI.DrawTexture(baseRect, Circle());
             GUI.color = Color.white;
 
-            var knob = new Rect(_stickScreenCentre.x + Stick.x * StickRadius * 0.7f - 24f,
-                _stickScreenCentre.y - Stick.y * StickRadius * 0.7f - 24f, 48f, 48f);
-            GUI.color = new Color(1f, 0.9f, 0.4f, 0.85f);
+            var knob = new Rect(centre.x + Stick.x * StickRadius * 0.7f - 24f,
+                centre.y - Stick.y * StickRadius * 0.7f - 24f, 48f, 48f);
+            GUI.color = new Color(1f, 0.9f, 0.4f, 0.9f);
             GUI.DrawTexture(knob, Circle());
             GUI.color = Color.white;
         }

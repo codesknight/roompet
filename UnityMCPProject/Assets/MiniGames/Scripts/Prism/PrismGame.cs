@@ -230,7 +230,7 @@ namespace DshMiniGames
             _pads.Clear();
 
             int count = PrismRules.ComboCountFor(Difficulty);
-            int cols = count <= 6 ? 3 : count <= 30 ? 6 : 10;
+            int cols = Mathf.CeilToInt(Mathf.Sqrt(count));   // near-square board, fits a phone
             int rows = Mathf.CeilToInt(count / (float)cols);
             float stepX = 1.25f;
             float stepY = 1.25f;
@@ -302,9 +302,12 @@ namespace DshMiniGames
 
         private void FitCamera(int rows, int cols)
         {
-            float halfW = Mathf.Max(2.2f, cols * 0.72f);
-            float halfH = Mathf.Max(2.0f, rows * 0.72f);
-            _camera.orthographicSize = Mathf.Max(halfH, halfW * 0.72f);
+            // The board must fit whatever the screen's aspect is, portrait included. The camera
+            // shows orthographicSize vertically; horizontally it shows that × aspect.
+            float neededHalfW = (cols - 1) * 0.625f + 0.9f;
+            float neededHalfH = (rows - 1) * 0.625f + 0.9f;
+            float aspect = _camera != null ? _camera.aspect : 1.6f;
+            _camera.orthographicSize = Mathf.Max(neededHalfH, neededHalfW / Mathf.Max(0.1f, aspect));
         }
 
         private static Color ColorOf(PrismColor color)
