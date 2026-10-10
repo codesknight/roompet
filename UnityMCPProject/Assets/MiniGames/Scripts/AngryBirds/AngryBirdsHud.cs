@@ -256,11 +256,15 @@ namespace DshMiniGames
             bool paused = _game.Paused;
             // The level intro auto-dismisses: it stays through the Ready phase, then for ~2.5s of
             // Aiming, so the player gets a look at the level instead of having the panel sit there
-            // until launch.
+            // until launch. It shows only for the FIRST bird of a level — once a bird has been
+            // launched, the ready panel would otherwise come back between every shot and sit over
+            // the sling.
             if (_game.State == AngryBirdsGame.Phase.Aiming && _aimStartedAt < 0f) _aimStartedAt = Time.unscaledTime;
             if (_game.State != AngryBirdsGame.Phase.Aiming) _aimStartedAt = -1f;
-            bool introActive = _game.State == AngryBirdsGame.Phase.Ready ||
-                (_game.State == AngryBirdsGame.Phase.Aiming && Time.unscaledTime - _aimStartedAt < 2.5f);
+            bool firstBird = level != null && _game.BirdsLeft >= level.Birds;
+            bool introActive = firstBird && (
+                _game.State == AngryBirdsGame.Phase.Ready ||
+                (_game.State == AngryBirdsGame.Phase.Aiming && Time.unscaledTime - _aimStartedAt < 2.5f));
             bool ready = !generating && !paused && introActive;
             bool result = !generating && !paused && (_game.State == AngryBirdsGame.Phase.Cleared || _game.State == AngryBirdsGame.Phase.Failed);
 

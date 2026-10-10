@@ -79,10 +79,6 @@ namespace DshPet
         {
             if (Phase != StartPhase.Menu && Phase != StartPhase.Settings && Phase != StartPhase.HowTo) return;
 
-            // The starter pet must be chosen before the room exists. The menu is replaced by the
-            // picker until then, so this guard only fires on a raced tap.
-            if (!PetOnboarding.HasChosenStarter) return;
-
             Phase = StartPhase.Opening;
             OpeningSeconds = 0f;
             DshMobile.MobileHaptics.Medium();

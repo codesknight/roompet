@@ -153,47 +153,23 @@ namespace DshPet
         }
 
         /// <summary>
-        /// Gives a fresh save its first animal, chosen by the player on the front door.
+        /// Gives a fresh save its first animal.
         ///
         /// Without this the player opens the game with an empty room and no way to get a pet
         /// except grinding the runner — which is a terrible first five minutes for a pet game.
-        /// A save that already has pets predates the onboarding flow, so it is migrated rather
-        /// than re-seeded.
         /// </summary>
         private static void EnsureStarters()
         {
             EnsureUnlocked();
 
-            if (_data.Pets.Count > 0)
-            {
-                // Migration: an existing home already made its choice, even if it happened before
-                // the pick-your-pet screen existed. Mark it so the front door never pops the
-                // starter question over a player who is already living with a bear.
-                if (!PetOnboarding.HasChosenStarter)
-                {
-                    string migrate = _data.Pets[0].SpeciesId;
-                    for (int i = 0; i < _data.Pets.Count; i++)
-                    {
-                        if (_data.Pets[i].Primary) { migrate = _data.Pets[i].SpeciesId; break; }
-                    }
-                    PetOnboarding.MarkChosen(migrate);
-                }
-                return;
-            }
+            if (_data.Pets.Count > 0) return;
 
-            string chosen = PetOnboarding.IsStarterChoice(PetOnboarding.StarterChoice)
-                ? PetOnboarding.StarterChoice
-                : "fox";
-
-            var starter = PetSpecies.Get(chosen);
+            var starter = PetSpecies.All[0];
             var record = PetRecord.Create(starter.Id, starter.DisplayName,
                 PetPersonality.Load(starter.Id), 1);
             record.Primary = true;
             _data.Pets.Add(record);
             _data.Backpack.Add(record.Id);
-
-            // Starter kit: one bag of kibble so the tutorial's first feed is possible at once.
-            PetOnboarding.GrantStarterKit();
         }
 
         private static void EnsureUnlocked()

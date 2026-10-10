@@ -140,14 +140,6 @@ namespace DshPet
                 Memory.AddPet(Greeting());
             }
 
-            // Onboarding: a brand-new room has no bowl yet — the first feed puts one in. The
-            // hint points at the only action that can do it without a bowl: hand-feeding.
-            if (!PetOnboarding.FirstFeedDone)
-            {
-                Memory.AddSystem("（先喂它吃一顿：商城 / 背包里点「投喂」，首次喂食后食物碗和水盆就会出现）");
-                PetHud.SetToast("先喂它吃一顿，食物碗和水盆就会出现。");
-            }
-
             // Only once a day: the room scene is reloaded every time the player comes back
             // from an activity, and an unconditional entry would spam the journal.
             if (!JournalHasToday("今天见到主人了"))
@@ -1937,16 +1929,6 @@ namespace DshPet
             Journal.Add(MemoryKind.Care, "主人喂我吃了" + item.Name, "", 0.35f);
             ChatChanged?.Invoke();
             PetHud.SetToast("喂了" + item.Name + "，宠物很开心。");
-
-            // The tutorial's finish line: the first feed puts the bowl and water basin in the room.
-            if (!PetOnboarding.FirstFeedDone)
-            {
-                string milestone = PetOnboarding.CompleteFirstFeed();
-                Memory.AddSystem("（" + milestone + "）");
-                Journal.Add(MemoryKind.Milestone, "第一次喂食", "食物碗和水盆摆好了。", 0.4f);
-                PetHud.SetToast(milestone);
-                RebuildRoom();
-            }
         }
 
         // -------------------------------------------------------------- throw & fetch

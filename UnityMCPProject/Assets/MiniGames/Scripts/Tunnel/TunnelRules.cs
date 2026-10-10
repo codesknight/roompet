@@ -157,7 +157,9 @@ namespace DshMiniGames
 
         /// <summary>
         /// The boundary points of a hole shape (relative to the hole centre), for drawing the glowing
-        /// rim and the spokes that make it read as a wall with a shaped hole cut in it.
+        /// rim and the spokes that make it read as a wall with a shaped hole cut in it. Points are
+        /// dense (about <paramref name="count"/> of them) for EVERY shape — a square or triangle
+        /// returns points along its edges, not just its corners, so the spokes fill the wall evenly.
         /// </summary>
         public static Vector2[] GateShapePoints(GateShape shape, float radius, int count)
         {
@@ -165,15 +167,19 @@ namespace DshMiniGames
             switch (shape)
             {
                 case GateShape.Square:
-                    pts.Add(new Vector2(-radius, -radius));
-                    pts.Add(new Vector2(radius, -radius));
-                    pts.Add(new Vector2(radius, radius));
-                    pts.Add(new Vector2(-radius, radius));
+                    AddPolyline(pts, new[]
+                    {
+                        new Vector2(-radius, -radius), new Vector2(radius, -radius),
+                        new Vector2(radius, radius), new Vector2(-radius, radius)
+                    }, count);
                     break;
                 case GateShape.Triangle:
-                    pts.Add(new Vector2(0f, radius));
-                    pts.Add(new Vector2(-0.866f * radius, -0.5f * radius));
-                    pts.Add(new Vector2(0.866f * radius, -0.5f * radius));
+                    AddPolyline(pts, new[]
+                    {
+                        new Vector2(0f, radius),
+                        new Vector2(-0.866f * radius, -0.5f * radius),
+                        new Vector2(0.866f * radius, -0.5f * radius)
+                    }, count);
                     break;
                 case GateShape.Semicircle:
                     int half = Mathf.Max(2, count / 2);
@@ -193,6 +199,22 @@ namespace DshMiniGames
                     break;
             }
             return pts.ToArray();
+        }
+
+        /// <summary>Distributes <paramref name="count"/> points evenly along a closed polyline
+        /// (the last vertex joins the first), so a shape's edges get as many points as its curve.</summary>
+        private static void AddPolyline(System.Collections.Generic.List<Vector2> pts, Vector2[] verts, int count)
+        {
+            int segs = verts.Length;
+            for (int i = 0; i < count; i++)
+            {
+                float t = (float)i / count * segs;
+                int seg = Mathf.Min((int)t, segs - 1);
+                float frac = t - seg;
+                Vector2 a = verts[seg];
+                Vector2 b = verts[(seg + 1) % segs];
+                pts.Add(Vector2.Lerp(a, b, frac));
+            }
         }
 
         // ---------------------------------------------------------------- sensitivity

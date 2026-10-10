@@ -1020,7 +1020,7 @@ namespace DshPet
 
             StripAllColliders(instance);
             if (solid) AddBoundsCollider(instance);
-            TintProp(instance);
+            TintProp(instance, resourcePath);
         }
 
         /// <summary>
@@ -1035,7 +1035,7 @@ namespace DshPet
 
             StripAllColliders(instance);
             AddBoundsCollider(instance);
-            TintProp(instance);
+            TintProp(instance, resourcePath);
 
             var interactable = instance.GetComponent<Interactable>();
             if (interactable == null) interactable = instance.AddComponent<Interactable>();
@@ -1108,8 +1108,16 @@ namespace DshPet
         /// moment the room is saved into the scene and reloaded, since property blocks are not
         /// serialized.
         /// </summary>
-        private static void TintProp(GameObject instance)
+        private static void TintProp(GameObject instance, string resourcePath)
         {
+            // Kenney furniture gets a gentle warm-darken multiply, because its near-white parts
+            // (the bathtub's shell, the bed's white bedding) read as glowing under the room light.
+            if (!string.IsNullOrEmpty(resourcePath) && resourcePath.StartsWith("Kenney/Furniture/"))
+            {
+                PropTint.MultiplyColors(instance, PropTint.FurnitureFactor);
+                return;
+            }
+
             var tint = PropTint.ForName(instance.name);
             if (!tint.HasValue) return;
 
@@ -1207,11 +1215,6 @@ namespace DshPet
 
         private Interactable[] BuildBowls()
         {
-            // The bowl and the water basin are the tutorial's reward: they only appear once the
-            // first feeding has happened, so a brand-new room starts with just the pet and the
-            // kibble, and "feed it" is the one obvious thing to do.
-            if (!PetOnboarding.FirstFeedDone) return new Interactable[0];
-
             Vector2 foodAt = PetInventory.PositionOf(PetShop.FoodBowl, Theme);
             Vector2 waterAt = PetInventory.PositionOf(PetShop.WaterBowl, Theme);
 

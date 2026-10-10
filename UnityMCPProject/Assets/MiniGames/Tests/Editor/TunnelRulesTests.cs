@@ -114,5 +114,17 @@ namespace DshMiniGames.Tests
             Assert.AreEqual(2f, TunnelRules.ClampSensitivity(5f), 0.001f);
             Assert.AreEqual(1.2f, TunnelRules.ClampSensitivity(1.2f), 0.001f);
         }
+
+        [Test]
+        public void GateShapePointsAreDenseEnoughToFillTheWall()
+        {
+            Assert.AreEqual(48, TunnelRules.GateShapePoints(GateShape.Circle, 0.5f, 48).Length);
+            Assert.AreEqual(48, TunnelRules.GateShapePoints(GateShape.Square, 0.5f, 48).Length,
+                "a square needs points along its edges, not just its four corners");
+            Assert.AreEqual(48, TunnelRules.GateShapePoints(GateShape.Triangle, 0.5f, 48).Length,
+                "a triangle needs points along its edges, not just its three vertices");
+            Assert.GreaterOrEqual(TunnelRules.GateShapePoints(GateShape.Semicircle, 0.5f, 48).Length, 25,
+                "a semicircle is the arc plus its closing base");
+        }
     }
 }

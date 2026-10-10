@@ -118,6 +118,7 @@ namespace DshPet
         private readonly List<UnityEngine.UI.Text> _needLabels = new List<UnityEngine.UI.Text>();
         private readonly List<UnityEngine.UI.Button> _footerButtons = new List<UnityEngine.UI.Button>();
         private int _builtPetIndex = -1;
+        private string _builtCardSignature = "";
         private bool _builtCardExpanded;
         private bool _builtStatusDetail;
 
@@ -745,10 +746,16 @@ namespace DshPet
         /// <summary>True when a pet HUD is live, so other systems can frame around its panels.</summary>
         public static bool Exists => _instance != null;
 
-        private void Awake() { if (_instance == null) _instance = this; BuildOverlays(); }
+        private void Awake()
+        {
+            if (_instance == null) _instance = this;
+            BuildOverlays();
+            PetCollection.Changed += OnCollectionChanged;
+        }
 
         private void OnDestroy()
         {
+            PetCollection.Changed -= OnCollectionChanged;
             if (_instance == this) _instance = null;
             if (_root != null) Destroy(_root.gameObject);
             if (_mobileRoot != null) Destroy(_mobileRoot.gameObject);
@@ -1322,8 +1329,17 @@ namespace DshPet
             ApplyDesignRect(_cardPanel.rectTransform, plan.Panel);
             var p = _cardPanel.rectTransform;
 
+            // A signature of the card set captures both its ORDER and identity: switching the
+            // primary pet keeps the same count and the same selected index, but swaps which
+            // animal sits in slot zero, so the chips and the detail must rebuild even then.
+            var sig = new System.Text.StringBuilder();
+            for (int i = 0; i < cards.Count; i++)
+                sig.Append(cards[i].RecordId).Append('|').Append(cards[i].Primary ? 'P' : 'c').Append(';');
+            string signature = sig.ToString();
+            bool cardsChanged = signature != _builtCardSignature;
+
             // Chips (rebuilt when the set of pets changes).
-            if (_builtPetIndex != selected || _chipButtons.Count != cards.Count)
+            if (_builtPetIndex != selected || _chipButtons.Count != cards.Count || cardsChanged)
             {
                 RebuildChips(gm, cards, names, plan.ChipRows, p, plan.Panel.width);
                 _builtPetIndex = selected;
@@ -1371,7 +1387,7 @@ namespace DshPet
             _detailScroll.viewport.offsetMin = new Vector2(12f, footerH);
             _detailScroll.viewport.offsetMax = new Vector2(-12f, -(detailY + barsH));
 
-            if (_builtCardExpanded != expanded || _builtStatusDetail != _statusDetail)
+            if (_builtCardExpanded != expanded || _builtStatusDetail != _statusDetail || cardsChanged)
             {
                 RebuildDetail(gm, card, expanded);
                 _builtCardExpanded = expanded;
@@ -1381,6 +1397,8 @@ namespace DshPet
 
             // Footer buttons (rebuilt when the plan changes).
             RebuildFooter(gm, plan, p, plan.Panel.width);
+
+            _builtCardSignature = signature;
         }
 
         private void RebuildChips(PetGameManager gm, List<PetGameManager.PetCard> cards, string[] names, int maxRows, RectTransform p, float designWidth)
@@ -2411,6 +2429,17 @@ namespace DshPet
             _collectionContent.anchorMax = new Vector2(1f, 1f);
             _collectionContent.pivot = new Vector2(0.5f, 1f);
             scroll.content = _collectionContent;
+        }
+
+        /// <summary>
+        /// The collection changed (a pet was bought, sold, or made primary). Mark the panel dirty
+        /// so the backpack list rebuilds and the new primary shows in the first slot — switching
+        /// primary by tapping a pet in the room goes through the manager, not the panel buttons,
+        /// so the panel's own "dirty" flag would otherwise never fire.
+        /// </summary>
+        private void OnCollectionChanged()
+        {
+            _builtCollectionTab = -1;
         }
 
         private void SyncCollectionPanel()
@@ -3517,6 +3546,7 @@ namespace DshPet
         {
             _englishPanel = DshMobile.Ugui.Panel("EnglishPanel", _root, 18f,
                 new Color(0.11f, 0.10f, 0.14f, 1f), new Color(1f, 1f, 1f, 0.14f), 2f);
+            _englishPanel.raycastTarget = true;   // the panel itself blocks clicks to the room
             _englishPanel.gameObject.SetActive(false);
             var p = _englishPanel.rectTransform;
 
@@ -3664,6 +3694,16 @@ namespace DshPet
             _englishPanel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
             _englishPanel.rectTransform.anchoredPosition = Vector2.zero;
             _englishPanel.rectTransform.sizeDelta = new Vector2(w, h);
+
+            // The word/meaning/example/option rects were built with a negative width (-36): a
+            // rect whose anchorMin == anchorMax treats sizeDelta as its literal size, so a negative
+            // width made the word invisible. Fix the width here now that the panel width is known.
+            float contentW = Mathf.Max(200f, w - 36f);
+            _englishWordText.rectTransform.sizeDelta = new Vector2(contentW, 40f);
+            _englishMeaningText.rectTransform.sizeDelta = new Vector2(contentW, 30f);
+            _englishExampleText.rectTransform.sizeDelta = new Vector2(contentW, 60f);
+            for (int i = 0; i < _englishOptionButtons.Count; i++)
+                _englishOptionButtons[i].GetComponent<RectTransform>().sizeDelta = new Vector2(contentW, 42f);
 
             for (int i = 0; i < _englishTabLabels.Count; i++)
             {

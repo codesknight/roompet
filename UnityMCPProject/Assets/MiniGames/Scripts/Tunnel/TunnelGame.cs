@@ -364,16 +364,15 @@ namespace DshMiniGames
 
         /// <summary>
         /// A wall with a shaped hole: a glowing outline of the hole plus radial spokes from the
-        /// outline out to the tunnel wall, so it reads as a solid wall with that shape cut out.
+        /// outline out to the tunnel wall, so it reads as a wall with that shape cut out. Spokes
+        /// read better than a solid mesh for off-centre / square / triangle holes.
         /// </summary>
         private void BuildGate(Transform root, Vector2 hole, GateShape shape, float radius)
         {
             var accent = TunnelRules.TunnelColor(Theme, true);
             var points = TunnelRules.GateShapePoints(shape, radius, 48);
 
-            // A SOLID face from the shaped hole out to the tunnel ring — a wall with the shape cut
-            // out of it — instead of spokes, which read as floating bars on triangle/square holes.
-            BuildFace(root, hole, points, accent);
+            BuildSpokes(root, hole, points, accent);
 
             // The glowing outline of the hole shape itself.
             for (int s = 0; s < points.Length; s++)
@@ -386,59 +385,37 @@ namespace DshMiniGames
             }
         }
 
-        /// <summary>Builds the wall mesh: a quad strip from the shaped hole out to the ring, drawn
-        /// double-sided so it is visible from either side of the gate.</summary>
-        private void BuildFace(Transform root, Vector2 hole, Vector2[] points, Color color)
+        /// <summary>
+        /// Fills the wall around a shaped hole with radial spokes: one bar per boundary point, from
+        /// the hole's edge out to the tunnel ring, leaving the hole shape open in the middle. The
+        /// bars are thin enough to read as a grill, dense enough to read as a wall.
+        /// </summary>
+        private void BuildSpokes(Transform root, Vector2 hole, Vector2[] points, Color color)
         {
             int n = points.Length;
-            var verts = new Vector3[n * 2];
             for (int i = 0; i < n; i++)
             {
                 Vector2 hp = hole + points[i];
-                // Outward from the HOLE centre (not the tunnel centre): the old radial-from-tunnel
-                // direction crossed the mesh back over the hole when the hole sat off-centre, which
-                // covered the hole and made a wall with no hole in it.
+
+                // Ray-cast from the hole centre through the boundary point to the ring circle.
                 Vector2 dir = (hp - hole).normalized;
                 if (dir.sqrMagnitude < 0.0001f) dir = Vector2.up;
-                // Ray-cast from the hole centre along dir to the ring circle (centre 0,0, radius R).
                 float b = Vector2.Dot(hole, dir);
                 float c = hole.sqrMagnitude - RingRadius * RingRadius;
                 float disc = b * b - c;
                 float t = disc > 0f ? -b + Mathf.Sqrt(disc) : 0f;
                 Vector2 rp = hole + dir * Mathf.Max(0.01f, t);
-                verts[2 * i] = new Vector3(hp.x, hp.y, 0f);
-                verts[2 * i + 1] = new Vector3(rp.x, rp.y, 0f);
+
+                float len = Vector2.Distance(hp, rp);
+                if (len < 0.02f) continue;
+                Vector2 mid = (hp + rp) * 0.5f;
+                float ang = Mathf.Atan2(rp.y - hp.y, rp.x - hp.x) * Mathf.Rad2Deg;
+                Prim("Spoke", PrimitiveType.Cube, root,
+                    new Vector3(mid.x, mid.y, 0f),
+                    new Vector3(len, 0.22f, 0.16f),
+                    Quaternion.Euler(0f, 0f, ang),
+                    color, 0.55f);
             }
-
-            // Double-sided: each quad is emitted in both windings so the wall shows from both sides.
-            var tris = new int[n * 12];
-            for (int i = 0; i < n; i++)
-            {
-                int next = (i + 1) % n;
-                int h0 = 2 * i, r0 = 2 * i + 1, h1 = 2 * next, r1 = 2 * next + 1;
-                int t = i * 12;
-                tris[t] = h0; tris[t + 1] = r0; tris[t + 2] = r1;
-                tris[t + 3] = h0; tris[t + 4] = r1; tris[t + 5] = h1;
-                tris[t + 6] = h0; tris[t + 7] = r1; tris[t + 8] = r0;
-                tris[t + 9] = h0; tris[t + 10] = h1; tris[t + 11] = r1;
-            }
-
-            var mesh = new Mesh { name = "GateFace" };
-            mesh.vertices = verts;
-            mesh.triangles = tris;
-            mesh.RecalculateNormals();
-
-            var go = new GameObject("GateFace");
-            go.transform.SetParent(root, false);
-            var mf = go.AddComponent<MeshFilter>();
-            mf.mesh = mesh;
-            var mr = go.AddComponent<MeshRenderer>();
-            var material = new Material(Shader.Find("Standard"));
-            material.color = color;
-            material.SetFloat("_Glossiness", 0.35f);
-            mr.material = material;
-            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            mr.receiveShadows = false;
         }
 
         private Transform BuildMine(Transform root, Vector2 at, float radius)

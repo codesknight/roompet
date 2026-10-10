@@ -21,7 +21,6 @@ namespace DshPet
         private Transform _pet;
         private Vector3 _petFrom;
         private Vector3 _petTo;
-        private DshMobile.MiniAnimalKind _builtKind = (DshMobile.MiniAnimalKind)(-1);
 
         private readonly List<Material> _ownMaterials = new List<Material>();
 
@@ -122,23 +121,6 @@ namespace DshPet
         public void ApplyOpening(float seconds)
         {
             RefreshFraming();
-
-            // The front-door preview follows the starter choice: if the player picks a different
-            // pet, the animal by the door is rebuilt to match. Checked every frame, but it only
-            // rebuilds when the species actually changed.
-            var kind = DshMobile.MiniAnimal.Current;
-            if (_pet != null && _builtKind != kind)
-            {
-                if (Application.isPlaying) Destroy(_pet.gameObject);
-                else DestroyImmediate(_pet.gameObject);
-                _pet = null;
-            }
-            if (_pet == null)
-            {
-                BuildPet();
-                _builtKind = kind;
-            }
-
             float push = StartSequence.CameraPush(seconds);
 
             var camera = Camera.main;
@@ -351,7 +333,6 @@ namespace DshPet
             DshMobile.MiniAnimal.Build(root, kind, 0.95f);
             DshMobile.SoftShadow.Attach(root, 0.32f, 0.32f, 0.4f);
 
-            _builtKind = kind;
             _pet = root;
             _petFrom = new Vector3(1.9f, 0f, -1.15f);
             _petTo = new Vector3(0.35f, 0f, 0.35f);

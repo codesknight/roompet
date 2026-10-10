@@ -56,5 +56,38 @@ namespace DshPet
                 return new Color(0.62f, 0.62f, 0.66f);
             return null;
         }
+
+        /// <summary>
+        /// Warm-darken factor for the Kenney furniture, whose near-white parts (<c>carpetWhite</c>,
+        /// <c>metalLight</c>) read as glowing under the room's light. A multiply — not a replace —
+        /// keeps every part's own colour while toning the whites down.
+        /// </summary>
+        public static readonly Color FurnitureFactor = new Color(0.86f, 0.84f, 0.80f);
+
+        /// <summary>
+        /// Multiplies every material's colour by <paramref name="factor"/>, creating per-instance
+        /// material copies so the shared FBX materials are left untouched. The nature props use the
+        /// SET tint in <see cref="ForName"/>; the furniture uses this multiply.
+        /// </summary>
+        public static void MultiplyColors(GameObject instance, Color factor)
+        {
+            foreach (var renderer in instance.GetComponentsInChildren<Renderer>(true))
+            {
+                var materials = renderer.sharedMaterials;
+                bool changed = false;
+                for (int i = 0; i < materials.Length; i++)
+                {
+                    var src = materials[i];
+                    if (src == null || !src.HasProperty("_Color")) continue;
+
+                    Color c = src.GetColor("_Color");
+                    var copy = new Material(src);
+                    copy.SetColor("_Color", new Color(c.r * factor.r, c.g * factor.g, c.b * factor.b, c.a));
+                    materials[i] = copy;
+                    changed = true;
+                }
+                if (changed) renderer.sharedMaterials = materials;
+            }
+        }
     }
 }

@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **398/398 通过**（虚拟宠物 223 + 跑酷 15 + 手机端 56 + 小游戏 97，另有少量跨程序集计数），EditMode |
+| 测试 | **396/396 通过**（虚拟宠物 220 + 跑酷 15 + 手机端 56 + 小游戏 98，另有少量跨程序集计数），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -1145,6 +1145,10 @@
       十几条测试都会触发"全新存档 → 补发礼包"这条路，粮食数量就会在测试之间悄悄泄漏。修法：单独一个 `GrantStarterKit()`
       用 `KitKey` 标志位保证只发一次（`if (StarterKitGranted) return;`），`EnsureStarters` 只负责调用它。**凡是"发一次"的奖励
       （新手礼包、首充、签到），都要用独立标志位做幂等，别借用"读存档"这个会反复发生的时机。**
+174. **uGUI 的 `sizeDelta` 在 `anchorMin == anchorMax` 时就是字面尺寸，写成负数宽度 = 文字/按钮直接隐形。** 英语角的单词/释义/
+      例句/选项四个控件在 Build 时写了 `sizeDelta = (-36, h)`（作者把它当成"拉伸锚点下的 offset"），结果 anchor 是点锚，
+      -36 就是负宽度，面板打开却"不显示单词"。修法：面板宽度是 Sync 时才算出来的，所以在 Sync 里按 `w - 36` 重设正宽度。
+      **点锚（anchorMin==anchorMax）的 sizeDelta 是 size，不是 offset；负尺寸是 bug，不是"靠边留白"。**
 
 ## 八、一分钟速查
 
