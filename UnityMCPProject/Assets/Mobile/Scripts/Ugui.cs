@@ -171,6 +171,43 @@ namespace DshMobile
             return btn;
         }
 
+        /// <summary>
+        /// Creates a horizontal Slider (a filled track + a round handle), wired through the shared
+        /// EventSystem. Used for the tunnel's sensitivity control and anything else that needs a
+        /// continuous 0..1-style value rather than discrete buttons.
+        /// </summary>
+        public static Slider Slider(string name, Transform parent, float min, float max, float value,
+            Color fillColor, Color handleColor)
+        {
+            EnsureEventSystem();
+
+            var rt = Rect(name, parent);
+            var slider = rt.gameObject.AddComponent<Slider>();
+
+            var bg = Image("Background", rt, new Color(0f, 0f, 0f, 0.4f));
+            Stretch(bg.rectTransform);
+
+            var fillArea = new GameObject("FillArea", typeof(RectTransform));
+            fillArea.transform.SetParent(rt, false);
+            Stretch(fillArea.GetComponent<RectTransform>());
+            var fill = Image("Fill", fillArea.transform, fillColor);
+            Stretch(fill.rectTransform);
+
+            var handleArea = new GameObject("HandleArea", typeof(RectTransform));
+            handleArea.transform.SetParent(rt, false);
+            Stretch(handleArea.GetComponent<RectTransform>());
+            var handle = Image("Handle", handleArea.transform, handleColor);
+            handle.rectTransform.sizeDelta = new Vector2(26f, 26f);
+
+            slider.fillRect = fill.rectTransform;
+            slider.handleRect = handle.rectTransform;
+            slider.targetGraphic = handle;
+            slider.minValue = min;
+            slider.maxValue = max;
+            slider.value = value;
+            return slider;
+        }
+
         // --------------------------------------------------------------- layout
 
         /// <summary>Stretches a RectTransform to fill its parent.</summary>
@@ -320,6 +357,54 @@ namespace DshMobile
 
         private static string ColorKey(Color c)
             => ((int)(c.r * 255)) + "," + ((int)(c.g * 255)) + "," + ((int)(c.b * 255)) + "," + ((int)(c.a * 255));
+
+        /// <summary>
+        /// A filled circle sprite (for joystick bases and knobs), supersampled so the rim is
+        /// smooth. Not nine-sliced — a circle is drawn at its own size.
+        /// </summary>
+        public static Sprite Circle(float radius, Color color)
+        {
+            int r = Mathf.Max(2, Mathf.RoundToInt(radius));
+            string key = "circle|" + r + "|" + ColorKey(color);
+            Sprite cached;
+            if (Cache.TryGetValue(key, out cached) && cached != null) return cached;
+
+            int size = r * 2 + 2;
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+
+            const int ss = 4;
+            var pixels = new Color[size * size];
+            float centre = size * 0.5f - 0.5f;
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                int inside = 0;
+                for (int sy = 0; sy < ss; sy++)
+                for (int sx = 0; sx < ss; sx++)
+                {
+                    float dx = x + (sx + 0.5f) / ss - centre;
+                    float dy = y + (sy + 0.5f) / ss - centre;
+                    if (dx * dx + dy * dy <= r * r) inside++;
+                }
+                float alpha = inside / (float)(ss * ss);
+                var c = color;
+                c.a *= alpha;
+                pixels[y * size + x] = c;
+            }
+            texture.SetPixels(pixels);
+            texture.Apply();
+
+            var sprite = UnityEngine.Sprite.Create(texture, new Rect(0f, 0f, size, size),
+                new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, Vector4.zero);
+            sprite.name = "UguiCircle_" + r;
+            Cache[key] = sprite;
+            return sprite;
+        }
 
         private static bool InsideRounded(float px, float py, float size, float radius)
         {

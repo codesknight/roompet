@@ -1,94 +1,73 @@
 ﻿using UnityEngine;
+using UnityEngine.UI;
 
 namespace DshMiniGames
 {
     /// <summary>
-    /// 棱镜's interface: a menu that picks the difficulty and mode, a live score, and a result
-    /// panel. IMGUI like every other screen in the project, scaled to the phone's safe area.
+    /// 棱镜's interface, now in uGUI: a menu that picks difficulty and mode, a live score, and a
+    /// result panel.
+    ///
+    /// The board pads are world objects (see <see cref="PrismPad"/>), not UI, so the only input
+    /// change is that a pad tap is ignored while the pointer is over a uGUI element — the game's
+    /// <c>PrismPad.OnMouseDown</c> now checks <c>IsPointerOverGameObject</c> instead of the old
+    /// <c>PointerOverPanel</c> flag.
     /// </summary>
     public class PrismHud : MonoBehaviour
     {
         private PrismGame _game;
-        private GUIStyle _title;
-        private GUIStyle _big;
-        private GUIStyle _small;
-        private GUIStyle _button;
-        private GUIStyle _centered;
+        private RectTransform _root;
 
         private PrismDifficulty _selectedDifficulty = PrismDifficulty.Rainbow;
         private PrismMode _selectedMode = PrismMode.Classic;
 
-        /// <summary>True while the pointer is over a panel, so the game ignores that tap.</summary>
-        public static bool PointerOverPanel { get; private set; }
+        private GameObject _menu;
+        private Button[] _difficultyButtons = new Button[3];
+        private Text[] _difficultyLabels = new Text[3];
+        private Text[] _modeLabels = new Text[2];
+        private Text _bestLine;
 
-        private void Awake() => _game = GetComponent<PrismGame>();
+        private Text _score;
+        private Text _progress;
+        private Text _rushClock;
 
-        private void EnsureStyles()
+        private GameObject _resultPanel;
+        private Text _resultScore;
+        private Text _resultLine;
+
+        private bool _built;
+
+        private static readonly Color TitleColor = new Color(0.9f, 0.86f, 1f);
+        private static readonly Color Gold = new Color(1f, 0.92f, 0.62f);
+        private static readonly Color Pale = new Color(0.92f, 0.92f, 0.98f);
+        private static readonly Color Selected = new Color(1f, 0.9f, 0.4f);
+        private static readonly Color BackTint = new Color(0.30f, 0.40f, 0.58f);
+        private static readonly Color GreenTint = new Color(0.30f, 0.55f, 0.35f);
+
+        private void Awake()
         {
-            if (_title != null) return;
-            _title = new GUIStyle(GUI.skin.label) { fontSize = 30, fontStyle = FontStyle.Bold };
-            _title.normal.textColor = new Color(0.9f, 0.86f, 1f);
-            _big = new GUIStyle(GUI.skin.label) { fontSize = 52, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
-            _big.normal.textColor = new Color(1f, 0.92f, 0.62f);
-            _small = new GUIStyle(GUI.skin.label) { fontSize = 16 };
-            _small.normal.textColor = new Color(0.92f, 0.92f, 0.98f);
-            _button = new GUIStyle(GUI.skin.button) { fontSize = 17, padding = new RectOffset(14, 14, 8, 8) };
-            _centered = new GUIStyle(GUI.skin.label) { fontSize = 16, alignment = TextAnchor.MiddleCenter };
-            _centered.normal.textColor = new Color(0.92f, 0.92f, 0.98f);
+            _game = GetComponent<PrismGame>();
+            Build();
         }
 
-        // ------------------------------------------------------------------ nicer buttons
-
-        private static readonly System.Collections.Generic.Dictionary<Color, Texture2D> _roundCache =
-            new System.Collections.Generic.Dictionary<Color, Texture2D>();
-
-        /// <summary>A soft rounded-rect button background, shaded a touch lighter at the top.</summary>
-        private static Texture2D Rounded(Color fill)
+        private void OnDestroy()
         {
-            Texture2D cached;
-            if (_roundCache.TryGetValue(fill, out cached) && cached != null) return cached;
-
-            const int w = 96, h = 48;
-            const float radius = 14f;
-            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
-            for (int y = 0; y < h; y++)
-            {
-                for (int x = 0; x < w; x++)
-                {
-                    float dx = Mathf.Max(Mathf.Abs(x + 0.5f - w * 0.5f) - (w * 0.5f - radius), 0f);
-                    float dy = Mathf.Max(Mathf.Abs(y + 0.5f - h * 0.5f) - (h * 0.5f - radius), 0f);
-                    float dist = Mathf.Sqrt(dx * dx + dy * dy) - radius;
-                    float alpha = Mathf.Clamp01(0.5f - dist);
-                    if (alpha <= 0f) { tex.SetPixel(x, y, new Color(0f, 0f, 0f, 0f)); continue; }
-
-                    float t = 1f - (float)y / h;
-                    Color c = Color.Lerp(fill, Color.white, t * 0.25f);
-                    tex.SetPixel(x, y, new Color(c.r, c.g, c.b, alpha));
-                }
-            }
-            tex.Apply();
-            _roundCache[fill] = tex;
-            return tex;
+            if (_root != null) Destroy(_root.gameObject);
         }
 
-        /// <summary>A coloured rounded button, tinted by <paramref name="fill"/>.</summary>
-        private GUIStyle MakeButton(Color fill)
+        private void Build()
         {
-            var style = new GUIStyle(GUI.skin.button)
-            {
-                fontSize = 17,
-                padding = new RectOffset(14, 14, 10, 10),
-                alignment = TextAnchor.MiddleCenter,
-                fontStyle = FontStyle.Bold
-            };
-            style.normal.background = Rounded(fill);
-            style.hover.background = Rounded(Color.Lerp(fill, Color.white, 0.18f));
-            style.active.background = Rounded(Color.Lerp(fill, Color.black, 0.18f));
-            var text = new Color(0.07f, 0.05f, 0.12f);
-            style.normal.textColor = text;
-            style.hover.textColor = text;
-            style.active.textColor = text;
-            return style;
+            _root = DshMobile.Ugui.Root("PrismHud");
+
+            var back = DshMobile.Ugui.Button("Back", _root, "回到宠物小屋", 17, BackTint);
+            DshMobile.Ugui.Place(back.GetComponent<RectTransform>(), new Vector2(1f, 1f),
+                new Vector2(1f, 1f), new Vector2(-16f, -16f), new Vector2(168f, 44f));
+            back.onClick.AddListener(OnBack);
+
+            BuildMenu();
+            BuildPlaying();
+            BuildResult();
+
+            _built = true;
         }
 
         private static Color DifficultyColor(PrismDifficulty difficulty)
@@ -104,144 +83,181 @@ namespace DshMiniGames
         private static Color ModeColor(PrismMode mode)
             => mode == PrismMode.Rush ? new Color(0.95f, 0.45f, 0.36f) : new Color(0.38f, 0.82f, 0.50f);
 
-        private void OnGUI()
+        private void BuildMenu()
         {
-            if (_game == null) return;
-            EnsureStyles();
+            var go = new GameObject("Menu", typeof(RectTransform));
+            go.transform.SetParent(_root, false);
+            DshMobile.Ugui.Center(go.GetComponent<RectTransform>(), 520f, 420f);
+            _menu = go;
+            Transform m = go.transform;
 
-            var safe = DshMobile.MobileUi.SafeArea;
-            float scale = DshMobile.MobileUi.UseTouchControls ? DshMobile.MobileUi.UiScale : 1f;
-            float width = Mathf.Max(320f, safe.width / scale);
-            float height = Mathf.Max(240f, safe.height / scale);
+            var title = DshMobile.Ugui.Text("Title", m, "棱镜 · 序列记忆", 30, TitleColor, TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 40f, 0f, 440f, 60f);
 
-            var previous = GUI.matrix;
-            if (scale != 1f || safe.x != 0f || safe.y != 0f)
+            var sub = DshMobile.Ugui.Text("Subtitle", m, "看、听、复现。点错一个就结束。", 16, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(sub.rectTransform, 40f, 62f, 440f, 24f);
+
+            var diffLabel = DshMobile.Ugui.Text("DiffLabel", m, "难度", 16, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(diffLabel.rectTransform, 40f, 100f, 440f, 24f);
+
+            string[] diffNames = { "彩虹", "光谱", "棱镜" };
+            PrismDifficulty[] diffs = { PrismDifficulty.Rainbow, PrismDifficulty.Spectrum, PrismDifficulty.Prism };
+            float[] xs = { 10f, 185f, 360f };
+            for (int i = 0; i < 3; i++)
             {
-                GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x, safe.y, 0f), Quaternion.identity,
-                    new Vector3(scale, scale, 1f));
+                int index = i;
+                var btn = DshMobile.Ugui.Button("Diff" + i, m, diffNames[i], 17, DifficultyColor(diffs[i]));
+                DshMobile.Ugui.SetRect(btn.GetComponent<RectTransform>(), xs[i], 130f, 150f, 46f);
+                _difficultyButtons[i] = btn;
+                _difficultyLabels[i] = btn.GetComponentInChildren<Text>();
+                btn.onClick.AddListener(() => SelectDifficulty(diffs[index]));
             }
 
-            PointerOverPanel = false;
+            var modeLabel = DshMobile.Ugui.Text("ModeLabel", m, "模式", 16, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(modeLabel.rectTransform, 40f, 190f, 440f, 24f);
 
-            var back = new Rect(width - 178f, 16f, 158f, 38f);
-            if (GUI.Button(back, "回到宠物小屋", _button))
-            {
-                _game.ReturnToRoom();
-            }
-            PointerOverPanel |= back.Contains(Event.current.mousePosition);
+            var mode0 = DshMobile.Ugui.Button("Mode0", m, "经典（无时限）", 17, ModeColor(PrismMode.Classic));
+            DshMobile.Ugui.SetRect(mode0.GetComponent<RectTransform>(), 80f, 220f, 160f, 44f);
+            _modeLabels[0] = mode0.GetComponentInChildren<Text>();
+            mode0.onClick.AddListener(() => SelectMode(PrismMode.Classic));
 
-            switch (_game.State)
-            {
-                case PrismGame.Phase.Menu: DrawMenu(width, height); break;
-                case PrismGame.Phase.Playback: DrawPlaying(width, height, "看它亮起的顺序……"); break;
-                case PrismGame.Phase.Input: DrawPlaying(width, height, "现在点出来"); break;
-                case PrismGame.Phase.Feedback: DrawPlaying(width, height, ""); break;
-                case PrismGame.Phase.Result: DrawResult(width, height); break;
-            }
+            var mode1 = DshMobile.Ugui.Button("Mode1", m, "竞速（限时）", 17, ModeColor(PrismMode.Rush));
+            DshMobile.Ugui.SetRect(mode1.GetComponent<RectTransform>(), 280f, 220f, 160f, 44f);
+            _modeLabels[1] = mode1.GetComponentInChildren<Text>();
+            mode1.onClick.AddListener(() => SelectMode(PrismMode.Rush));
 
-            GUI.matrix = previous;
+            var start = DshMobile.Ugui.Button("Start", m, "开始", 18, GreenTint);
+            DshMobile.Ugui.SetRect(start.GetComponent<RectTransform>(), 130f, 284f, 260f, 54f);
+            start.onClick.AddListener(OnStart);
+
+            _bestLine = DshMobile.Ugui.Text("Best", m, "", 16, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_bestLine.rectTransform, 40f, 352f, 440f, 24f);
+
+            var unlock = DshMobile.Ugui.Text("Unlock", m, "光谱需最高 8 · 棱镜需最高 15（达到后解锁）", 16, Pale,
+                TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(unlock.rectTransform, 40f, 380f, 440f, 24f);
         }
 
-        private void DrawMenu(float width, float height)
+        private void BuildPlaying()
         {
-            float cx = width * 0.5f;
-            GUI.Label(new Rect(cx - 220f, 30f, 440f, 60f), "棱镜 · 序列记忆", _title);
-            GUI.Label(new Rect(cx - 220f, 92f, 440f, 24f), "看、听、复现。点错一个就结束。", Centered());
+            _score = DshMobile.Ugui.Text("Score", _root, "0", 52, Gold, TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.Place(_score.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -12f), new Vector2(400f, 54f));
 
-            float y = 130f;
-            GUI.Label(new Rect(cx - 220f, y, 440f, 24f), "难度", Centered());
-            y += 30f;
+            _progress = DshMobile.Ugui.Text("Progress", _root, "", 16, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.Place(_progress.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -66f), new Vector2(440f, 24f));
 
+            _rushClock = DshMobile.Ugui.Text("RushClock", _root, "", 16, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.Place(_rushClock.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -90f), new Vector2(440f, 30f));
+        }
+
+        private void BuildResult()
+        {
+            var go = new GameObject("ResultPanel", typeof(RectTransform));
+            go.transform.SetParent(_root, false);
+            DshMobile.Ugui.Center(go.GetComponent<RectTransform>(), 440f, 320f);
+
+            var bg = DshMobile.Ugui.Panel("Bg", go.transform, 16f,
+                new Color(0.08f, 0.09f, 0.13f, 0.94f), new Color(1f, 1f, 1f, 0.16f), 1.5f);
+            DshMobile.Ugui.Stretch(bg.rectTransform);
+
+            var title = DshMobile.Ugui.Text("Title", go.transform, "结束", 30, TitleColor, TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 20f, 20f, 400f, 54f);
+
+            _resultScore = DshMobile.Ugui.Text("Score", go.transform, "0", 52, Gold, TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.SetRect(_resultScore.rectTransform, 20f, 78f, 400f, 90f);
+
+            var sub = DshMobile.Ugui.Text("Sub", go.transform, "坚持到的序列长度", 16, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(sub.rectTransform, 20f, 170f, 400f, 24f);
+
+            _resultLine = DshMobile.Ugui.Text("Line", go.transform, "", 16, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_resultLine.rectTransform, 20f, 200f, 400f, 24f);
+
+            var retry = DshMobile.Ugui.Button("Retry", go.transform, "再来一次", 17, GreenTint);
+            DshMobile.Ugui.SetRect(retry.GetComponent<RectTransform>(), 70f, 240f, 300f, 50f);
+            retry.onClick.AddListener(OnStart);
+
+            var back = DshMobile.Ugui.Button("BackToMenu", go.transform, "换难度 / 模式", 17, BackTint);
+            DshMobile.Ugui.SetRect(back.GetComponent<RectTransform>(), 70f, 290f, 300f, 44f);
+            back.onClick.AddListener(OnBackToMenu);
+
+            _resultPanel = go;
+        }
+
+        private void Update()
+        {
+            if (_game == null || !_built) return;
+
+            bool menu = _game.State == PrismGame.Phase.Menu;
+            bool playing = _game.State == PrismGame.Phase.Playback || _game.State == PrismGame.Phase.Input ||
+                           _game.State == PrismGame.Phase.Feedback;
+            bool result = _game.State == PrismGame.Phase.Result;
+
+            _menu.SetActive(menu);
+            _score.gameObject.SetActive(playing);
+            _progress.gameObject.SetActive(playing);
+            _resultPanel.SetActive(result);
+
+            if (menu)
+            {
+                _bestLine.text = $"最高 {_game.Best}　·　宠物币 {DshMobile.PetWallet.Coins:N0}";
+                RefreshMenuSelection();
+            }
+
+            if (playing)
+            {
+                _score.text = _game.CurrentLength.ToString();
+                string progress = _game.State == PrismGame.Phase.Input || _game.State == PrismGame.Phase.Feedback
+                    ? "已对 " + _game.InputStep + " / " + _game.CurrentLength
+                    : (_game.State == PrismGame.Phase.Playback ? "看它亮起的顺序……" : "");
+                _progress.text = progress;
+
+                bool rush = _game.Mode == PrismMode.Rush && _game.State == PrismGame.Phase.Input;
+                _rushClock.gameObject.SetActive(rush);
+                if (rush) _rushClock.text = "剩余 " + Mathf.CeilToInt(_game.RushClock) + " 秒";
+            }
+
+            if (result)
+            {
+                _resultScore.text = _game.Score.ToString();
+                _resultLine.text = $"最高 {_game.Best}　·　本局赚了 {_game.RunCoins} 币";
+            }
+        }
+
+        private void SelectDifficulty(PrismDifficulty difficulty) => _selectedDifficulty = difficulty;
+
+        private void SelectMode(PrismMode mode) => _selectedMode = mode;
+
+        private void RefreshMenuSelection()
+        {
             int unlocked = (int)PrismRules.UnlockedFor(_game.Best);
-            DrawDifficultyButton(new Rect(cx - 250f, y, 150f, 46f), "彩虹", PrismDifficulty.Rainbow, unlocked);
-            DrawDifficultyButton(new Rect(cx - 80f, y, 150f, 46f), "光谱", PrismDifficulty.Spectrum, unlocked);
-            DrawDifficultyButton(new Rect(cx + 90f, y, 150f, 46f), "棱镜", PrismDifficulty.Prism, unlocked);
-            y += 58f;
-
-            GUI.Label(new Rect(cx - 220f, y, 440f, 24f), "模式", Centered());
-            y += 30f;
-            DrawModeButton(new Rect(cx - 180f, y, 160f, 44f), "经典（无时限）", PrismMode.Classic);
-            DrawModeButton(new Rect(cx + 20f, y, 160f, 44f), "竞速（限时）", PrismMode.Rush);
-            y += 60f;
-
-            if (GUI.Button(new Rect(cx - 130f, y, 260f, 54f), "开始", MakeButton(new Color(0.40f, 0.90f, 0.60f))))
+            PrismDifficulty[] diffs = { PrismDifficulty.Rainbow, PrismDifficulty.Spectrum, PrismDifficulty.Prism };
+            for (int i = 0; i < 3; i++)
             {
-                _game.StartRun(_selectedDifficulty, _selectedMode);
+                bool locked = (int)diffs[i] > unlocked;
+                _difficultyButtons[i].interactable = !locked;
+                _difficultyLabels[i].text = locked ? DifficultyName(diffs[i]) + "（未解锁）" : DifficultyName(diffs[i]);
+                _difficultyLabels[i].color = !locked && _selectedDifficulty == diffs[i] ? Selected : Color.white;
             }
 
-            GUI.Label(new Rect(cx - 220f, y + 70f, 440f, 24f),
-                $"最高 {_game.Best}　·　🐾 {DshMobile.PetWallet.Coins:N0}", Centered());
-            GUI.Label(new Rect(cx - 220f, y + 96f, 440f, 40f),
-                "光谱需最高 8 · 棱镜需最高 15（达到后解锁）", Centered());
+            _modeLabels[0].color = _selectedMode == PrismMode.Classic ? Selected : Color.white;
+            _modeLabels[1].color = _selectedMode == PrismMode.Rush ? Selected : Color.white;
         }
 
-        private void DrawDifficultyButton(Rect rect, string label, PrismDifficulty difficulty, int unlocked)
+        private static string DifficultyName(PrismDifficulty difficulty)
         {
-            bool locked = (int)difficulty > unlocked;
-            bool selected = _selectedDifficulty == difficulty;
-            GUI.enabled = !locked;
-            var style = MakeButton(selected
-                ? Color.Lerp(DifficultyColor(difficulty), Color.white, 0.25f)
-                : DifficultyColor(difficulty));
-            if (GUI.Button(rect, locked ? label + "（未解锁）" : label, style))
+            switch (difficulty)
             {
-                _selectedDifficulty = difficulty;
-            }
-            GUI.enabled = true;
-        }
-
-        private void DrawModeButton(Rect rect, string label, PrismMode mode)
-        {
-            bool selected = _selectedMode == mode;
-            var style = MakeButton(selected ? Color.Lerp(ModeColor(mode), Color.white, 0.25f) : ModeColor(mode));
-            if (GUI.Button(rect, label, style))
-            {
-                _selectedMode = mode;
+                case PrismDifficulty.Spectrum: return "光谱";
+                case PrismDifficulty.Prism: return "棱镜";
+                default: return "彩虹";
             }
         }
 
-        private GUIStyle Centered()
-        {
-            _centered.alignment = TextAnchor.MiddleCenter;
-            return _centered;
-        }
-
-        private void DrawPlaying(float width, float height, string hint)
-        {
-            float cx = width * 0.5f;
-            GUI.Label(new Rect(cx - 200f, 12f, 400f, 54f), _game.CurrentLength.ToString(), _big);
-
-            // A progress line: how many notes of this sequence are already correctly tapped.
-            string progress = _game.State == PrismGame.Phase.Input || _game.State == PrismGame.Phase.Feedback
-                ? "已对 " + _game.InputStep + " / " + _game.CurrentLength
-                : hint;
-            GUI.Label(new Rect(cx - 200f, 66f, 400f, 24f), progress, Centered());
-
-            if (_game.Mode == PrismMode.Rush && _game.State == PrismGame.Phase.Input)
-            {
-                GUI.Label(new Rect(cx - 200f, 90f, 400f, 30f),
-                    "剩余 " + Mathf.CeilToInt(_game.RushClock) + " 秒", Centered());
-            }
-        }
-
-        private void DrawResult(float width, float height)
-        {
-            float cx = width * 0.5f;
-            GUI.Label(new Rect(cx - 220f, 50f, 440f, 54f), "结束", _title);
-            GUI.Label(new Rect(cx - 220f, 118f, 440f, 90f), _game.Score.ToString(), _big);
-            GUI.Label(new Rect(cx - 220f, 210f, 440f, 24f), "坚持到的序列长度", Centered());
-            GUI.Label(new Rect(cx - 220f, 240f, 440f, 24f),
-                $"最高 {_game.Best}　·　本局赚了 {_game.RunCoins} 币", Centered());
-
-            float y = 290f;
-            if (GUI.Button(new Rect(cx - 150f, y, 300f, 50f), "再来一次", MakeButton(new Color(0.40f, 0.90f, 0.60f))))
-            {
-                _game.StartRun(_selectedDifficulty, _selectedMode);
-            }
-            if (GUI.Button(new Rect(cx - 150f, y + 60f, 300f, 50f), "换难度 / 模式", MakeButton(new Color(0.40f, 0.60f, 0.92f))))
-            {
-                _game.BackToMenu();
-            }
-        }
+        private void OnBack() => _game?.ReturnToRoom();
+        private void OnStart() { if (_game != null) _game.StartRun(_selectedDifficulty, _selectedMode); }
+        private void OnBackToMenu() => _game?.BackToMenu();
     }
 }

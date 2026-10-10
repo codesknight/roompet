@@ -93,7 +93,11 @@ namespace DshMiniGames
 
         private void OnMouseDown()
         {
-            if (PrismHud.PointerOverPanel) return;
+            // A tap over a uGUI panel/button belongs to the UI, not the pad behind it — the old
+            // PointerOverPanel flag did the same job, now against uGUI's real raycast.
+            if (UnityEngine.EventSystems.EventSystem.current != null &&
+                UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
+                return;
             if (Game != null) Game.TapPad(this);
         }
     }
