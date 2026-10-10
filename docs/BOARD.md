@@ -71,6 +71,15 @@
 - [x] 文档：本文件 + REQUIREMENTS 阶段 40 + CHANGELOG 第 40 轮 + DEVLOG 坑 150 + README 计数
 - [ ] ⏳ **真机确认**：① 宠物是更立体的方块动物；② 走路/蹦跳/转向还动；③ 观感不对可回退
 
+## 这一轮（第 41 轮）的验收清单
+
+- [x] **uGUI 基础层**：`com.unity.ugui` 包 + `UguiFont`（动态中文字体）+ `Ugui`（运行时 Canvas/Scaler/Raycaster/EventSystem + Text/Image/圆角九宫格精灵/按钮工厂）
+- [x] **版本管理**：固定基线 tag `v0.2.0-preuGUI` + `feature/uGUI` 分支，可回退
+- [x] **验证**：385/385 全绿（+7 条 `UguiTests`）；运行中探针 Text 用 Noto Sans CJK SC、中文算出 `preferredWidth>0`、圆角 Sprite 2r+2 且 Sliced
+- [x] 文档：本文件 + REQUIREMENTS 阶段 41 + CHANGELOG 第 41 轮 + DEVLOG 坑 151–152 + README 计数 + GAMEPLAY 取舍更新
+- [ ] ⏳ **后续轮**：逐个 HUD（FlyBird / Slice / JumpQuest / CatchFruit / AngryBirds / Tunnel / Prism / HudController / PetHud / StartMenuHud）迁到 uGUI，全部迁完才 merge 回 main 并发布
+- [ ] ⏳ **真机确认**：uGUI 中文字体渲染、按钮可点、缩放/安全区正确
+
 ## 明确推迟或不做
 
 | 项 | 状态 | 原因 |

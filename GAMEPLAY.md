@@ -213,8 +213,9 @@ Assets/Resources/Runner/Items/*.fbx    Kenney Food Kit 模型（CC0）
 
 ## 已知取舍
 
-- **UI 用的是 IMGUI**（`OnGUI`）而不是 uGUI/TMP。这个工程没有装 `com.unity.ugui`，
-  IMGUI 零依赖、立刻能跑。要换成正式 UI 的话需要先加包再重写 `HudController`。
+- **UI 正在从 IMGUI 迁到 uGUI**（第 41 轮起）。此前全是 `OnGUI`；现在已引入 `com.unity.ugui` 包 +
+  `DshMobile.Ugui`（运行时 Canvas / 控件工厂）与 `UguiFont`（运行时中文字体，仍零字体资产）。各 HUD
+  逐个迁到 uGUI（先小游戏、后跑酷与宠物房间），迁完前 IMGUI 与 uGUI 并存；跑酷 HUD 仍是 `HudController`（IMGUI）。
 - **玩家移动用 transform 驱动**（kinematic Rigidbody 只为触发事件）。
   注意 `Rigidbody.interpolation` **必须保持 None**：kinematic 体一开插值，
   Unity 会用物理状态回写 transform，吃掉一部分位移，导致计分与实际位移脱节

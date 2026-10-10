@@ -4,6 +4,29 @@
 
 ## 未发布
 
+### 第 41 轮：uGUI 迁移 · 基础层——动态 CJK 字体 + 运行时 Canvas + 圆角九宫格精灵/按钮工厂
+
+**你要的**：按计划把 IMGUI 界面逐步迁到 uGUI，走和宠物身体替换一样的版本管理 + 可回退。
+
+**🧱 基础层（本轮）**
+
+- 引入 **`com.unity.ugui` 1.0.0** 包依赖（工程此前零 uGUI，`UnityEngine.UI` / `EventSystem` 全缺），
+  并写进提交里的 `manifest.json` / `packages-lock.json`（本机 MCP 的 `file:` 路径仍由 skip-worktree 留在本地）。
+- `UguiFont`：**运行时从操作系统解析中文字体**（Android→Noto Sans CJK SC，桌面→微软雅黑/黑体），
+  工程仍然不提交任何字体文件；`CoversCjk` 校验「宠 / 房」字形。
+- `Ugui`：运行时引导 **Canvas + CanvasScaler + GraphicRaycaster + EventSystem**（懒创建、跨场景存活），
+  以及 **Text / Image / 圆角 Panel（九宫格精灵）/ Button** 工厂；`SetRect` 用左上角原点对齐 IMGUI 的
+  设计像素坐标，迁移时布局数字可照搬。
+- `UguiRounded`：把 `UiSkin` 的圆角面板搬成 **九宫格 Sprite**（半径 = 切片边框，纹理 2r+2）。
+
+**🔖 版本管理（可回退）**：固定基线 tag **`v0.2.0-preuGUI`**（永不移动）+ 专用分支 `feature/uGUI` 开发，
+验证通过才 merge。
+
+**测试**：378 → **385**（新增 `UguiTests` 7 条）。运行中探针：Text 用 Noto Sans CJK SC、中文「宠物房间」
+算出 `preferredWidth > 0`、圆角 Sprite 尺寸 = 半径×2+2 且 Sliced。
+
+⏳ **本轮只铺基础层**：各 HUD 逐个迁到 uGUI 在后续轮进行，全部迁完才 merge 回 main 并发布。
+
 ### 第 40 轮：宠物身体替换——程序化方块换成 Kenney Cube Pets
 
 **你要的**：按计划逐步替换宠物身体，做好版本管理、失败可回退。

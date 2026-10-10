@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **378/378 通过**（虚拟宠物 217 + 跑酷 15 + 手机端 49 + 小游戏 97），EditMode |
+| 测试 | **385/385 通过**（虚拟宠物 217 + 跑酷 15 + 手机端 56 + 小游戏 97），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -1007,6 +1007,18 @@
     局部坐标再当偏移。**凡是"拿世界包围盒去摆子物体"，先问一句这坐标是世界的还是局部的。** 另外
     "逐步替换 + 可回退"的版本管理三板斧：**固定基线 tag（永不移动）+ 专用 feature 分支 + 每物种可
     单独回退**（`ModelName` 留空就回程序化身体），比"直接在主分支上大改"稳得多。
+151. **工厂方法名和 Unity 的 uGUI 类型重名时，方法体会把类型"挡"掉。** 写 `Ugui.Image(...)` 时，方法体内
+     再写 `AddComponent<Image>()`，`Image` 会被解析成**那个静态方法**而不是 `UnityEngine.UI.Image`，编译
+     报 CS0119 "is a method, which is not valid in the given context"；`UguiRounded.Sprite(...)` 里写
+     `Sprite.Create` 同理。修法：把类型全限定成 `UnityEngine.UI.Image` / `UnityEngine.Sprite`；更省心的是
+     **工厂方法直接起 `MakeText/MakeImage/MakePanel` 之类的名字**，从根上避开 Text/Image/Button/Sprite 这
+     几个高频重名。**给方法起和常用类型一样的名字，是自找的类型遮蔽坑。**
+152. **加新包依赖时，别让 skip-worktree 的 manifest 把真依赖一起吞了。** 本工程把 `Packages/manifest.json`
+     与 `packages-lock.json` 设成 skip-worktree，是为了藏本机 MCP 的 `file:` 绝对路径。但 `com.unity.ugui`
+     是**真依赖**——C# 代码要引用 `UnityEngine.UI`，换个机器 clone 下来 manifest 里没有它就编译失败。做法：
+     `git update-index --no-skip-worktree` → 写"去掉 MCP 条目"的干净版 → `git add` → 提交 → 写回带 MCP 的
+     本地版 → 重新 `--skip-worktree`（干净版用 `-replace` 只删 MCP 那一条，其余保持原样）。**skip-worktree
+     只适合"藏本机私货"，真依赖必须进提交。**
 
 ---
 
@@ -1031,7 +1043,8 @@ Assets\MiniGames\Scenes\AngryBirds.unity  # 弹弓小鸟（随机关卡，保证
 # 仓库
 git remote -v                       # origin = github.com/codesknight/roompet
 # 提交里不含 unity-mcp/ 与 .venv/，也不含本机的包路径：
-# Packages/manifest.json 与 packages-lock.json 的本机改动被 skip-worktree 隐藏了。
+# Packages/manifest.json 与 packages-lock.json 的本机改动被 skip-worktree 隐藏了，
+# 但第 41 轮起 com.unity.ugui 已写进提交（去 MCP 条目的干净版）。
 # 这两行要是被 reset 冲掉，一条命令装回来：
 powershell -File scripts/enable-mcp-package.ps1
 # GitHub 侧的标签/里程碑/issue/release 也能一键重建（幂等）：

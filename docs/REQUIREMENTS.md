@@ -525,6 +525,18 @@
 | R40.4 | 全套回归 | 新增 1 条单测，378/378 全绿 | 测试全绿 ✅ |
 
 
+## 阶段 41：IMGUI→uGUI · 基础层
+
+| 编号 | 需求 | 实现 | 验收证据 |
+|---|---|---|---|
+| R41.1 | 引入 uGUI 能力 | `com.unity.ugui` 1.0.0（工程此前零 uGUI），写进提交的 `manifest.json`/`packages-lock.json`（本机 MCP 的 `file:` 路径仍由 skip-worktree 留本地） | 反射探针：`UnityEngine.UI.Text`/`EventSystem` 全部 OK ✅ |
+| R41.2 | 中文字体不靠资产 | `UguiFont` 运行时 `CreateDynamicFontFromOSFont` 解析（Noto Sans CJK SC / 微软雅黑 / 黑体…），`CoversCjk` 校验字形 | 探针 `HasCharacter('宠')=True`；单测 2 条 ✅ |
+| R41.3 | 运行时 Canvas / 控件工厂 | `Ugui.EnsureCanvas`（Canvas+Scaler+Raycaster）+ 懒建 `EventSystem`；`Text/Image/Panel/Button` 工厂；`SetRect` 左上角原点对齐 IMGUI 设计坐标 | 单测 4 条（Text 字体/中文、Panel Sliced、SetRect 布局）✅ |
+| R41.4 | 圆角面板精灵 | `UguiRounded.Sprite` 九宫格（半径=边框、纹理 2r+2、超采样抗锯齿） | 单测：边框=半径、纹理尺寸、按色缓存 ✅ |
+| R41.5 | 版本管理、可回退 | 固定基线 tag `v0.2.0-preuGUI` + `feature/uGUI` 分支，验证通过才 merge | tag + 分支已推送 ✅ |
+| R41.6 | 全套回归 | 新增 7 条单测，385/385 全绿 | 测试全绿 ✅ |
+
+
 ## 非功能需求 / 设计约束
 
 

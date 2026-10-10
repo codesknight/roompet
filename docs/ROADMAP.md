@@ -75,7 +75,11 @@
 
 - [x] **宠物身体替换（Kenney Cube Pets）**：第 40 轮做了——`PetSpecies.ModelName` 映射 7 物种，
   `PetAvatar.TryBuildModel()` 加载静态模型、整体当 Rig 保整体动画、缺失回退程序化身体；版本管理
-  固定基线 tag + feature 分支可回退。DEVLOG 坑 150。（下一步：IMGUI→uGUI）
+  固定基线 tag + feature 分支可回退。DEVLOG 坑 150。（下一阶段：IMGUI→uGUI，第 41 轮起）
+
+- [x] **IMGUI→uGUI · 基础层**：第 41 轮做了——引入 `com.unity.ugui` 包；`UguiFont` 运行时解析中文字体
+  （零字体文件入库）；`Ugui` 运行时 Canvas/Scaler/Raycaster/EventSystem + Text/Image/圆角九宫格精灵/按钮
+  工厂；固定基线 tag `v0.2.0-preuGUI` + `feature/uGUI` 分支可回退。后续逐个 HUD 迁移。DEVLOG 坑 151–152。
 
 - [x] **语音输出（TTS）**：第 10 轮做了，第 11 轮修掉了**真机上完全不响**的两个原因
   （Android 11+ 的 `queries` 包可见性、初始化失败被永久记住），并加了引擎状态自述、
