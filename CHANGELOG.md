@@ -36,7 +36,17 @@
 - 验证：385/385 全绿；运行中探针 `FlapTarget.onClick` → 状态 Ready→Flying ✅；面板 `raycastTarget=true`
   遮挡全屏按钮。
 
-⏳ **其余 HUD**（Slice / JumpQuest / CatchFruit / AngryBirds / Tunnel / Prism / 跑酷 / PetHud / StartMenuHud）
+**🔪 第二个 HUD 已迁（本轮续）：Slice（切水果）**
+
+- `SliceHud` 迁到 uGUI：分数 / 命数·模式 / 目标或最高分 / +n·炸弹弹字 / 暂停·开始·过关·结算四面板 /
+  回到小屋·暂停·模式三按钮，全部 `Ugui` 动态搭建。
+- **刀光不动**：它早已是 `SliceGame` 里的**世界空间**刀带（`LineRenderer`），不在 HUD 里——旧 IMGUI
+  HUD 里那套世界→屏幕转换是当年"刀不跟手"的元凶，本轮直接消失而不是重画。
+- **输入不动**：切水果的输入是**滑动**（读 `MobileTouch.Gesture` + 鼠标），滑动需要位移，所以点按钮
+  不会误切水果；游戏的 `ReadBlade` 一行未改，只迁了"画"。
+- 验证：385/385 全绿；运行中探针 分数/命数/面板文本正确、`StartRun`→Playing、`SetPaused` 开关 ✅。
+
+⏳ **其余 HUD**（JumpQuest / CatchFruit / AngryBirds / Tunnel / Prism / 跑酷 / PetHud / StartMenuHud）
 逐个迁到 uGUI，全部迁完才 merge 回 main 并发布。
 
 ### 第 40 轮：宠物身体替换——程序化方块换成 Kenney Cube Pets

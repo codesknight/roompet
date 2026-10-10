@@ -78,7 +78,8 @@
 - [x] **验证**：385/385 全绿（+7 条 `UguiTests`）；运行中探针 Text 用 Noto Sans CJK SC、中文算出 `preferredWidth>0`、圆角 Sprite 2r+2 且 Sliced
 - [x] 文档：本文件 + REQUIREMENTS 阶段 41 + CHANGELOG 第 41 轮 + DEVLOG 坑 151–153 + README 计数 + GAMEPLAY 取舍更新
 - [x] **FlyBird HUD 迁到 uGUI**：全屏透明按钮吃点击 + 面板遮挡，游戏里的鼠标/触控扇翅膀路径删除；运行中探针 `FlapTarget.onClick` → Ready→Flying ✅
-- [ ] ⏳ **后续轮**：其余 HUD（Slice / JumpQuest / CatchFruit / AngryBirds / Tunnel / Prism / HudController / PetHud / StartMenuHud）逐个迁到 uGUI，全部迁完才 merge 回 main 并发布
+- [x] **Slice HUD 迁到 uGUI**：分数/命数/四面板/三按钮迁到 uGUI，刀光保持世界空间不动、滑动输入不动；运行中探针 文本正确、StartRun→Playing、SetPaused 开关 ✅
+- [ ] ⏳ **后续轮**：其余 HUD（JumpQuest / CatchFruit / AngryBirds / Tunnel / Prism / HudController / PetHud / StartMenuHud）逐个迁到 uGUI，全部迁完才 merge 回 main 并发布
 - [ ] ⏳ **真机确认**：uGUI 中文字体渲染、按钮可点、缩放/安全区正确（FlyBird 已可在真机看全屏点按 + 面板遮挡）
 
 ## 明确推迟或不做
