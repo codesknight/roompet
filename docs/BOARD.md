@@ -84,7 +84,7 @@
 - [x] **Tunnel + Prism HUD 迁到 uGUI（小游戏全部迁完 7/7）**：Tunnel 浮动摇杆用圆形精灵 + `ScreenPointToLocalPointInRectangle` 绘制、灵敏度用 `Ugui.Slider`；Prism 难度锁禁用 + `PrismPad` 用 `IsPointerOverGameObject` 挡 UI。运行中探针 Tunnel `StartRun`→Running、Prism `StartRun`→Playback + 6 垫子 ✅
 - [x] **跑酷 HudController 迁到 uGUI**：主菜单/关卡选择/暂停/结算/通关五屏 + 局内 HUD（分数/进度条/道具条/提示）+ 手势提示；手势输入不动，键盘快捷键搬到 `Input.GetKeyDown`。运行中探针 主菜单文本正确、`StartRun`/`TogglePause`/`Fail` 状态转换 ✅
 - [x] **StartMenuHud 迁到 uGUI**：四按钮 + 设置（5 开/关胶囊 + 音量滑条）+ 玩法介绍 ScrollRect + 退出确认 + 淡入淡出；`Toggled` 纯函数保留。运行中探针 副标题/版本正确、音量滑条/ScrollRect/胶囊开关构建 ✅
-- [ ] ⏳ **PetHud（最后、最大，4490 行）逐块迁**：✅ 第一刀 toast + 光标提示；✅ 第二刀 聊天；✅ 第三刀 宠物卡；✅ 第四刀 摆放条 + 地图/门面板 + 设置；剩余：移动端控制 + 拼图/记忆/提示/日历/收集/商城。全迁完才 merge 回 main 并发布
+- [ ] ⏳ **PetHud（最后、最大，4490 行）逐块迁**：✅ 第一刀 toast + 光标提示；✅ 第二刀 聊天；✅ 第三刀 宠物卡；✅ 第四刀 摆放条 + 地图 + 设置 + 记事本/日历；剩余：移动端控制 + 拼图/记忆/提示/收集/商城。全迁完才 merge 回 main 并发布
 - [ ] ⏳ **真机确认**：uGUI 中文字体渲染、按钮可点、缩放/安全区正确（FlyBird 已可在真机看全屏点按 + 面板遮挡）
 
 ## 明确推迟或不做
