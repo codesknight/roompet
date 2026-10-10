@@ -1,320 +1,327 @@
 ﻿using UnityEngine;
+using UnityEngine.UI;
 
 namespace DshMiniGames
 {
     /// <summary>
-    /// 愤怒的小鸟's interface: pigs left, birds left, the score — and the two things a slingshot game
-    /// needs that are not obvious: the aim guide (the drag is invisible without it) and a hint.
+    /// 愤怒的小鸟's interface, now in uGUI: pigs left, birds left, the score, the aim-guide hint,
+    /// and the level/result/pause/generating panels.
     ///
-    /// The hint is not a canned tip: it is the verified shot the generator used to prove the level is
-    /// clearable, so pressing it shows an angle and a power that are known to work on *this* layout.
+    /// The sling drag is NOT migrated (like Slice's blade it stays in the game); the only input
+    /// change is that the game's <c>PointerWorld</c> now ignores the pointer while it is over a
+    /// uGUI button, so tapping 暂停 / 重开这关 / 看提示 no longer also yanks the sling — the old
+    /// IMGUI <c>PointerOverPanel</c> flag was set but never read, which is exactly that bug.
     /// </summary>
     public class AngryBirdsHud : MonoBehaviour
     {
         private AngryBirdsGame _game;
-        private GUIStyle _title;
-        private GUIStyle _small;
-        private GUIStyle _big;
-        private GUIStyle _centred;
-        private Texture2D _white;
+        private RectTransform _root;
 
-        /// <summary>True while the pointer is over a panel, so taps there do not pull the sling.</summary>
-        public static bool PointerOverPanel { get; private set; }
+        private Text _score;
+        private Text _status;
+        private Text _controlHint;
 
-        private void Awake() => _game = GetComponent<AngryBirdsGame>();
+        private Button _pause;
+        private Text _pauseLabel;
+        private Button _hint;
+        private Button _arc;
+        private Text _arcLabel;
 
-        private void EnsureStyles()
+        private Text _hintText;
+
+        private GameObject _generatingPanel;
+        private Text _generatingLine;
+
+        private GameObject _readyPanel;
+        private Text _readyLine1;
+
+        private GameObject _resultPanel;
+        private Text _resultTitle;
+        private Text _resultLine1;
+        private Text _resultLine2;
+        private Text _resultLine3;
+        private GameObject _againButton;
+        private Text _againLabel;
+
+        private GameObject _pausedPanel;
+        private Text _pausedLine1;
+
+        private bool _built;
+
+        private static readonly Color Gold = new Color(1f, 0.97f, 0.82f);
+        private static readonly Color Cream = new Color(1f, 0.98f, 0.9f);
+        private static readonly Color White = new Color(1f, 1f, 1f);
+        private static readonly Color HintYellow = new Color(1f, 0.94f, 0.6f);
+        private static readonly Color BackTint = new Color(0.30f, 0.40f, 0.58f);
+        private static readonly Color GreenTint = new Color(0.30f, 0.55f, 0.35f);
+
+        private void Awake()
         {
-            if (_title != null) return;
-
-            _title = new GUIStyle(GUI.skin.label) { fontSize = 26, fontStyle = FontStyle.Bold };
-            _title.normal.textColor = new Color(1f, 0.98f, 0.9f);
-
-            _big = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 46,
-                fontStyle = FontStyle.Bold,
-                alignment = TextAnchor.MiddleCenter
-            };
-            _big.normal.textColor = new Color(1f, 0.97f, 0.82f);
-
-            _small = new GUIStyle(GUI.skin.label) { fontSize = 15 };
-            _small.normal.textColor = new Color(1f, 1f, 1f);
-
-            _centred = new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter };
-
-            _white = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-            _white.SetPixel(0, 0, Color.white);
-            _white.Apply();
-            _white.hideFlags = HideFlags.HideAndDontSave;
+            _game = GetComponent<AngryBirdsGame>();
+            Build();
         }
 
-        private void OnGUI()
+        private void OnDestroy()
         {
-            if (_game == null) return;
-            EnsureStyles();
-
-            var safe = DshMobile.MobileUi.SafeArea;
-            float scale = DshMobile.MobileUi.UseTouchControls ? DshMobile.MobileUi.UiScale : 1f;
-            float width = Mathf.Max(320f, safe.width / scale);
-            float height = Mathf.Max(240f, safe.height / scale);
-
-            var previous = GUI.matrix;
-            if (scale != 1f || safe.x != 0f || safe.y != 0f)
-            {
-                GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x, safe.y, 0f), Quaternion.identity,
-                    new Vector3(scale, scale, 1f));
-            }
-
-            if (_game.Generating)
-            {
-                DrawGenerating(width, height);
-                DrawButtons(width);
-                GUI.matrix = previous;
-                return;
-            }
-
-            PointerOverPanel = false;
-
-            // The arc is no longer drawn here: it is a row of world-space dots owned by the game, because
-            // this interface's coordinate space is not the world's (see AngryBirdsGame.BuildArcDots).
-            // Drawing it through GUI.matrix is what put the whole parabola in the wrong place on a phone.
-            DrawStatus(width);
-            DrawButtons(width);
-            DrawHint(width, height);
-
-            if (_game.Paused)
-            {
-                DrawPaused(width, height);
-            }
-            else
-            {
-                switch (_game.State)
-                {
-                    case AngryBirdsGame.Phase.Ready:
-                    case AngryBirdsGame.Phase.Aiming:
-                        DrawReadyPanel(width, height);
-                        break;
-                    case AngryBirdsGame.Phase.Cleared:
-                        DrawResult(width, height, true);
-                        break;
-                    case AngryBirdsGame.Phase.Failed:
-                        DrawResult(width, height, false);
-                        break;
-                }
-            }
-
-            GUI.matrix = previous;
+            if (_root != null) Destroy(_root.gameObject);
         }
 
-        /// <summary>
-        /// The "building and verifying this level" screen.
-        ///
-        /// It is a real state, not a spinner for show: every level is built, settled, played through and
-        /// checked for a solution before the player sees it, and the count of attempts is the honest
-        /// number of times the generator has thrown a layout away for being unstable or unwinnable.
-        /// </summary>
-        private void DrawGenerating(float width, float height)
+        private void Build()
         {
-            var panel = new Rect(width * 0.5f - 230f, height * 0.36f, 460f, 168f);
-            DshMobile.UiSkin.Panel(panel, 16f, new Color(0.09f, 0.10f, 0.14f, 0.94f),
-                new Color(1f, 1f, 1f, 0.16f), 1.5f);
+            _root = DshMobile.Ugui.Root("AngryBirdsHud");
 
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 16f, panel.width - 40f, 34f),
-                "第 " + _game.Stage + " 关", _title);
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 58f, panel.width - 40f, 24f),
-                "正在搭关卡并验证…（第 " + Mathf.Max(1, _game.GenerationAttempt) + " 次尝试）", _centred);
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 88f, panel.width - 40f, 46f),
-                "每一关都是随机搭的，但这一关必须先被机器打通过，才会交给你。", _small);
+            _score = DshMobile.Ugui.Text("Score", _root, "0", 46, Gold, TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.Place(_score.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -10f), new Vector2(280f, 46f));
 
-            PointerOverPanel = true;
+            _status = DshMobile.Ugui.Text("Status", _root, "", 15, White, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.Place(_status.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -60f), new Vector2(560f, 22f));
+
+            _controlHint = DshMobile.Ugui.Text("ControlHint", _root, "", 15, White, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.Place(_controlHint.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -82f), new Vector2(560f, 22f));
+
+            // Top-right: back, pause.
+            var back = DshMobile.Ugui.Button("Back", _root, "回到宠物小屋", 17, BackTint);
+            DshMobile.Ugui.Place(back.GetComponent<RectTransform>(), new Vector2(1f, 1f),
+                new Vector2(1f, 1f), new Vector2(-16f, -16f), new Vector2(168f, 44f));
+            back.onClick.AddListener(OnBack);
+
+            _pause = DshMobile.Ugui.Button("Pause", _root, "暂停", 17, BackTint);
+            DshMobile.Ugui.Place(_pause.GetComponent<RectTransform>(), new Vector2(1f, 1f),
+                new Vector2(1f, 1f), new Vector2(-16f, -68f), new Vector2(168f, 44f));
+            _pauseLabel = _pause.GetComponentInChildren<Text>();
+            _pause.onClick.AddListener(OnPause);
+
+            // Top-left: hint, restart, arc.
+            _hint = DshMobile.Ugui.Button("Hint", _root, "看提示", 17, BackTint);
+            DshMobile.Ugui.Place(_hint.GetComponent<RectTransform>(), new Vector2(0f, 1f),
+                new Vector2(0f, 1f), new Vector2(16f, -16f), new Vector2(130f, 44f));
+            _hint.onClick.AddListener(OnHint);
+
+            var restart = DshMobile.Ugui.Button("Restart", _root, "重开这关", 17, BackTint);
+            DshMobile.Ugui.Place(restart.GetComponent<RectTransform>(), new Vector2(0f, 1f),
+                new Vector2(0f, 1f), new Vector2(16f, -68f), new Vector2(130f, 44f));
+            restart.onClick.AddListener(OnRestart);
+
+            _arc = DshMobile.Ugui.Button("Arc", _root, "虚线：开", 17, BackTint);
+            DshMobile.Ugui.Place(_arc.GetComponent<RectTransform>(), new Vector2(0f, 1f),
+                new Vector2(0f, 1f), new Vector2(16f, -120f), new Vector2(130f, 44f));
+            _arcLabel = _arc.GetComponentInChildren<Text>();
+            _arc.onClick.AddListener(OnArc);
+
+            _hintText = DshMobile.Ugui.Text("HintText", _root, "", 16, HintYellow,
+                TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.Place(_hintText.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -140f), new Vector2(560f, 44f));
+
+            BuildGeneratingPanel();
+            BuildReadyPanel();
+            BuildResultPanel();
+            BuildPausedPanel();
+
+            _built = true;
         }
 
-        private void DrawStatus(float width)
+        private void BuildGeneratingPanel()
         {
-            GUI.Label(new Rect(width * 0.5f - 140f, 10f, 280f, 46f), _game.Score.ToString(), _big);
+            var go = Panel("GeneratingPanel", 460f, 168f);
+
+            var title = DshMobile.Ugui.Text("Title", go.transform, "关卡生成中", 26, Cream,
+                TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 20f, 16f, 420f, 34f);
+
+            _generatingLine = DshMobile.Ugui.Text("Line", go.transform, "", 15, White,
+                TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_generatingLine.rectTransform, 20f, 58f, 420f, 24f);
+
+            var line2 = DshMobile.Ugui.Text("Line2", go.transform,
+                "每一关都是随机搭的，但这一关必须先被机器打通过，才会交给你。", 15, White, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(line2.rectTransform, 20f, 88f, 420f, 46f);
+
+            _generatingPanel = go;
+        }
+
+        private void BuildReadyPanel()
+        {
+            var go = Panel("ReadyPanel", 500f, 116f);
+
+            var title = DshMobile.Ugui.Text("Title", go.transform, "", 26, Cream,
+                TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 18f, 10f, 464f, 30f);
+
+            _readyLine1 = DshMobile.Ugui.Text("Line1", go.transform, "", 15, White, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_readyLine1.rectTransform, 18f, 44f, 464f, 24f);
+
+            var line2 = DshMobile.Ugui.Text("Line2", go.transform,
+                "每一关都是随机搭的，但都验证过一定打得通。", 15, White, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(line2.rectTransform, 18f, 70f, 464f, 24f);
+
+            _readyPanel = go;
+        }
+
+        private void BuildResultPanel()
+        {
+            var go = Panel("ResultPanel", 480f, 250f);
+
+            _resultTitle = DshMobile.Ugui.Text("Title", go.transform, "", 26, Cream,
+                TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.SetRect(_resultTitle.rectTransform, 20f, 14f, 440f, 36f);
+
+            _resultLine1 = DshMobile.Ugui.Text("Line1", go.transform, "", 15, White, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_resultLine1.rectTransform, 20f, 56f, 440f, 24f);
+
+            _resultLine2 = DshMobile.Ugui.Text("Line2", go.transform, "", 15, White, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_resultLine2.rectTransform, 20f, 82f, 440f, 24f);
+
+            _resultLine3 = DshMobile.Ugui.Text("Line3", go.transform, "", 15, White, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_resultLine3.rectTransform, 20f, 112f, 440f, 24f);
+
+            _againButton = DshMobile.Ugui.Button("Next", go.transform, "下一关", 17, GreenTint).gameObject;
+            DshMobile.Ugui.SetRect(_againButton.GetComponent<RectTransform>(), 24f, 136f, 200f, 48f);
+            _againLabel = _againButton.GetComponentInChildren<Text>();
+            _againButton.GetComponent<Button>().onClick.AddListener(OnNextOrRetry);
+
+            var home = DshMobile.Ugui.Button("Home", go.transform, "回到宠物小屋", 17, BackTint);
+            DshMobile.Ugui.SetRect(home.GetComponent<RectTransform>(), 256f, 136f, 200f, 48f);
+            home.onClick.AddListener(OnBack);
+
+            _resultPanel = go;
+        }
+
+        private void BuildPausedPanel()
+        {
+            var go = Panel("PausedPanel", 420f, 216f);
+
+            var title = DshMobile.Ugui.Text("Title", go.transform, "暂停", 26, Cream,
+                TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 20f, 16f, 380f, 36f);
+
+            _pausedLine1 = DshMobile.Ugui.Text("Line1", go.transform, "", 15, White, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_pausedLine1.rectTransform, 20f, 58f, 380f, 24f);
+
+            var resume = DshMobile.Ugui.Button("Resume", go.transform, "继续", 17, GreenTint);
+            DshMobile.Ugui.SetRect(resume.GetComponent<RectTransform>(), 24f, 106f, 180f, 46f);
+            resume.onClick.AddListener(OnResume);
+
+            var restart = DshMobile.Ugui.Button("RestartPaused", go.transform, "重开这关", 17, BackTint);
+            DshMobile.Ugui.SetRect(restart.GetComponent<RectTransform>(), 216f, 106f, 180f, 46f);
+            restart.onClick.AddListener(OnRestart);
+
+            var home = DshMobile.Ugui.Button("HomePaused", go.transform, "回到宠物小屋", 17, BackTint);
+            DshMobile.Ugui.SetRect(home.GetComponent<RectTransform>(), 24f, 158f, 372f, 46f);
+            home.onClick.AddListener(OnBack);
+
+            _pausedPanel = go;
+        }
+
+        private GameObject Panel(string name, float w, float h)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(_root, false);
+            DshMobile.Ugui.Center(go.GetComponent<RectTransform>(), w, h);
+            var bg = DshMobile.Ugui.Panel("Bg", go.transform, 16f,
+                new Color(0.09f, 0.10f, 0.14f, 0.94f), new Color(1f, 1f, 1f, 0.16f), 1.5f);
+            DshMobile.Ugui.Stretch(bg.rectTransform);
+            return go;
+        }
+
+        private void Update()
+        {
+            if (_game == null || !_built) return;
+
+            _score.text = _game.Score.ToString();
 
             var level = _game.Level;
             int pigsLeft = level == null ? 0 : level.PigsAlive;
-
             string birds = "";
-            for (int i = 0; i < (level == null ? 0 : level.Birds); i++)
+            for (int i = 0; i < (level == null ? 0 : level.Birds); i++) birds += i < _game.BirdsLeft ? "● " : "○ ";
+            _status.text = "第 " + _game.Stage + " 关　·　剩 " + pigsLeft + " 只猪　·　" + birds;
+
+            _controlHint.text = DshMobile.MobileUi.UseTouchControls
+                ? "按住小鸟往后拉，松手发射"
+                : "按住鼠标往后拉，松手发射";
+
+            _pauseLabel.text = _game.Paused ? "继续" : "暂停";
+            _hint.gameObject.SetActive(_game.HasHint);
+            _arcLabel.text = _game.ShowTrajectory ? "虚线：开" : "虚线：关";
+
+            bool hintVisible = _game.HintVisible && !string.IsNullOrEmpty(_game.HintText);
+            _hintText.gameObject.SetActive(hintVisible);
+            if (hintVisible) _hintText.text = _game.HintText;
+
+            bool generating = _game.Generating;
+            bool paused = _game.Paused;
+            bool ready = !generating && !paused && (_game.State == AngryBirdsGame.Phase.Ready || _game.State == AngryBirdsGame.Phase.Aiming);
+            bool result = !generating && !paused && (_game.State == AngryBirdsGame.Phase.Cleared || _game.State == AngryBirdsGame.Phase.Failed);
+
+            _generatingPanel.SetActive(generating);
+            _readyPanel.SetActive(ready);
+            _resultPanel.SetActive(result);
+            _pausedPanel.SetActive(paused);
+
+            if (generating)
             {
-                birds += i < _game.BirdsLeft ? "● " : "○ ";
+                _generatingLine.text = "正在搭关卡并验证…（第 " + Mathf.Max(1, _game.GenerationAttempt) + " 次尝试）";
             }
 
-            GUI.Label(new Rect(width * 0.5f - 230f, 60f, 460f, 22f),
-                "第 " + _game.Stage + " 关　·　剩 " + pigsLeft + " 只猪　·　" + birds, _centred);
-
-            GUI.Label(new Rect(width * 0.5f - 230f, 82f, 460f, 22f),
-                DshMobile.MobileUi.UseTouchControls
-                    ? "按住小鸟往后拉，松手发射"
-                    : "按住鼠标往后拉，松手发射", _centred);
-        }
-
-        private void DrawButtons(float width)
-        {
-            var back = new Rect(width - 178f, 16f, 158f, 38f);
-            if (GUI.Button(back, "回到宠物小屋", ButtonStyle()))
+            if (ready && level != null)
             {
-                _game.ReturnToRoom();
+                var title = _readyPanel.transform.Find("Title").GetComponent<Text>();
+                title.text = "第 " + _game.Stage + " 关";
+                _readyLine1.text = BirdLevels.Blurb(level);
             }
-            PointerOverPanel |= back.Contains(Event.current.mousePosition);
 
-            // The pause button sits above the hint so a thumb reaching for it on a phone does not
-            // graze "重开这关", which throws the shot away.
-            var pause = new Rect(width - 178f, 62f, 158f, 38f);
-            if (GUI.Button(pause, _game.Paused ? "继续" : "暂停", ButtonStyle()))
+            if (result)
             {
-                _game.SetPaused(!_game.Paused);
-            }
-            PointerOverPanel |= pause.Contains(Event.current.mousePosition);
-
-            if (_game.HasHint)
-            {
-                var hint = new Rect(20f, 16f, 130f, 38f);
-                if (GUI.Button(hint, "看提示", ButtonStyle()))
+                bool cleared = _game.State == AngryBirdsGame.Phase.Cleared;
+                _resultTitle.text = cleared ? "过关！" : "鸟用完了";
+                _resultLine1.text = "得分 " + _game.Score + "　·　剩 " + _game.BirdsLeft + " 只鸟";
+                if (cleared)
                 {
-                    _game.HintRequested = true;
+                    _resultLine2.text = _game.Rank + "　·　赚了 " + _game.RunCoins + " 个宠物币";
+                    if (_game.HasNextStage)
+                    {
+                        _resultLine3.gameObject.SetActive(false);
+                        _againButton.SetActive(true);
+                        _againLabel.text = "下一关";
+                    }
+                    else
+                    {
+                        _resultLine3.gameObject.SetActive(true);
+                        _resultLine3.text = "十二关都过了，厉害。";
+                        _againButton.SetActive(true);
+                        _againLabel.text = "从头再来";
+                    }
                 }
-                PointerOverPanel |= hint.Contains(Event.current.mousePosition);
-            }
-
-            var restart = new Rect(20f, 62f, 130f, 38f);
-            if (GUI.Button(restart, "重开这关", ButtonStyle()))
-            {
-                _game.RestartStage();
-            }
-            PointerOverPanel |= restart.Contains(Event.current.mousePosition);
-
-            // The arc toggle: on by default, because a first-time player needs it, and one press away
-            // from off for the player who would rather read the shot themselves.
-            var arc = new Rect(20f, 108f, 130f, 38f);
-            if (GUI.Button(arc, _game.ShowTrajectory ? "虚线：开" : "虚线：关", ButtonStyle()))
-            {
-                _game.ShowTrajectory = !_game.ShowTrajectory;
-            }
-            PointerOverPanel |= arc.Contains(Event.current.mousePosition);
-        }
-
-        private void DrawPaused(float width, float height)
-        {
-            var panel = new Rect(width * 0.5f - 210f, height * 0.3f, 420f, 216f);
-            DshMobile.UiSkin.Panel(panel, 16f, new Color(0.09f, 0.10f, 0.14f, 0.95f),
-                new Color(1f, 1f, 1f, 0.16f), 1.5f);
-
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 16f, panel.width - 40f, 36f), "暂停", _title);
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 58f, panel.width - 40f, 24f),
-                "第 " + _game.Stage + " 关　·　得分 " + _game.Score, _small);
-
-            var button = ButtonStyle();
-            if (GUI.Button(new Rect(panel.x + 24f, panel.y + 106f, 180f, 46f), "继续", button))
-            {
-                _game.SetPaused(false);
-            }
-
-            if (GUI.Button(new Rect(panel.xMax - 204f, panel.y + 106f, 180f, 46f), "重开这关", button))
-            {
-                _game.RestartStage();
-            }
-
-            if (GUI.Button(new Rect(panel.x + 24f, panel.y + 158f, 180f, 46f), "回到宠物小屋", button))
-            {
-                _game.ReturnToRoom();
-            }
-
-            PointerOverPanel = true;
-        }
-
-        private void DrawHint(float width, float height)
-        {
-            if (!_game.HintVisible || string.IsNullOrEmpty(_game.HintText)) return;
-
-            var text = new GUIStyle(_small)
-            {
-                alignment = TextAnchor.MiddleCenter,
-                wordWrap = true,
-                fontStyle = FontStyle.Bold
-            };
-            text.normal.textColor = new Color(1f, 0.94f, 0.6f);
-
-            GUI.Label(new Rect(width * 0.5f - 240f, height * 0.24f, 480f, 44f), _game.HintText, text);
-        }
-
-        private void DrawReadyPanel(float width, float height)
-        {
-            var level = _game.Level;
-            if (level == null) return;
-
-            var panel = new Rect(width * 0.5f - 250f, height * 0.62f, 500f, 116f);
-            DshMobile.UiSkin.Panel(panel, 16f, new Color(0.09f, 0.10f, 0.14f, 0.86f),
-                new Color(1f, 1f, 1f, 0.14f), 1.5f);
-
-            GUI.Label(new Rect(panel.x + 18f, panel.y + 10f, panel.width - 36f, 30f),
-                "第 " + _game.Stage + " 关", _title);
-            GUI.Label(new Rect(panel.x + 18f, panel.y + 44f, panel.width - 36f, 24f),
-                BirdLevels.Blurb(level), _small);
-            GUI.Label(new Rect(panel.x + 18f, panel.y + 70f, panel.width - 36f, 24f),
-                "每一关都是随机搭的，但都验证过一定打得通。", _small);
-
-            PointerOverPanel = true;
-        }
-
-        private void DrawResult(float width, float height, bool cleared)
-        {
-            var panel = new Rect(width * 0.5f - 240f, height * 0.26f, 480f, 250f);
-            DshMobile.UiSkin.Panel(panel, 16f, new Color(0.09f, 0.10f, 0.14f, 0.94f),
-                new Color(1f, 1f, 1f, 0.16f), 1.5f);
-
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 14f, panel.width - 40f, 36f),
-                cleared ? "过关！" : "鸟用完了", _title);
-
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 56f, panel.width - 40f, 24f),
-                "得分 " + _game.Score + "　·　剩 " + _game.BirdsLeft + " 只鸟", _small);
-
-            if (cleared)
-            {
-                GUI.Label(new Rect(panel.x + 20f, panel.y + 82f, panel.width - 40f, 24f),
-                    _game.Rank + "　·　赚了 " + _game.RunCoins + " 个宠物币", _small);
-            }
-            else
-            {
-                GUI.Label(new Rect(panel.x + 20f, panel.y + 82f, panel.width - 40f, 24f),
-                    "再试一次，或者按「看提示」看验证过的角度。", _small);
-            }
-
-            var button = ButtonStyle();
-
-            if (cleared && _game.HasNextStage)
-            {
-                if (GUI.Button(new Rect(panel.x + 24f, panel.y + 136f, 200f, 48f), "下一关", button))
+                else
                 {
-                    _game.NextStage();
+                    _resultLine2.text = "再试一次，或者按「看提示」看验证过的角度。";
+                    _resultLine3.gameObject.SetActive(false);
+                    _againButton.SetActive(true);
+                    _againLabel.text = "再来一次";
                 }
             }
-            else if (cleared)
-            {
-                GUI.Label(new Rect(panel.x + 20f, panel.y + 112f, panel.width - 40f, 24f),
-                    "十二关都过了，厉害。", _small);
-                if (GUI.Button(new Rect(panel.x + 24f, panel.y + 136f, 200f, 48f), "从头再来", button))
-                {
-                    _game.LoadStage(1);
-                }
-            }
-            else if (GUI.Button(new Rect(panel.x + 24f, panel.y + 136f, 200f, 48f), "再来一次", button))
-            {
-                _game.RestartStage();
-            }
 
-            if (GUI.Button(new Rect(panel.xMax - 224f, panel.y + 136f, 200f, 48f), "回到宠物小屋", button))
+            if (paused)
             {
-                _game.ReturnToRoom();
+                _pausedLine1.text = "第 " + _game.Stage + " 关　·　得分 " + _game.Score;
             }
-
-            PointerOverPanel = true;
         }
 
-        private static GUIStyle ButtonStyle()
-            => new GUIStyle(GUI.skin.button) { fontSize = 17, padding = new RectOffset(14, 14, 8, 8) };
+        private void OnBack() => _game?.ReturnToRoom();
+        private void OnPause() => _game?.SetPaused(!_game.Paused);
+        private void OnHint() { if (_game != null) _game.HintRequested = true; }
+        private void OnRestart() => _game?.RestartStage();
+        private void OnArc() { if (_game != null) _game.ShowTrajectory = !_game.ShowTrajectory; }
+        private void OnResume() => _game?.SetPaused(false);
+        private void OnNextOrRetry()
+        {
+            if (_game == null) return;
+            if (_game.State == AngryBirdsGame.Phase.Cleared && _game.HasNextStage) _game.NextStage();
+            else if (_game.State == AngryBirdsGame.Phase.Cleared) _game.LoadStage(1);
+            else _game.RestartStage();
+        }
     }
 }

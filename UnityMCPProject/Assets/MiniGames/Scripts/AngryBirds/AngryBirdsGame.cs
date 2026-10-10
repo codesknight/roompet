@@ -862,6 +862,13 @@ namespace DshMiniGames
 
         private Vector2? PointerWorld()
         {
+            // A pointer over a uGUI button belongs to the button, not the sling: without this,
+            // tapping 暂停 / 重开这关 / 看提示 would also yank the sling and fire a wasted shot
+            // (the old PointerOverPanel flag was set but never read, which was exactly that bug).
+            if (UnityEngine.EventSystems.EventSystem.current != null &&
+                UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
+                return null;
+
             var gesture = DshMobile.MobileTouch.Gesture;
             if (gesture.IsActive) return WorldPoint(gesture.Position);
             if (Input.GetMouseButton(0))
