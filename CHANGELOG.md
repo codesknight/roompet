@@ -58,7 +58,16 @@
 - 验证：385/385 全绿；运行中探针 JumpQuest `HoldArea.Pressed/Released` → `HoldInput/ReleaseInput` 正确、
   CatchFruit `DragBy(0.5)` → Playing ✅。
 
-⏳ **其余 HUD**（AngryBirds / Tunnel / Prism / 跑酷 / PetHud / StartMenuHud）
+**🐷 第五个 HUD 已迁（本轮续）：AngryBirds（弹弓小鸟）**
+
+- `AngryBirdsHud` 迁到 uGUI：分数 / 关卡·剩猪·剩鸟 / 操作提示 / 「看提示」文案 / 生成中·开始·过关·暂停四面板 /
+  回到小屋·暂停·看提示·重开·虚线五按钮，全部 `Ugui` 动态搭建。
+- **弹弓拖拽输入不动**（世界空间 `PointerWorld` 读手势+鼠标）；**顺手修掉一个真 bug**：旧 `PointerOverPanel`
+  一直设却没人读，点「暂停/重开/看提示」的同时也会把弹弓拉开、松手白打一发——现在 `PointerWorld` 开头用
+  `IsPointerOverGameObject()` 挡掉，指针在按钮上就归按钮、不在就归弹弓。
+- 验证：385/385 全绿；运行中探针 五按钮/四面板/关卡文案/剩猪剩鸟文本正确、关卡生成后 state=Ready ✅。
+
+⏳ **其余 HUD**（Tunnel / Prism / 跑酷 / PetHud / StartMenuHud）
 逐个迁到 uGUI，全部迁完才 merge 回 main 并发布。
 
 ### 第 40 轮：宠物身体替换——程序化方块换成 Kenney Cube Pets

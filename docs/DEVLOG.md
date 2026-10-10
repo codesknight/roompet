@@ -1033,6 +1033,12 @@
      （onClick 只在抬手，蓄力会丢）；滑动/拖拽（Slice、CatchFruit）→ 输入本就在游戏或 HUD 的 `Update` 里
      读 `MobileTouch.Gesture` + 鼠标，**别动它、只迁显示**——滑动要的是位移，硬套全屏按钮反而挡住手指。
      分错档的代价很直观：蓄力游戏用 onClick 会变成"点一下才开始蓄力"，滑动游戏套全屏按钮会把拖拽吃掉。
+155. **拖拽玩法（拉弓/滑动）和按钮会抢同一个手指：别在 HUD 里记"鼠标在不在面板上"，在游戏读指针处用
+     `IsPointerOverGameObject` 挡掉。** AngryBirds 旧 IMGUI 有个 `PointerOverPanel` 一直设却没人读，结果点
+     「暂停 / 重开 / 看提示」的同时也把弹弓拉开、松手白打一发。uGUI 一行修好：`PointerWorld()` 开头
+     `if (EventSystem.current.IsPointerOverGameObject()) return null;`——指针在按钮上就归按钮、不在就归弹弓。
+     **凡是有"世界空间拖拽 + 屏幕按钮"的游戏，都在"读指针"那一处挡，而不是在"画 UI"那一处记状态**——
+     记状态有一帧延迟，指针一进一出按钮，拖拽状态就被带歪了。
 
 ---
 
