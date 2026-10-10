@@ -485,6 +485,7 @@ namespace DshPet
 
         /// <summary>Chat is collapsed by default on a phone: the thumbs live down there.</summary>
         private bool _chatExpanded;
+        private bool _englishChat;
 
         /// <summary>Whether the status panel shows the tuning lines (phone layout).</summary>
         private bool _statusDetail;
@@ -794,6 +795,7 @@ namespace DshPet
             BuildPromptPanel();
             BuildMemoryPanel();
             BuildPuzzlePanel();
+            BuildEnglishPanel();
             BuildMobileControls();
             BuildOverlayUi();
 
@@ -835,6 +837,7 @@ namespace DshPet
             SyncPromptPanel();
             SyncMemoryPanel();
             SyncPuzzlePanel();
+            SyncEnglishPanel();
             SyncMobileControls();
             SyncOverlayUi();
         }
@@ -1168,7 +1171,15 @@ namespace DshPet
         {
             var gm = PetGameManager.Instance;
             if (gm == null || gm.IsThinking) return;
-            gm.Talk(_input);
+            string text = _input;
+            if (_englishChat)
+            {
+                // The English corner's chat mode asks the pet to answer in English — once, then the
+                // flag drops so normal chat is unchanged.
+                text = "(用英语回答，简短一点) " + text;
+                _englishChat = false;
+            }
+            gm.Talk(text);
             _input = "";
             _chatInput.text = "";
         }
@@ -1680,6 +1691,8 @@ namespace DshPet
                 () => { gm.CloseDoorPrompt(); OpenPuzzle(gm); });
             y = BuildMapGame(_mapContent, y, "🃏 记忆配对", "翻开两张一样的卡片就留下，全配完给宠物币。",
                 () => { gm.CloseDoorPrompt(); OpenMemoryMatch(gm); });
+            y = BuildMapGame(_mapContent, y, "🌍 英语角", "背单词、做测试、练口语，还能和宠物用英文聊天。",
+                () => { gm.CloseDoorPrompt(); OpenEnglish(gm); });
 
             _mapContent.sizeDelta = new Vector2(-8f, y + 12f);
         }
@@ -3463,6 +3476,212 @@ namespace DshPet
             _puzzlePaid = false;
             _puzzleStartedAt = Time.realtimeSinceStartup;
             SetPuzzleMessage("重新打乱了，慢慢来。");
+        }
+
+        // --------------------------------------------------------------- english corner (uGUI)
+
+        private bool _showEnglish;
+        private int _englishTab;               // 0=背单词 1=测验 2=口语
+        private int _englishIndex;
+        private int _englishScore;
+        private int _englishTotal;
+        private EnglishWord[] _englishOptions;
+        private int _englishAnswerIndex;
+        private string _englishFeedback = "";
+        private System.Random _englishRng = new System.Random();
+
+        private UnityEngine.UI.Image _englishPanel;
+        private UnityEngine.UI.Text _englishWordText;
+        private UnityEngine.UI.Text _englishMeaningText;
+        private UnityEngine.UI.Text _englishExampleText;
+        private UnityEngine.UI.Text _englishStatusText;
+        private readonly List<UnityEngine.UI.Text> _englishTabLabels = new List<UnityEngine.UI.Text>();
+        private readonly List<UnityEngine.UI.Button> _englishOptionButtons = new List<UnityEngine.UI.Button>();
+        private UnityEngine.UI.Button _englishPrevBtn;
+        private UnityEngine.UI.Button _englishNextBtn;
+        private UnityEngine.UI.Button _englishSpeakBtn;
+
+        private void BuildEnglishPanel()
+        {
+            _englishPanel = DshMobile.Ugui.Panel("EnglishPanel", _root, 18f,
+                new Color(0.11f, 0.10f, 0.14f, 1f), new Color(1f, 1f, 1f, 0.14f), 2f);
+            _englishPanel.gameObject.SetActive(false);
+            var p = _englishPanel.rectTransform;
+
+            var title = DshMobile.Ugui.Text("Title", p, "英语角", 24, new Color(1f, 0.94f, 0.82f), UnityEngine.TextAnchor.MiddleLeft, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 18f, 14f, 200f, 32f);
+
+            var close = DshMobile.Ugui.Button("Close", p, "关闭", 16, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRectRight(close.GetComponent<RectTransform>(), 18f, 16f, 76f, 30f);
+            close.onClick.AddListener(() => _showEnglish = false);
+
+            string[] tabs = { "背单词", "测验", "口语" };
+            for (int i = 0; i < tabs.Length; i++)
+            {
+                var tab = DshMobile.Ugui.Button("Tab", p, tabs[i], 16, new Color(0.30f, 0.40f, 0.58f));
+                DshMobile.Ugui.SetRect(tab.GetComponent<RectTransform>(), 18f + i * 110f, 48f, 100f, 34f);
+                _englishTabLabels.Add(tab.GetComponentInChildren<UnityEngine.UI.Text>());
+                int captured = i;
+                tab.onClick.AddListener(() => SetEnglishTab(captured));
+            }
+
+            _englishWordText = DshMobile.Ugui.Text("Word", p, "", 30, Color.white, UnityEngine.TextAnchor.MiddleCenter, true);
+            _englishWordText.rectTransform.anchorMin = _englishWordText.rectTransform.anchorMax = new Vector2(0f, 1f);
+            _englishWordText.rectTransform.pivot = new Vector2(0f, 1f);
+            _englishWordText.rectTransform.anchoredPosition = new Vector2(18f, -96f);
+            _englishWordText.rectTransform.sizeDelta = new Vector2(-36f, 40f);
+
+            _englishMeaningText = DshMobile.Ugui.Text("Meaning", p, "", 20, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleCenter);
+            _englishMeaningText.rectTransform.anchorMin = _englishMeaningText.rectTransform.anchorMax = new Vector2(0f, 1f);
+            _englishMeaningText.rectTransform.pivot = new Vector2(0f, 1f);
+            _englishMeaningText.rectTransform.anchoredPosition = new Vector2(18f, -144f);
+            _englishMeaningText.rectTransform.sizeDelta = new Vector2(-36f, 30f);
+
+            _englishExampleText = DshMobile.Ugui.Text("Example", p, "", 16, new Color(0.7f, 0.82f, 0.95f), UnityEngine.TextAnchor.UpperLeft);
+            _englishExampleText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            _englishExampleText.rectTransform.anchorMin = _englishExampleText.rectTransform.anchorMax = new Vector2(0f, 1f);
+            _englishExampleText.rectTransform.pivot = new Vector2(0f, 1f);
+            _englishExampleText.rectTransform.anchoredPosition = new Vector2(18f, -184f);
+            _englishExampleText.rectTransform.sizeDelta = new Vector2(-36f, 60f);
+
+            for (int i = 0; i < 4; i++)
+            {
+                var opt = DshMobile.Ugui.Button("Opt" + i, p, "", 15, new Color(0.28f, 0.36f, 0.55f));
+                opt.GetComponent<RectTransform>().anchorMin = opt.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 1f);
+                opt.GetComponent<RectTransform>().pivot = new Vector2(0f, 1f);
+                opt.GetComponent<RectTransform>().anchoredPosition = new Vector2(18f, -(252f + i * 48f));
+                opt.GetComponent<RectTransform>().sizeDelta = new Vector2(-36f, 42f);
+                int captured = i;
+                opt.onClick.AddListener(() => OnEnglishOption(captured));
+                _englishOptionButtons.Add(opt);
+            }
+
+            _englishPrevBtn = DshMobile.Ugui.Button("Prev", p, "上一个", 16, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRectBottomLeft(_englishPrevBtn.GetComponent<RectTransform>(), 18f, 48f, 120f, 36f);
+            _englishPrevBtn.onClick.AddListener(() => { _englishIndex = (_englishIndex - 1 + EnglishCorner.WordCount) % EnglishCorner.WordCount; });
+
+            _englishNextBtn = DshMobile.Ugui.Button("Next", p, "下一个", 16, new Color(0.30f, 0.55f, 0.35f));
+            DshMobile.Ugui.SetRectBottomLeft(_englishNextBtn.GetComponent<RectTransform>(), 148f, 48f, 120f, 36f);
+            _englishNextBtn.onClick.AddListener(() => { _englishIndex = (_englishIndex + 1) % EnglishCorner.WordCount; if (_englishTab == 1) AskEnglishQuiz(); });
+
+            _englishSpeakBtn = DshMobile.Ugui.Button("Speak", p, "🔊 朗读", 16, new Color(0.30f, 0.55f, 0.35f));
+            DshMobile.Ugui.SetRectBottomLeft(_englishSpeakBtn.GetComponent<RectTransform>(), 278f, 48f, 120f, 36f);
+            _englishSpeakBtn.onClick.AddListener(EnglishSpeak);
+
+            _englishStatusText = DshMobile.Ugui.Text("Status", p, "", 15, new Color(0.7f, 0.95f, 0.75f), UnityEngine.TextAnchor.MiddleLeft);
+            DshMobile.Ugui.SetRectBottomLeft(_englishStatusText.rectTransform, 18f, 8f, 300f, 30f);
+
+            var chat = DshMobile.Ugui.Button("Chat", p, "和宠物英文聊天", 16, new Color(0.80f, 0.42f, 0.22f));
+            DshMobile.Ugui.SetRectBottomRight(chat.GetComponent<RectTransform>(), 18f, 8f, 190f, 36f);
+            chat.onClick.AddListener(EnglishChat);
+        }
+
+        public void OpenEnglish(PetGameManager gm)
+        {
+            _showEnglish = !_showEnglish;
+            if (!_showEnglish) return;
+            _englishIndex = EnglishCorner.RandomIndex(_englishRng);
+            _englishScore = 0;
+            _englishTotal = 0;
+            _englishFeedback = "先背几个单词，再来测一测。";
+            SetEnglishTab(0);
+        }
+
+        private void SetEnglishTab(int tab)
+        {
+            _englishTab = tab;
+            if (tab == 1) AskEnglishQuiz();
+        }
+
+        private void AskEnglishQuiz()
+        {
+            _englishOptions = EnglishCorner.QuizOptions(_englishIndex, _englishRng, 4);
+            _englishAnswerIndex = -1;
+            for (int i = 0; i < _englishOptions.Length; i++)
+                if (_englishOptions[i].Meaning == EnglishCorner.WordAt(_englishIndex).Meaning) _englishAnswerIndex = i;
+            _englishFeedback = "";
+        }
+
+        private void OnEnglishOption(int i)
+        {
+            if (_englishTab != 1 || _englishOptions == null || i >= _englishOptions.Length) return;
+            _englishTotal++;
+            if (i == _englishAnswerIndex)
+            {
+                _englishScore++;
+                _englishFeedback = "✓ 答对了！";
+            }
+            else
+            {
+                _englishFeedback = "✗ 答案是「" + EnglishCorner.WordAt(_englishIndex).Meaning + "」";
+            }
+            _englishIndex = EnglishCorner.RandomIndex(_englishRng);
+            AskEnglishQuiz();
+        }
+
+        private void EnglishSpeak()
+        {
+            var w = EnglishCorner.WordAt(_englishIndex);
+            DshMobile.MobileTts.Speak(w.Example, 1f, 1f);
+        }
+
+        private void EnglishChat()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            _showEnglish = false;
+            _chatExpanded = true;
+            _englishChat = true;
+            FillEditConfig(gm);
+        }
+
+        private void SyncEnglishPanel()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            bool open = _showEnglish;
+            _englishPanel.gameObject.SetActive(open);
+            _modalScrim.gameObject.SetActive(open || _showSettings || _showJournal || _showCollection || _showFurnish || _showPromptPreview || _showMemory || _showPuzzle || gm.DoorPromptOpen);
+            if (!open) return;
+
+            var w = Mathf.Min(640f, DesignWidth - 32f);
+            var h = Mathf.Min(560f, DesignHeight - 32f);
+            _englishPanel.rectTransform.anchorMin = _englishPanel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            _englishPanel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            _englishPanel.rectTransform.anchoredPosition = Vector2.zero;
+            _englishPanel.rectTransform.sizeDelta = new Vector2(w, h);
+
+            for (int i = 0; i < _englishTabLabels.Count; i++)
+            {
+                _englishTabLabels[i].color = i == _englishTab ? new Color(1f, 0.92f, 0.7f) : Color.white;
+                _englishTabLabels[i].transform.parent.GetComponent<UnityEngine.UI.Image>().color =
+                    i == _englishTab ? new Color(0.36f, 0.66f, 0.44f, 0.6f) : new Color(0.24f, 0.26f, 0.34f, 0.6f);
+            }
+
+            var word = EnglishCorner.WordAt(_englishIndex);
+
+            bool quiz = _englishTab == 1;
+            bool speak = _englishTab == 2;
+
+            _englishWordText.text = word.Word;
+            _englishMeaningText.text = word.Meaning;
+            _englishExampleText.text = word.Example;
+            _englishStatusText.text = quiz
+                ? $"答对 {_englishScore}/{_englishTotal}　{_englishFeedback}"
+                : _englishFeedback;
+
+            // Option buttons only exist for the quiz; learn/speak show the nav buttons instead.
+            for (int i = 0; i < _englishOptionButtons.Count; i++)
+            {
+                var btn = _englishOptionButtons[i];
+                bool show = quiz && _englishOptions != null && i < _englishOptions.Length;
+                btn.gameObject.SetActive(show);
+                if (show) btn.GetComponentInChildren<UnityEngine.UI.Text>().text = _englishOptions[i].Meaning;
+            }
+
+            _englishPrevBtn.gameObject.SetActive(!quiz);
+            _englishNextBtn.gameObject.SetActive(!quiz);
+            _englishSpeakBtn.gameObject.SetActive(!quiz);
         }
 
         // ----------------------------------------------------------- mobile controls (uGUI)
