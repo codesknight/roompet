@@ -189,6 +189,18 @@ namespace DshPet
         private UnityEngine.UI.Text _memoryFooter;
         private int _builtMemoryBoardCount = -1;
 
+        // uGUI puzzle panel (fourth slice, ninth piece).
+        private UnityEngine.UI.Image _puzzlePanel;
+        private UnityEngine.UI.Text _puzzleStatus;
+        private UnityEngine.UI.Text _puzzleMsg;
+        private RectTransform _puzzleBoard;
+        private readonly List<UnityEngine.UI.RawImage> _puzzleTiles = new List<UnityEngine.UI.RawImage>();
+        private readonly List<UnityEngine.UI.Text> _puzzleNumbers = new List<UnityEngine.UI.Text>();
+        private readonly List<UnityEngine.UI.Button> _puzzleButtons = new List<UnityEngine.UI.Button>();
+        private UnityEngine.UI.RawImage _puzzlePreview;
+        private UnityEngine.UI.Text _puzzleFooter;
+        private UnityEngine.UI.Text _puzzleToggleLabel;
+
         /// <summary>Set by hoverable world objects; shown near the cursor.</summary>
         public static void SetCursorHint(string hint) => _cursorHint = hint;
 
@@ -379,7 +391,7 @@ namespace DshPet
             if (Mobile) DrawMobileControls(gm, layout);
 
             // The map panel (door prompt) is now uGUI — see SyncMapPanel.
-            if (_showPuzzle) DrawPuzzle(gm);
+            // The puzzle panel is now uGUI — see SyncPuzzlePanel.
             // The memory match panel is now uGUI — see SyncMemoryPanel.
             // The settings panel is now uGUI — see SyncSettingsPanel.
             // The prompt preview is now uGUI — see SyncPromptPanel.
@@ -748,6 +760,7 @@ namespace DshPet
             BuildFurnishPanel();
             BuildPromptPanel();
             BuildMemoryPanel();
+            BuildPuzzlePanel();
         }
 
         private void Update()
@@ -781,6 +794,7 @@ namespace DshPet
             SyncFurnishPanel();
             SyncPromptPanel();
             SyncMemoryPanel();
+            SyncPuzzlePanel();
         }
 
         /// <summary>
@@ -3114,6 +3128,146 @@ namespace DshPet
                     face.gameObject.SetActive(false);
                 }
             }
+        }
+
+        // ------------------------------------------------------------------ puzzle (uGUI)
+
+        private void BuildPuzzlePanel()
+        {
+            _puzzlePanel = DshMobile.Ugui.Panel("PuzzlePanel", _root, 18f,
+                new Color(0.11f, 0.10f, 0.14f, 1f), new Color(1f, 1f, 1f, 0.14f), 2f);
+            _puzzlePanel.gameObject.SetActive(false);
+            var p = _puzzlePanel.rectTransform;
+
+            var title = DshMobile.Ugui.Text("Title", p, "拼图", 24, new Color(1f, 0.94f, 0.82f), UnityEngine.TextAnchor.MiddleLeft, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 18f, 14f, 200f, 32f);
+
+            var close = DshMobile.Ugui.Button("Close", p, "关闭", 16, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRect(close.GetComponent<RectTransform>(), -94f, 16f, 76f, 30f);
+            close.onClick.AddListener(() => { _showPuzzle = false; SyncMusic(); });
+
+            _puzzleStatus = DshMobile.Ugui.Text("Status", p, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleLeft);
+            DshMobile.Ugui.SetRect(_puzzleStatus.rectTransform, 18f, 50f, 600f, 22f);
+
+            _puzzleMsg = DshMobile.Ugui.Text("Msg", p, "", 14, new Color(0.7f, 0.95f, 0.75f), UnityEngine.TextAnchor.MiddleLeft);
+            DshMobile.Ugui.SetRect(_puzzleMsg.rectTransform, 18f, 74f, 600f, 22f);
+
+            _puzzleBoard = new GameObject("Board", typeof(RectTransform)).GetComponent<RectTransform>();
+            _puzzleBoard.SetParent(p, false);
+
+            for (int i = 0; i < PetPuzzle.TileCount; i++)
+            {
+                var tile = DshMobile.Ugui.RawImage("Tile", _puzzleBoard, null, Color.white);
+                tile.gameObject.AddComponent<UnityEngine.UI.Button>();
+                var btn = tile.GetComponent<UnityEngine.UI.Button>();
+                btn.targetGraphic = tile;
+                var number = DshMobile.Ugui.Text("Num", tile.transform, "", 14, new Color(1f, 1f, 1f, 0.72f), UnityEngine.TextAnchor.UpperLeft);
+                DshMobile.Ugui.Stretch(number.rectTransform);
+                number.rectTransform.offsetMin = new Vector2(5f, 5f);
+                number.rectTransform.offsetMax = new Vector2(-5f, -5f);
+                int index = i;
+                btn.onClick.AddListener(() => OnSlideTile(index));
+                _puzzleTiles.Add(tile);
+                _puzzleNumbers.Add(number);
+                _puzzleButtons.Add(btn);
+            }
+
+            _puzzlePreview = DshMobile.Ugui.RawImage("Preview", p, null, Color.white);
+            _puzzlePreview.rectTransform.anchorMin = _puzzlePreview.rectTransform.anchorMax = new Vector2(1f, 0.5f);
+            _puzzlePreview.rectTransform.pivot = new Vector2(1f, 0.5f);
+            _puzzlePreview.rectTransform.anchoredPosition = new Vector2(-12f, -20f);
+            _puzzlePreview.rectTransform.sizeDelta = new Vector2(72f, 72f);
+            _puzzlePreview.gameObject.SetActive(false);
+
+            var restart = DshMobile.Ugui.Button("Restart", p, "打乱重来", 16, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRect(restart.GetComponent<RectTransform>(), 18f, -44f, 150f, 34f);
+            restart.onClick.AddListener(OnShufflePuzzle);
+
+            var toggle = DshMobile.Ugui.Button("Toggle", p, "看原图", 14, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRect(toggle.GetComponent<RectTransform>(), 178f, -44f, 90f, 34f);
+            _puzzleToggleLabel = toggle.GetComponentInChildren<UnityEngine.UI.Text>();
+            toggle.onClick.AddListener(() => _puzzleShowFull = !_puzzleShowFull);
+
+            _puzzleFooter = DshMobile.Ugui.Text("Footer", p, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleRight);
+            DshMobile.Ugui.SetRect(_puzzleFooter.rectTransform, -170f, -40f, 160f, 22f);
+        }
+
+        private void SyncPuzzlePanel()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            if ((_puzzle == null || _puzzleArt == null) && _showPuzzle) OpenPuzzle(gm);
+            bool open = _showPuzzle && _puzzle != null && _puzzleArt != null;
+            _puzzlePanel.gameObject.SetActive(open);
+            _modalScrim.gameObject.SetActive(open || _showSettings || _showJournal || _showCollection || _showFurnish || _showPromptPreview || _showMemory || gm.DoorPromptOpen);
+            if (!open) return;
+
+            var w = Mathf.Min(680f, DesignWidth - 32f);
+            var h = Mathf.Min(700f, DesignHeight - 32f);
+            _puzzlePanel.rectTransform.anchorMin = _puzzlePanel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            _puzzlePanel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            _puzzlePanel.rectTransform.anchoredPosition = Vector2.zero;
+            _puzzlePanel.rectTransform.sizeDelta = new Vector2(w, h);
+
+            float par = PetPuzzle.Par;
+            _puzzleStatus.text = _puzzle.IsSolved
+                ? $"拼好了！用了 {_puzzle.Moves} 步（参考 {par:F0} 步）"
+                : $"{_puzzle.Moves} 步　·　参考 {par:F0} 步　·　{(int)(Time.realtimeSinceStartup - _puzzleStartedAt)} 秒";
+            _puzzleMsg.text = _puzzleMessage;
+            _puzzleMsg.color = _puzzleError ? new Color(1f, 0.65f, 0.55f) : new Color(0.7f, 0.95f, 0.75f);
+            _puzzleFooter.text = $"拼好 {_puzzleWins} 次　·　最少 {(_puzzleBestMoves > 0 ? _puzzleBestMoves.ToString() : "-")} 步";
+            _puzzleToggleLabel.text = _puzzleShowFull ? "关原图" : "看原图";
+            _puzzlePreview.gameObject.SetActive(_puzzleShowFull);
+            if (_puzzleShowFull) _puzzlePreview.texture = _puzzleArt;
+
+            float side = Mathf.Min((w - 36f) * 0.72f, 400f);
+            float cell = side / PetPuzzle.Size;
+            for (int i = 0; i < _puzzleTiles.Count; i++)
+            {
+                int row = i / PetPuzzle.Size, col = i % PetPuzzle.Size;
+                var tile = _puzzleTiles[i];
+                tile.rectTransform.anchorMin = tile.rectTransform.anchorMax = new Vector2(0f, 1f);
+                tile.rectTransform.pivot = new Vector2(0f, 1f);
+                tile.rectTransform.anchoredPosition = new Vector2(18f + (w - 36f - side) * 0.5f + col * cell + 1f, -(104f + row * cell + 1f));
+                tile.rectTransform.sizeDelta = new Vector2(cell - 2f, cell - 2f);
+
+                int value = _puzzle[i];
+                if (value == PetPuzzle.Empty)
+                {
+                    tile.color = new Color(0f, 0f, 0f, 0.45f);
+                    tile.texture = null;
+                    _puzzleNumbers[i].text = "";
+                    _puzzleButtons[i].interactable = false;
+                    continue;
+                }
+
+                tile.texture = _puzzleArt;
+                tile.color = Color.white;
+                tile.uvRect = PuzzleArt.TileUv(value - 1);
+                _puzzleNumbers[i].text = value.ToString();
+                _puzzleButtons[i].interactable = !_puzzle.IsSolved && _puzzle.CanSlide(i);
+            }
+        }
+
+        private void OnSlideTile(int index)
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null || _puzzle == null) return;
+            if (_puzzle.IsSolved || !_puzzle.CanSlide(index)) return;
+            if (_puzzle.TrySlide(index))
+            {
+                PetAudioDirector.Instance?.Play(SfxId.PickUp);
+                DshMobile.MobileHaptics.Light();
+                if (_puzzle.IsSolved) FinishPuzzle(gm);
+            }
+        }
+
+        private void OnShufflePuzzle()
+        {
+            _puzzle = PetPuzzle.Start(UnityEngine.Random.Range(0, 1 << 30));
+            _puzzlePaid = false;
+            _puzzleStartedAt = Time.realtimeSinceStartup;
+            SetPuzzleMessage("重新打乱了，慢慢来。");
         }
 
         /// <summary>
