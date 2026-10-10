@@ -66,6 +66,12 @@ namespace DshPet
         /// <summary>How many meals one bag of food is worth.</summary>
         public int FoodUnits;
 
+        /// <summary>How much hunger one unit of this food fills, for direct feeding.</summary>
+        public float FoodAmount = 0.5f;
+
+        /// <summary>True when this food is a drink (water) rather than a meal.</summary>
+        public bool IsDrink;
+
         /// <summary>Which place this furniture belongs to. Food and tools are scene-free.</summary>
         public ItemScene Scene = ItemScene.Anywhere;
 
@@ -109,27 +115,27 @@ namespace DshPet
             new ShopItem
             {
                 Id = "food", Name = "宠物粮", Emoji = "🦴", Price = 20, Category = ShopCategory.Food,
-                Blurb = "一袋能吃 3 顿。饭碗空了宠物会挨饿，记得补货。", FoodUnits = 3
+                Blurb = "一袋能吃 3 顿。饭碗空了宠物会挨饿，记得补货。", FoodUnits = 3, FoodAmount = 0.55f
             },
             new ShopItem
             {
                 Id = "water", Name = "饮用水", Emoji = "💧", Price = 12, Category = ShopCategory.Food,
-                Blurb = "一瓶解渴，也能浇树。", FoodUnits = 1
+                Blurb = "一瓶解渴，也能浇树。", FoodUnits = 1, IsDrink = true
             },
             new ShopItem
             {
                 Id = "meat", Name = "鲜肉", Emoji = "🥩", Price = 45, Category = ShopCategory.Food,
-                Blurb = "吃一顿饱很久，宠物最爱。", FoodUnits = 1
+                Blurb = "吃一顿饱很久，宠物最爱。", FoodUnits = 1, FoodAmount = 0.9f
             },
             new ShopItem
             {
                 Id = "apple", Name = "苹果", Emoji = "🍎", Price = 8, Category = ShopCategory.Food,
-                Blurb = "花园的苹果树上摘下来的，能吃也能卖钱。", FoodUnits = 1, Produced = true
+                Blurb = "花园的苹果树上摘下来的，能吃也能卖钱。", FoodUnits = 1, FoodAmount = 0.45f, Produced = true
             },
             new ShopItem
             {
                 Id = "fish", Name = "鱼", Emoji = "🐟", Price = 12, Category = ShopCategory.Food,
-                Blurb = "池塘里钓上来的，能吃也能卖钱。", FoodUnits = 1, Produced = true
+                Blurb = "池塘里钓上来的，能吃也能卖钱。", FoodUnits = 1, FoodAmount = 0.7f, Produced = true
             },
 
             // ------------------------------------------------------------- 道具类

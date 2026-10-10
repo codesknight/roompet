@@ -3033,7 +3033,7 @@ namespace DshPet
             _furnishScroll = GUILayout.BeginScrollView(_furnishScroll);
 
             if (_furnishTab == 0) DrawShopTab();
-            else if (_furnishTab == 1) DrawBackpackTab();
+            else if (_furnishTab == 1) DrawBackpackTab(gm);
             else DrawWarehouseTab(gm);
 
             GUILayout.EndScrollView();
@@ -3103,7 +3103,7 @@ namespace DshPet
         }
 
         /// <summary>The backpack: three tool slots, and the pet slots it shares a screen with.</summary>
-        private void DrawBackpackTab()
+        private void DrawBackpackTab(PetGameManager gm)
         {
             GUILayout.Label("道具栏（" + PetBackpack.Equipped().Count + "/" + PetBackpack.ToolSlots + "）", _label);
 
@@ -3151,8 +3151,30 @@ namespace DshPet
             if (!anyTool) GUILayout.Label("还没有没装备的道具。商城买水桶、铲子，再来这里装备。", _small);
 
             GUILayout.Space(10f);
+            GUILayout.Label("随身食物（点「投喂」直接喂给宠物）", _label);
+            bool anyFood = false;
+            foreach (var item in PetShop.All)
+            {
+                if (!item.IsFood) continue;
+                int n = PetInventory.Count(item.Id);
+                if (n <= 0) continue;
+                anyFood = true;
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Label($"{item.Emoji} {item.Name} ×{n}", _label, GUILayout.Width(170f));
+                GUILayout.FlexibleSpace();
+                if (gm != null && GUILayout.Button("投喂", _buttonSmall, GUILayout.Height(28f)))
+                {
+                    gm.FeedFromBackpack(item.Id);
+                    DshMobile.MobileHaptics.Light();
+                }
+                GUILayout.EndHorizontal();
+            }
+            if (!anyFood) GUILayout.Label("背包里还没有食物。商城买粮食、水、肉，或去花园摘苹果、钓鱼。", _small);
+
+            GUILayout.Space(10f);
             GUILayout.Label("宠物栏（随身 " + PetCollection.Backpack.Count + "/" + PetCollection.BackpackSlots + "）", _label);
-            GUILayout.Label("　宠物在「宠物」面板的背包页管理；道具在这里管理。", _small);
+            GUILayout.Label("　宠物在「宠物」面板的背包页管理；道具和食物在这里管理。", _small);
             GUILayout.Label("仓库容量：" + PetInventory.WarehouseSlots + " 格（多余的道具、家具和宠物都放这里）。", _small);
         }
 
@@ -3174,7 +3196,12 @@ namespace DshPet
                 GUILayout.BeginHorizontal();
                 GUILayout.Label($"{item.Emoji} {item.Name} ×{n}", _label, GUILayout.Width(170f));
                 GUILayout.FlexibleSpace();
-                if (GUILayout.Button($"卖 1 个 ¥{item.SellPrice}", _buttonSmall, GUILayout.Height(28f)))
+                if (GUILayout.Button("投喂", _buttonSmall, GUILayout.Height(28f)))
+                {
+                    gm.FeedFromBackpack(item.Id);
+                    DshMobile.MobileHaptics.Light();
+                }
+                if (GUILayout.Button($"卖 ¥{item.SellPrice}", _buttonSmall, GUILayout.Height(28f)))
                 {
                     _furnishMessage = PetInventory.Sell(item.Id);
                     DshMobile.MobileHaptics.Light();
@@ -4194,6 +4221,12 @@ namespace DshPet
             GUILayout.BeginArea(list);
             _collectionScroll = GUILayout.BeginScrollView(_collectionScroll);
 
+            DrawGachaMachine();
+
+            GUILayout.Space(10f);
+            GUILayout.Label("直接领养", _label);
+            GUILayout.Space(4f);
+
             foreach (var species in PetCollectionPanel.ShopOrder())
             {
                 bool owned = PetCollection.IsSpeciesUnlocked(species.Id);
@@ -4229,6 +4262,38 @@ namespace DshPet
 
             GUILayout.EndScrollView();
             GUILayout.EndArea();
+        }
+
+        /// <summary>
+        /// The 扭蛋机: one big pull button, the price, the odds, and the last result. Gacha-only
+        /// species never appear in the direct-adoption list, so this is their only door.
+        /// </summary>
+        private void DrawGachaMachine()
+        {
+            GUILayout.Label("🎰 扭蛋机", _title);
+            GUILayout.Label("投 " + PetGacha.Cost + " 币，随机转出一只扭蛋专属宠物（不进直售）。", _small);
+            GUILayout.Label("奖池：" + PetGacha.OddsText(), _small);
+            GUILayout.Space(4f);
+
+            bool afford = DshMobile.PetWallet.CanAfford(PetGacha.Cost);
+            GUI.enabled = afford;
+            string label = afford ? $"🎲 扭一次（¥{PetGacha.Cost}）" : $"还差 {PetGacha.Cost - DshMobile.PetWallet.Coins} 币";
+            if (GUILayout.Button(label, _button, GUILayout.Height(46f)))
+            {
+                string message;
+                PetCollection.RollGacha(out message);
+                SetCollectionMessage(message);
+                DshMobile.MobileHaptics.Medium();
+                GUIUtility.ExitGUI();
+            }
+            GUI.enabled = true;
+
+            if (!string.IsNullOrEmpty(_collectionMessage) && _collectionMessage.Contains("扭蛋"))
+            {
+                GUI.color = new Color(1f, 0.85f, 0.4f);
+                GUILayout.Label(_collectionMessage, _small);
+                GUI.color = Color.white;
+            }
         }
 
         private void DrawPetsTab(Rect body, bool inBackpack)

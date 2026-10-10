@@ -172,8 +172,24 @@ namespace DshPet
         /// </summary>
         public static List<PetSpecies> ShopOrder()
         {
-            var list = new List<PetSpecies>(PetSpecies.All);
+            var list = new List<PetSpecies>();
+            foreach (var species in PetSpecies.All)
+            {
+                if (species.GachaOnly) continue;   // 扭蛋机专属，不直售
+                list.Add(species);
+            }
             list.Sort((a, b) => PetCollection.PriceFor(a.Id).CompareTo(PetCollection.PriceFor(b.Id)));
+            return list;
+        }
+
+        /// <summary>The gacha-only species, for the 扭蛋机 pool.</summary>
+        public static List<PetSpecies> GachaPool()
+        {
+            var list = new List<PetSpecies>();
+            foreach (var species in PetSpecies.All)
+            {
+                if (species.GachaOnly) list.Add(species);
+            }
             return list;
         }
     }

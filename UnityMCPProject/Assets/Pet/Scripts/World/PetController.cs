@@ -123,6 +123,15 @@ namespace DshPet
                 return;
             }
 
+            // A litter box in the room means the pet never soils the floor: it simply holds it
+            // until it walks over. The whole point of the no-tray loop is that the *absence* of
+            // the box is what makes messes — with one placed, the room stays clean.
+            if (Room != null && NearestOfKind(InteractableKind.Toilet) != null)
+            {
+                _bladderGrace = 0f;
+                return;
+            }
+
             // Already on the way to the tray? Give it the benefit of the doubt.
             if (CurrentMode == Mode.Approach && _pending != null && _pending.Kind == InteractableKind.Toilet)
             {

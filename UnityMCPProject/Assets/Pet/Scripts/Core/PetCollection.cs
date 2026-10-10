@@ -364,6 +364,43 @@ namespace DshPet
 
         // ------------------------------------------------------------------ backpack
 
+        /// <summary>
+        /// A pull from the 扭蛋机: one fixed price, one random gacha-only pet, straight to the
+        /// warehouse. The species is weighted, so a pull is a real bet.
+        /// </summary>
+        public static PetRecord RollGacha(out string message)
+        {
+            if (!DshMobile.PetWallet.TrySpend(PetGacha.Cost))
+            {
+                message = $"还差 {PetGacha.Cost - DshMobile.PetWallet.Coins} 个宠物币";
+                return null;
+            }
+
+            var species = PetGacha.Pick(new System.Random(Environment.TickCount ^ Data.Pets.Count * 104729));
+            if (species == null)
+            {
+                message = "扭蛋机空转了一下，什么都没出";
+                return null;
+            }
+
+            var personality = PetPersonality.Create(
+                Environment.TickCount ^ species.Id.GetHashCode() ^ Data.Pets.Count * 7919);
+            var record = PetRecord.Create(species.Id, UniqueName(species.DisplayName), personality,
+                Data.Pets.Count + 1);
+            record.Name = UniqueName(record.Name);
+
+            // A gacha win goes to the warehouse, not the backpack: it is a surprise, not a
+            // purchase, and the player decides whether to bring it into the room.
+            Data.Pets.Add(record);
+            if (!Data.UnlockedSpecies.Contains(species.Id)) Data.UnlockedSpecies.Add(species.Id);
+
+            Save();
+            Changed?.Invoke();
+
+            message = $"扭蛋机转出了 {record.Name}（{personality.Archetype}）";
+            return record;
+        }
+
         public static PetRecord Find(string recordId)
         {
             for (int i = 0; i < Data.Pets.Count; i++)

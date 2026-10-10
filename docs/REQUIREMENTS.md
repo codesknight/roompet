@@ -383,6 +383,20 @@
 | R26.7 | 场景专属摆放 | 花园家具（苹果树/池塘/草堆/秋千）`Scene = Garden`、露台（望远镜/摇椅）`Scene = Terrace`；`PetInventory.Place(id, place)` 校验 `AllowedIn`，`BuildPurchasedProps` 只建当前地点允许的家具（搬走留下、回来还在） | 单测：苹果树在 Cabin 摆不了、在 Garden 能摆；露台家具反之 ✅ |
 | R26.8 | 感知新物体 | `PetPerception.NameOf` 加苹果树/池塘/草堆/秋千/望远镜/摇椅；这些 `Interactable` 自然进方位感知与系统提示 | 编译 + 单测覆盖枚举 ✅ |
 
+---
+
+## 阶段 27：扭蛋机、投喂、铲子清理闭环，以及"上线"升级的起步
+
+| 编号 | 需求 | 实现 | 验收证据 |
+|---|---|---|---|
+| R27.1 | 仓库食物放进背包投喂 | 背包页/仓库页每种食物加**「投喂」**：`PetGameManager.FeedFromBackpack` 消耗 1 份直接喂（不经过饭碗），`ShopItem.FoodAmount`（肉 0.9/鱼 0.7/粮 0.55/苹果 0.45，水是喝的）+ 好感 + 对话/记事本 | 单测：`FoodAmount` 与 `IsDrink` 各食物正确 ✅ 实测：喂肉饥饿 0.50→1.00、存量 -1 ✅ |
+| R27.2 | 装备铲子点排泄物即清理、消失 | `CleanMess` 先查 `PetBackpack.CanCleanMess`；无铲子 Toast 提示、不清 | 实测（运行中）：有铲子 +5 币并移除、无铲子 +0 且污渍仍在 ✅ |
+| R27.3 | 有猫砂盆不乱拉 | `PetController.TickBladder` 开头：房间里有 `Toilet` 就 `return`（绝不上演"来不及"的意外）；没有猫砂盆才走原事故计时 | 编译 + 逻辑单测（事故流程既有测试未破）✅ ⏳ 真机看实际频率 |
+| R27.4 | 扭蛋机 500 币随机抽宠物 | `PetGacha`（纯，`Cost=500`、加权 `Pick`）+ `PetCollection.RollGacha`：抽 gacha-only 物种、新建宠物进仓库；`PetSpecies.GachaOnly` 标记 + `ShopOrder` 排除直售 | 单测：奖池恰是 gacha-only、同种子确定性、权重>0、抽卡扣 500 入仓库、没钱不变 ✅ |
+| R27.5 | 宠物种类扩充 | 新增 3 个程序化物种：小熊猫/小企鹅/小仓鼠（各自 Fur/Belly/Accent/Ears/Tail/性格/语音），`PetSpecies.All` 4→7 | 单测：`All.Length==7`、`GachaPool==3`、三个新种都 `GachaOnly` ✅ |
+| R27.6 | UI 升级第一轮 | 商城分**食品/道具/家具**三区；背包页加随身食物投喂；仓库食物行加投喂+卖；宠物商城加**扭蛋机板块**（按钮+概率+结果）。状态/设置面板布局不动（布局测试钉着） | 编译 + 截图 `round27_*`（本轮的 UI 是内容/分区升级，非推倒重来） |
+| R27.7 | 调研开源模组 | `docs/ASSETS_RESEARCH.md`：Kenney（CC0，已在用）Cube Pets/Nature Kit/City Kit 为首选，Quaternius/Kay Lousberg 次之；诚实结论：模型替换与 IMGUI→uGUI 是结构性改动，列为下一阶段专项 | 文档已入库；本轮用"加物种"这种不破坏架构的方式先升级内容 |
+
 
 ## 非功能需求 / 设计约束
 

@@ -1831,6 +1831,37 @@ namespace DshPet
         /// <summary>Coins earned for wiping up an accident.</summary>
         public const int CleaningCoinReward = 5;
 
+        /// <summary>
+        /// Feeds the pet one unit of a food item straight from the backpack/warehouse, no bowl
+        /// required. This is the "把食物放进背包投喂" action: it is the owner's hand, not the
+        /// bowl, doing the feeding, and it works for anything edible — kibble, meat, apple, fish,
+        /// or a drink of water.
+        /// </summary>
+        public void FeedFromBackpack(string itemId)
+        {
+            var item = PetShop.Get(itemId);
+            if (item == null || !item.IsFood) return;
+            if (PetInventory.Count(itemId) <= 0)
+            {
+                PetHud.SetToast("没有" + item.Name + "了");
+                return;
+            }
+
+            PetInventory.SetCount(itemId, PetInventory.Count(itemId) - 1);
+
+            if (item.IsDrink) Needs.GiveWater();
+            else Needs.Feed(item.FoodAmount);
+
+            Needs.AddAffection(0.04f);
+            PetAudioDirector.Instance?.Play(SfxId.Eat);
+            DshMobile.MobileHaptics.Light();
+
+            Memory.AddPet("（主人喂我吃了" + item.Name + "，真好吃）");
+            Journal.Add(MemoryKind.Care, "主人喂我吃了" + item.Name, "", 0.35f);
+            ChatChanged?.Invoke();
+            PetHud.SetToast("喂了" + item.Name + "，宠物很开心。");
+        }
+
         // -------------------------------------------------------------- throw & fetch
 
         private float _autoFetchAt;

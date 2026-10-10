@@ -48,6 +48,11 @@ namespace DshPet
         public bool Starter;
 
         /// <summary>
+        /// True for the gacha-only species: not sold directly, only won from the 扭蛋机.
+        /// </summary>
+        public bool GachaOnly;
+
+        /// <summary>
         /// A private copy, for storing in a serialized field.
         ///
         /// Never assign an entry of <see cref="All"/> directly to a MonoBehaviour's field:
@@ -125,6 +130,48 @@ namespace DshPet
                 FavoriteFood = "蜂蜜", Price = 680,
                 Personality = "憨厚、慢性子、非常贪吃。思考事情要慢半拍，但脾气特别好，被欺负也不生气。",
                 VoiceStyle = "说话慢、爱用「唔…」「那个…那个…」，三句里有两句会提到吃的。"
+            },
+
+            // ---------------------------------------------------------------- 第 27 轮新增
+            // 扭蛋机的奖池：这些是抽出来的稀有宠物，不在普通商城直售（商城只有 fox/cat/rabbit/bear）。
+            new PetSpecies
+            {
+                Id = "red_panda", DisplayName = "小熊猫", Blurb = "圆滚滚的，尾巴像条大围巾",
+                Fur = new Color(0.82f, 0.33f, 0.16f),
+                Belly = new Color(0.24f, 0.16f, 0.12f),
+                Accent = new Color(0.94f, 0.86f, 0.72f),
+                BodyScale = 0.95f, BodyLength = 0.34f, HeadScale = 0.31f,
+                Ears = EarStyle.Round, Tail = TailStyle.Bushy,
+                EarLength = 0.12f, TailLength = 0.40f,
+                FavoriteFood = "苹果", Price = 560, GachaOnly = true,
+                Personality = "慢吞吞、喜欢晒太阳，毛茸茸的尾巴是它的宝贝。有点迷糊，但特别温柔。",
+                VoiceStyle = "说话慢悠悠、句子短，爱用「呼啊～」「软软的」这类词，喜欢描述舒服的感觉。"
+            },
+            new PetSpecies
+            {
+                Id = "penguin", DisplayName = "小企鹅", Blurb = "摇摇摆摆，一本正经",
+                Fur = new Color(0.18f, 0.20f, 0.26f),
+                Belly = new Color(0.94f, 0.95f, 0.97f),
+                Accent = new Color(0.95f, 0.72f, 0.22f),
+                BodyScale = 0.96f, BodyLength = 0.30f, HeadScale = 0.28f,
+                Ears = EarStyle.Small, Tail = TailStyle.Short,
+                EarLength = 0.06f, TailLength = 0.10f,
+                FavoriteFood = "鱼", Price = 640, GachaOnly = true,
+                Personality = "一本正经、爱整洁，走路摇摇摆摆但很守规矩。高兴了会扑扇翅膀（其实是鳍）。",
+                VoiceStyle = "说话正式、句子完整，爱用「在下」「这便」这类古早口吻，偶尔冒出「啪嗒啪嗒」。"
+            },
+            new PetSpecies
+            {
+                Id = "hamster", DisplayName = "小仓鼠", Blurb = "腮帮子鼓鼓的，囤粮冠军",
+                Fur = new Color(0.88f, 0.72f, 0.42f),
+                Belly = new Color(0.99f, 0.95f, 0.86f),
+                Accent = new Color(0.62f, 0.42f, 0.24f),
+                BodyScale = 0.60f, BodyLength = 0.22f, HeadScale = 0.24f,
+                Ears = EarStyle.Round, Tail = TailStyle.Puff,
+                EarLength = 0.08f, TailLength = 0.06f,
+                FavoriteFood = "宠物粮", Price = 520, GachaOnly = true,
+                Personality = "个子小、精力旺盛，最爱把食物塞进腮帮子。有点神经质，但特别会哄自己开心。",
+                VoiceStyle = "说话又快又碎，爱用「咕」「啾」这类拟声词，一句话常拆成好几段。"
             }
         };
 
