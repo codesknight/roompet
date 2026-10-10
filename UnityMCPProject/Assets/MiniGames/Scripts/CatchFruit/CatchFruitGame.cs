@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -87,7 +87,7 @@ namespace DshMiniGames
             camera.transform.position = new Vector3(0f, 0f, -12f);
             camera.transform.rotation = Quaternion.identity;
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.36f, 0.62f, 0.42f);
+            camera.backgroundColor = new Color(0.06f, 0.045f, 0.13f);   // dark DJ-club purple
             camera.nearClipPlane = 0.1f;
             camera.farClipPlane = 60f;
             _camera = camera;
@@ -97,15 +97,64 @@ namespace DshMiniGames
             {
                 var light = new GameObject("Sun").AddComponent<Light>();
                 light.type = LightType.Directional;
-                light.color = new Color(1f, 0.97f, 0.9f);
-                light.intensity = 1.05f;
+                light.color = new Color(0.72f, 0.70f, 1f);
+                light.intensity = 0.8f;
                 light.transform.rotation = Quaternion.Euler(46f, -30f, 0f);
             }
 
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.54f, 0.58f, 0.6f);
+            RenderSettings.ambientLight = new Color(0.32f, 0.28f, 0.44f);
 
             _basket = BuildBasket();
+            BuildNeonRays();
+        }
+
+        /// <summary>Neon light beams hanging from the top edge, in a DJ-club palette.</summary>
+        private void BuildNeonRays()
+        {
+            if (_camera == null) return;
+            float top = _camera.orthographicSize;
+            float span = _camera.orthographicSize * _camera.aspect;
+
+            var colors = new[]
+            {
+                new Color(1f, 0.30f, 0.75f),   // pink
+                new Color(0.25f, 0.85f, 1f),   // cyan
+                new Color(0.65f, 0.35f, 1f),   // purple
+                new Color(1f, 0.45f, 0.30f),   // orange
+                new Color(0.35f, 1f, 0.75f),   // mint
+                new Color(0.30f, 0.55f, 1f),   // blue
+            };
+
+            for (int i = 0; i < colors.Length; i++)
+            {
+                float t = colors.Length == 1 ? 0.5f : i / (float)(colors.Length - 1);
+                float x = Mathf.Lerp(-span * 0.88f, span * 0.88f, t);
+                float length = 2.2f + (i % 3) * 1.1f;
+                NeonRay("NeonRay" + i, new Vector3(x, top - length * 0.5f, 0f),
+                    new Vector3(0.22f, length, 0.05f), colors[i]);
+            }
+        }
+
+        private void NeonRay(string name, Vector3 position, Vector3 scale, Color color)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = position;
+            go.transform.localScale = scale;
+
+            var renderer = go.GetComponent<Renderer>();
+            var material = new Material(Shader.Find("Standard"));
+            material.color = color;
+            material.EnableKeyword("_EMISSION");
+            material.SetColor("_EmissionColor", color * 2.4f);
+            material.SetFloat("_Glossiness", 0.85f);
+            renderer.material = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+
+            Destroy(go.GetComponent<Collider>());
         }
 
         private Transform BuildBasket()
