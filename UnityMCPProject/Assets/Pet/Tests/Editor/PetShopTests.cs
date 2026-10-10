@@ -1,4 +1,4 @@
-﻿using NUnit.Framework;
+using NUnit.Framework;
 using UnityEngine;
 
 namespace DshPet.Tests
@@ -30,12 +30,33 @@ namespace DshPet.Tests
         [Test]
         public void TheDefaultRoomHasOnlyTheTwoBowls()
         {
-            var placed = PetInventory.Placed();
+            var placed = PetInventory.Placed(RoomTheme.Cabin);
             Assert.AreEqual(2, placed.Count, "the starter room is the pet and the two bowls, nothing else");
             Assert.IsTrue(placed.ContainsKey(PetShop.FoodBowl));
             Assert.IsTrue(placed.ContainsKey(PetShop.WaterBowl));
-            Assert.IsFalse(PetInventory.IsPlaced("bed"));
-            Assert.IsFalse(PetInventory.IsPlaced("litter_box"));
+            Assert.IsFalse(PetInventory.IsPlaced("bed", RoomTheme.Cabin));
+            Assert.IsFalse(PetInventory.IsPlaced("litter_box", RoomTheme.Cabin));
+        }
+
+        [Test]
+        public void EachSceneHasItsOwnFurnitureLayout()
+        {
+            DshMobile.PetWallet.Add(1000);
+            PetInventory.Buy(PetShop.Get("apple_tree"));
+            PetInventory.Buy(PetShop.Get("telescope"));
+
+            Assert.IsTrue(PetInventory.Place("apple_tree", RoomTheme.Garden).Contains("摆进了"));
+            Assert.IsTrue(PetInventory.IsPlaced("apple_tree", RoomTheme.Garden));
+            Assert.IsFalse(PetInventory.IsPlaced("apple_tree", RoomTheme.Cabin), "a garden tree is not in the cabin");
+            Assert.IsFalse(PetInventory.IsPlaced("apple_tree", RoomTheme.Terrace));
+
+            PetInventory.Place("telescope", RoomTheme.Terrace);
+            Assert.IsFalse(PetInventory.IsPlaced("telescope", RoomTheme.Garden));
+
+            PetInventory.MoveItem(PetShop.FoodBowl, new Vector2(1f, 1f), RoomTheme.Garden);
+            Assert.AreEqual(new Vector2(1f, 1f), PetInventory.PositionOf(PetShop.FoodBowl, RoomTheme.Garden));
+            Assert.AreEqual(new Vector2(3.4f, 3.2f), PetInventory.PositionOf(PetShop.FoodBowl, RoomTheme.Cabin),
+                "moving the garden bowl does not move the cabin bowl");
         }
 
         [Test]
@@ -90,10 +111,10 @@ namespace DshPet.Tests
 
             string result = PetInventory.Place("apple_tree", RoomTheme.Cabin);
             Assert.IsTrue(result.Contains("只能摆在花园"), "an apple tree cannot be placed in the cabin");
-            Assert.IsFalse(PetInventory.IsPlaced("apple_tree"));
+            Assert.IsFalse(PetInventory.IsPlaced("apple_tree", RoomTheme.Cabin));
 
             Assert.IsTrue(PetInventory.Place("apple_tree", RoomTheme.Garden).Contains("摆进了"));
-            Assert.IsTrue(PetInventory.IsPlaced("apple_tree"));
+            Assert.IsTrue(PetInventory.IsPlaced("apple_tree", RoomTheme.Garden));
         }
 
         [Test]
@@ -115,11 +136,11 @@ namespace DshPet.Tests
 
             Assert.IsTrue(PetInventory.Buy(PetShop.Get("bed")).Contains("买过"));
             PetInventory.Place("bed", RoomTheme.Cabin);
-            Assert.IsTrue(PetInventory.IsPlaced("bed"));
+            Assert.IsTrue(PetInventory.IsPlaced("bed", RoomTheme.Cabin));
 
             PetInventory.Sell("bed");
             Assert.IsFalse(PetInventory.IsOwned("bed"));
-            Assert.IsFalse(PetInventory.IsPlaced("bed"));
+            Assert.IsFalse(PetInventory.IsPlaced("bed", RoomTheme.Cabin));
             Assert.AreEqual(1000 - 120 + 60, DshMobile.PetWallet.Coins, "half of 120 back is 60");
         }
 
@@ -127,10 +148,10 @@ namespace DshPet.Tests
         public void StarterBowlsCannotBeSoldOrStoredButCanBeMoved()
         {
             Assert.AreEqual("基础家具不能卖", PetInventory.Sell(PetShop.FoodBowl));
-            Assert.AreEqual("基础家具不能收起来", PetInventory.Store(PetShop.WaterBowl));
+            Assert.AreEqual("基础家具不能收起来", PetInventory.Store(PetShop.WaterBowl, RoomTheme.Cabin));
 
-            PetInventory.MoveItem(PetShop.FoodBowl, new Vector2(0f, 1.5f));
-            Assert.AreEqual(new Vector2(0f, 1.5f), PetInventory.PositionOf(PetShop.FoodBowl));
+            PetInventory.MoveItem(PetShop.FoodBowl, new Vector2(0f, 1.5f), RoomTheme.Cabin);
+            Assert.AreEqual(new Vector2(0f, 1.5f), PetInventory.PositionOf(PetShop.FoodBowl, RoomTheme.Cabin));
         }
 
         [Test]

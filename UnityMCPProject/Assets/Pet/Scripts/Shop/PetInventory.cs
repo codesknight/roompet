@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using UnityEngine;
@@ -158,13 +158,20 @@ namespace DshPet
             }
         }
 
-        // ------------------------------------------------------------------- placed
+        // ------------------------------------------------------------------- placed (per scene)
 
-        /// <summary>The placed furniture and its positions, as a map.</summary>
-        public static Dictionary<string, Vector2> Placed()
+        /// <summary>
+        /// The furniture placed in ONE scene, with its positions.
+        ///
+        /// Each place is its own space now: the garden has its own layout, the terrace its own,
+        /// and moving between them does not carry furniture over — a garden is a different room,
+        /// not a repaint of the same one. (Ownership is still global: you own the bed once, but
+        /// it is only *set down* in the scene you placed it in.)
+        /// </summary>
+        public static Dictionary<string, Vector2> Placed(RoomTheme theme)
         {
             var map = new Dictionary<string, Vector2>();
-            string raw = PlayerPrefs.GetString(PlacedKey, "");
+            string raw = PlayerPrefs.GetString(SceneKey(theme), "");
             if (!string.IsNullOrEmpty(raw))
             {
                 foreach (string entry in raw.Split(';'))
@@ -183,12 +190,15 @@ namespace DshPet
                 }
             }
 
+            // The two bowls exist in every scene: a place without food or water is not a place.
             if (!map.ContainsKey(PetShop.FoodBowl)) map[PetShop.FoodBowl] = new Vector2(3.4f, 3.2f);
             if (!map.ContainsKey(PetShop.WaterBowl)) map[PetShop.WaterBowl] = new Vector2(4.6f, 3.2f);
             return map;
         }
 
-        private static void SavePlaced(Dictionary<string, Vector2> map)
+        private static string SceneKey(RoomTheme theme) => PlacedKey + "." + (int)theme;
+
+        private static void SavePlaced(RoomTheme theme, Dictionary<string, Vector2> map)
         {
             var parts = new List<string>();
             foreach (var pair in map)
@@ -198,21 +208,33 @@ namespace DshPet
                          pair.Value.y.ToString("R", CultureInfo.InvariantCulture));
             }
             parts.Sort();
-            PlayerPrefs.SetString(PlacedKey, string.Join(";", parts.ToArray()));
+            PlayerPrefs.SetString(SceneKey(theme), string.Join(";", parts.ToArray()));
             PlayerPrefs.Save();
             Changed?.Invoke();
         }
 
-        public static bool IsPlaced(string id) => Placed().ContainsKey(id);
+        public static bool IsPlaced(string id, RoomTheme theme) => Placed(theme).ContainsKey(id);
 
-        public static Vector2 PositionOf(string id)
+        public static Vector2 PositionOf(string id, RoomTheme theme)
         {
             Vector2 at;
-            var map = Placed();
+            var map = Placed(theme);
             if (map.TryGetValue(id, out at)) return at;
 
             var item = PetShop.Get(id);
             return item != null ? item.DefaultPosition : Vector2.zero;
+        }
+
+        /// <summary>The scenes where a piece of furniture is currently set down, for the UI.</summary>
+        public static List<RoomTheme> ScenesWherePlaced(string id)
+        {
+            var list = new List<RoomTheme>();
+            for (int i = 0; i < RoomThemeInfo.All.Length; i++)
+            {
+                var theme = RoomThemeInfo.All[i].Theme;
+                if (Placed(theme).ContainsKey(id)) list.Add(theme);
+            }
+            return list;
         }
 
         public const float RoomHalf = 7f;
@@ -226,12 +248,12 @@ namespace DshPet
                 Mathf.Clamp(position.y, -limit, limit));
         }
 
-        public static void MoveItem(string id, Vector2 position)
+        public static void MoveItem(string id, Vector2 position, RoomTheme theme)
         {
-            if (!IsPlaced(id)) return;
-            var map = Placed();
+            if (!IsPlaced(id, theme)) return;
+            var map = Placed(theme);
             map[id] = ClampToRoom(position);
-            SavePlaced(map);
+            SavePlaced(theme, map);
         }
 
         // ------------------------------------------------------------------- buy / sell / place
@@ -259,7 +281,7 @@ namespace DshPet
                 : $"买下了{item.Name}，去仓库把它摆进房间吧";
         }
 
-        /// <summary>Puts owned furniture into the room, if it belongs in this place.</summary>
+        /// <summary>Puts owned furniture into this scene, if it belongs here.</summary>
         public static string Place(string id, RoomTheme place)
         {
             if (PetShop.IsStarter(id)) return "这是基础家具，一直都在房间里";
@@ -267,24 +289,24 @@ namespace DshPet
             if (item == null) return "没有这件商品";
             if (!item.IsFurniture) return item.Name + "不是家具，不用摆放";
             if (!IsOwned(id)) return "还没有这件家具，先去商城买";
-            if (IsPlaced(id)) return "已经摆在房间里了";
+            if (IsPlaced(id, place)) return "已经摆在这里了";
             if (!item.AllowedIn(place)) return item.Name + "只能摆在" + PlaceName(item.Scene);
 
-            var map = Placed();
+            var map = Placed(place);
             map[id] = item.DefaultPosition;
-            SavePlaced(map);
-            return item.Name + "摆进了房间";
+            SavePlaced(place, map);
+            return item.Name + "摆进了" + RoomThemeInfo.Get(place).DisplayName;
         }
 
-        /// <summary>Picks furniture up off the floor and returns it to the warehouse.</summary>
-        public static string Store(string id)
+        /// <summary>Picks furniture up off this scene's floor and returns it to the warehouse.</summary>
+        public static string Store(string id, RoomTheme place)
         {
             if (PetShop.IsStarter(id)) return "基础家具不能收起来";
-            if (!IsPlaced(id)) return "它没在房间里";
+            if (!IsPlaced(id, place)) return "它没在这个地方";
 
-            var map = Placed();
+            var map = Placed(place);
             map.Remove(id);
-            SavePlaced(map);
+            SavePlaced(place, map);
             return "收回了仓库";
         }
 
@@ -316,9 +338,15 @@ namespace DshPet
             }
 
             if (!IsOwned(id)) return "还没有这件家具";
-            var map = Placed();
-            map.Remove(id);
-            SavePlaced(map);
+
+            // Selling removes the furniture from every scene it was set down in.
+            for (int i = 0; i < RoomThemeInfo.All.Length; i++)
+            {
+                var theme = RoomThemeInfo.All[i].Theme;
+                var map = Placed(theme);
+                if (map.Remove(id)) SavePlaced(theme, map);
+            }
+
             RemoveOwned(id);
             DshMobile.PetWallet.Add(item.SellPrice);
             return $"卖掉了{item.Name}，返还 {item.SellPrice} 个宠物币";
@@ -340,8 +368,11 @@ namespace DshPet
         public static void ResetForTests()
         {
             PlayerPrefs.DeleteKey(OwnedKey);
-            PlayerPrefs.DeleteKey(PlacedKey);
             PlayerPrefs.DeleteKey(CountKey);
+            for (int i = 0; i < RoomThemeInfo.All.Length; i++)
+            {
+                PlayerPrefs.DeleteKey(PlacedKey + "." + (int)RoomThemeInfo.All[i].Theme);
+            }
             PetBackpack.ResetForTests();
         }
     }

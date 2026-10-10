@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 namespace DshPet
 {
@@ -106,7 +106,7 @@ namespace DshPet
         private void SaveAndDrop()
         {
             var at = Dragging.transform.position;
-            PetInventory.MoveItem(Dragging.ItemId, new Vector2(at.x, at.z));
+            PetInventory.MoveItem(Dragging.ItemId, new Vector2(at.x, at.z), PetWorldMap.Current);
             Dragging = null;
         }
 

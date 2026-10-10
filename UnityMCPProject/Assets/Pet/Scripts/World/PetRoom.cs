@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace DshPet
@@ -1035,16 +1035,15 @@ namespace DshPet
         /// </summary>
         private void BuildPurchasedProps()
         {
-            var placed = PetInventory.Placed();
+            var placed = PetInventory.Placed(Theme);
             for (int i = 0; i < PetShop.All.Length; i++)
             {
                 var item = PetShop.All[i];
                 if (item.IsFood || !item.Kind.HasValue) continue;
                 if (!placed.ContainsKey(item.Id)) continue;
 
-                // Furniture belongs to its place: an apple tree placed in the garden stays in
-                // the garden, and simply is not built when the pet lives elsewhere. Moving back
-                // brings it back, exactly where it was.
+                // Per-scene placement means this map only ever holds what belongs here; the check
+                // stays as a second lock so a bad save cannot put a telescope in the garden.
                 if (!item.AllowedIn(Theme)) continue;
 
                 BuildProp(item);
@@ -1054,7 +1053,7 @@ namespace DshPet
         /// <summary>Builds one placed shop prop at the position the player chose for it.</summary>
         private Interactable BuildProp(ShopItem item)
         {
-            Vector2 at = PetInventory.PositionOf(item.Id);
+            Vector2 at = PetInventory.PositionOf(item.Id, Theme);
             switch (item.Kind.Value)
             {
                 case InteractableKind.Bed: return BuildBed(at);
@@ -1075,8 +1074,8 @@ namespace DshPet
 
         private Interactable[] BuildBowls()
         {
-            Vector2 foodAt = PetInventory.PositionOf(PetShop.FoodBowl);
-            Vector2 waterAt = PetInventory.PositionOf(PetShop.WaterBowl);
+            Vector2 foodAt = PetInventory.PositionOf(PetShop.FoodBowl, Theme);
+            Vector2 waterAt = PetInventory.PositionOf(PetShop.WaterBowl, Theme);
 
             var food = Bowl("FoodBowl", new Vector3(foodAt.x, 0f, foodAt.y), new Color(0.92f, 0.42f, 0.35f));
             food.Kind = InteractableKind.Food;

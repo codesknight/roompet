@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using DshMobile;
 using UnityEngine;
@@ -3045,9 +3045,40 @@ namespace DshPet
         private void DrawShopTab()
         {
             var currentPlace = PetWorldMap.Current;
+            DrawGachaSection();
             DrawShopSection("🍖 食品", ShopCategory.Food, currentPlace);
             DrawShopSection("🧰 道具", ShopCategory.Tool, currentPlace);
             DrawShopSection("🛋️ 家具", ShopCategory.Furniture, currentPlace);
+        }
+
+        /// <summary>
+        /// The 扭蛋机 lives at the top of the 商城 so it cannot be missed again: it was originally
+        /// tucked inside the pet collection and players reported not finding it at all.
+        /// </summary>
+        private void DrawGachaSection()
+        {
+            GUILayout.Label("🎰 扭蛋机", _label);
+            GUILayout.Label("　投 " + PetGacha.Cost + " 币随机抽一只扭蛋专属宠物（小仓鼠 50% / 小熊猫 35% / 小企鹅 15%），不进直售。", _small);
+            GUILayout.Space(2f);
+
+            bool afford = DshMobile.PetWallet.CanAfford(PetGacha.Cost);
+            GUI.enabled = afford;
+            if (GUILayout.Button(afford ? $"🎲 扭一次（¥{PetGacha.Cost}）" : $"还差 {PetGacha.Cost - DshMobile.PetWallet.Coins} 币",
+                    _button, GUILayout.Height(44f)))
+            {
+                string message;
+                PetCollection.RollGacha(out message);
+                _furnishMessage = message;
+                DshMobile.MobileHaptics.Medium();
+                GUIUtility.ExitGUI();
+            }
+            GUI.enabled = true;
+
+            if (!string.IsNullOrEmpty(_furnishMessage) && _furnishMessage.Contains("扭蛋"))
+            {
+                GUILayout.Label("　" + _furnishMessage, _small);
+            }
+            GUILayout.Space(8f);
         }
 
         private void DrawShopSection(string header, ShopCategory category, RoomTheme place)
@@ -3210,13 +3241,15 @@ namespace DshPet
             }
 
             GUILayout.Space(10f);
-            var placed = PetInventory.Placed();
+            var placed = PetInventory.Placed(currentPlace);
 
-            GUILayout.Label("已摆进房间", _label);
+            GUILayout.Label("摆在这里（" + RoomThemeInfo.Get(currentPlace).DisplayName + "）", _label);
+            bool anyHere = false;
             foreach (var id in placed.Keys)
             {
                 var item = PetShop.Get(id);
                 if (item == null) continue;
+                anyHere = true;
                 GUILayout.BeginHorizontal();
                 GUILayout.Label($"{item.Emoji} {item.Name}", _label, GUILayout.Width(150f));
                 GUILayout.FlexibleSpace();
@@ -3225,16 +3258,17 @@ namespace DshPet
                 {
                     if (GUILayout.Button("收回仓库", _buttonSmall, GUILayout.Height(30f)))
                     {
-                        _furnishMessage = PetInventory.Store(id);
+                        _furnishMessage = PetInventory.Store(id, currentPlace);
                         DshMobile.MobileHaptics.Light();
                         gm.RebuildRoom();
                     }
                 }
                 GUILayout.EndHorizontal();
             }
+            if (!anyHere) GUILayout.Label("这里还空着，去仓库把家具摆出来。", _small);
 
             GUILayout.Space(10f);
-            GUILayout.Label("在仓库里（还没摆出来）", _label);
+            GUILayout.Label("在仓库里（还没摆进这个场景）", _label);
             bool any = false;
             foreach (var item in PetShop.All)
             {
@@ -3266,6 +3300,18 @@ namespace DshPet
                 if (!allowed)
                 {
                     GUILayout.Label("　只能摆在" + PetInventory.PlaceName(item.Scene) + "。", _small);
+                }
+                else
+                {
+                    // Where else this owned furniture is already set down.
+                    var elsewhere = PetInventory.ScenesWherePlaced(item.Id);
+                    var names = new System.Collections.Generic.List<string>();
+                    for (int s = 0; s < elsewhere.Count; s++)
+                    {
+                        if (elsewhere[s] == currentPlace) continue;
+                        names.Add(RoomThemeInfo.Get(elsewhere[s]).DisplayName);
+                    }
+                    if (names.Count > 0) GUILayout.Label("　也摆在：" + string.Join("、", names.ToArray()), _small);
                 }
             }
             if (!any) GUILayout.Label("仓库空空的。去商城看看，家具买回来才能摆进房间。", _small);
