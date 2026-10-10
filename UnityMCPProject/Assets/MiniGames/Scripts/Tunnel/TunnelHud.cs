@@ -17,13 +17,13 @@ namespace DshMiniGames
 
         private TunnelMode _selectedMode = TunnelMode.Survival;
         private TunnelTheme _selectedTheme = TunnelTheme.Neon;
-        private bool _stickOnLeft;
 
         /// <summary>The single stick input, -1..1 in each axis. Read by the game.</summary>
         public static Vector2 Stick { get; private set; }
 
         private static bool _dragging;
-        private static Vector2 _stickScreenCentre;
+        private static bool _stickVisible;
+        private static Vector2 _stickCentre;
         private const float StickRadius = 78f;
 
         private static Texture2D _circle;
@@ -64,30 +64,39 @@ namespace DshMiniGames
 
         private void Update()
         {
-            // Screen coords, bottom-left origin (the same frame as Input.mousePosition). 130px up
-            // from the bottom is where a thumb rests.
-            _stickScreenCentre = new Vector2(
-                _stickOnLeft ? 120f : Screen.width - 120f,
-                130f);
-
-            Vector2 mouse = Input.mousePosition;
-
-            if (Input.GetMouseButtonDown(0) && Vector2.Distance(mouse, _stickScreenCentre) < StickRadius * 2f)
-            {
-                _dragging = true;
-            }
-            else if (!Input.GetMouseButton(0))
+            if (_game == null || _game.State != TunnelGame.Phase.Running)
             {
                 _dragging = false;
+                _stickVisible = false;
+                Stick = Vector2.zero;
+                return;
+            }
+
+            // Floating stick: wherever the finger lands (below the top bar), the stick appears
+            // there and dragging moves the ship. Works on both halves of the screen.
+            Vector2 mouse = Input.mousePosition;
+
+            if (Input.GetMouseButtonDown(0) && mouse.y < Screen.height - 90f)
+            {
+                _dragging = true;
+                _stickVisible = true;
+                _stickCentre = mouse;
                 Stick = Vector2.zero;
             }
 
-            if (_dragging)
+            if (_dragging && Input.GetMouseButton(0))
             {
-                Vector2 delta = mouse - _stickScreenCentre;
+                Vector2 now = Input.mousePosition;
+                Vector2 delta = now - _stickCentre;
                 Stick = Vector2.ClampMagnitude(delta / StickRadius, 1f);
-                // A small deadzone so a resting thumb does not make the ship drift.
                 if (Stick.magnitude < 0.16f) Stick = Vector2.zero;
+            }
+
+            if (!Input.GetMouseButton(0))
+            {
+                _dragging = false;
+                _stickVisible = false;
+                Stick = Vector2.zero;
             }
         }
 
@@ -177,10 +186,7 @@ namespace DshMiniGames
         private void DrawRunning(float width, float height)
         {
             GUI.Label(new Rect(width * 0.5f - 200f, 10f, 400f, 52f), _game.Score.ToString(), _big);
-
-            // Stick handedness toggle.
-            var toggle = new Rect(width - 178f, 60f, 158f, 34f);
-            if (GUI.Button(toggle, _stickOnLeft ? "摇杆在左" : "摇杆在右", _button)) _stickOnLeft = !_stickOnLeft;
+            GUI.Label(new Rect(width * 0.5f - 200f, 62f, 400f, 24f), "按住屏幕任意处拖动，控制飞船上下左右", Centered());
 
             DrawStick();
         }
@@ -205,14 +211,16 @@ namespace DshMiniGames
 
         private void DrawStick()
         {
+            if (!_stickVisible) return;
+
             // The stick centre is in screen (bottom-left) coords; GUI draws in top-left coords,
             // so convert. Drawn with an identity matrix so it sits under the thumb, not the panel.
             GUI.matrix = Matrix4x4.identity;
-            Vector2 centre = GUIUtility.ScreenToGUIPoint(_stickScreenCentre);
+            Vector2 centre = GUIUtility.ScreenToGUIPoint(_stickCentre);
 
             var baseRect = new Rect(centre.x - StickRadius, centre.y - StickRadius,
                 StickRadius * 2f, StickRadius * 2f);
-            GUI.color = new Color(1f, 1f, 1f, 0.30f);
+            GUI.color = new Color(1f, 1f, 1f, 0.28f);
             GUI.DrawTexture(baseRect, Circle());
             GUI.color = Color.white;
 

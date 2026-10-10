@@ -68,6 +68,7 @@ namespace DshMiniGames
                 case PrismGame.Phase.Menu: DrawMenu(width, height); break;
                 case PrismGame.Phase.Playback: DrawPlaying(width, height, "看它亮起的顺序……"); break;
                 case PrismGame.Phase.Input: DrawPlaying(width, height, "现在点出来"); break;
+                case PrismGame.Phase.Feedback: DrawPlaying(width, height, ""); break;
                 case PrismGame.Phase.Result: DrawResult(width, height); break;
             }
 
@@ -146,7 +147,12 @@ namespace DshMiniGames
         {
             float cx = width * 0.5f;
             GUI.Label(new Rect(cx - 200f, 12f, 400f, 54f), _game.CurrentLength.ToString(), _big);
-            GUI.Label(new Rect(cx - 200f, 66f, 400f, 24f), hint, Centered());
+
+            // A progress line: how many notes of this sequence are already correctly tapped.
+            string progress = _game.State == PrismGame.Phase.Input || _game.State == PrismGame.Phase.Feedback
+                ? "已对 " + _game.InputStep + " / " + _game.CurrentLength
+                : hint;
+            GUI.Label(new Rect(cx - 200f, 66f, 400f, 24f), progress, Centered());
 
             if (_game.Mode == PrismMode.Rush && _game.State == PrismGame.Phase.Input)
             {

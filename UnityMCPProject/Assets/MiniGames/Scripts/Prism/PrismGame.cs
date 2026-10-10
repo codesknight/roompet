@@ -78,7 +78,7 @@ namespace DshMiniGames
     /// </summary>
     public class PrismGame : MonoBehaviour
     {
-        public enum Phase { Menu, Playback, Input, Result }
+        public enum Phase { Menu, Playback, Input, Feedback, Result }
 
         public Phase State { get; private set; } = Phase.Menu;
         public PrismMode Mode { get; private set; } = PrismMode.Classic;
@@ -100,6 +100,9 @@ namespace DshMiniGames
         /// <summary>The length of the sequence being reproduced right now.</summary>
         public int CurrentLength { get; private set; }
 
+        /// <summary>How many notes of the current sequence have been tapped correctly so far.</summary>
+        public int InputStep { get; private set; }
+
         /// <summary>Seconds left in the Rush clock, 0 in Classic.</summary>
         public float RushClock { get; private set; }
 
@@ -112,6 +115,11 @@ namespace DshMiniGames
         private float _timer;
         private int _runSeed;
         private int _completedLength;
+
+        private float _feedbackTimer;
+        private bool _feedbackRoundComplete;
+        private PrismPad _flashPad;
+        private float _flashTimer;
 
         // ------------------------------------------------------------------ setup
 
@@ -186,17 +194,26 @@ namespace DshMiniGames
             if (pad.Combo == _sequence[_inputIndex])
             {
                 _inputIndex++;
+                InputStep = _inputIndex;
+                FlashPad(pad, new Color(0.35f, 1f, 0.5f));
+                DshMobile.MobileHaptics.Light();
+
                 if (_inputIndex >= _sequence.Length)
                 {
                     _completedLength = CurrentLength;
                     Score = PrismRules.ScoreFor(_completedLength);
                     CurrentLength++;
-                    StartRound();
+                    _feedbackRoundComplete = true;
+                    _feedbackTimer = 0.45f;
+                    State = Phase.Feedback;
                 }
             }
             else
             {
-                EndRun();
+                FlashPad(pad, new Color(1f, 0.35f, 0.35f));
+                _feedbackRoundComplete = false;
+                _feedbackTimer = 0.6f;
+                State = Phase.Feedback;
             }
         }
 
@@ -330,12 +347,28 @@ namespace DshMiniGames
             _sequence = PrismRules.Sequence(_runSeed, CurrentLength, Difficulty);
             _playIndex = 0;
             _inputIndex = 0;
+            InputStep = 0;
+            _flashPad = null;
+            _flashTimer = 0f;
             _timer = 0.55f;
             State = Phase.Playback;
         }
 
         private void Update()
         {
+            TickFlash();
+
+            if (State == Phase.Feedback)
+            {
+                _feedbackTimer -= Time.deltaTime;
+                if (_feedbackTimer <= 0f)
+                {
+                    if (_feedbackRoundComplete) StartRound();
+                    else EndRun();
+                }
+                return;
+            }
+
             if (State != Phase.Playback && State != Phase.Input) return;
 
             if (State == Phase.Playback)
@@ -352,6 +385,7 @@ namespace DshMiniGames
                         ResetPadScales();
                         State = Phase.Input;
                         _inputIndex = 0;
+                        InputStep = 0;
                         RushClock = Mode == PrismMode.Rush ? PrismRules.StartLength * 1.4f + CurrentLength * 0.55f : 0f;
                     }
                 }
@@ -369,9 +403,85 @@ namespace DshMiniGames
             foreach (var pad in _pads)
             {
                 if (pad == null) continue;
-                if (pad.Combo == combo) pad.transform.localScale = pad.BaseScale * 1.22f;
+                if (pad.Combo == combo)
+                {
+                    pad.transform.localScale = pad.BaseScale * 1.3f;
+                    Brighten(pad, true);
+                }
+                else
+                {
+                    Brighten(pad, false);
+                }
             }
             PlayCombo(combo);
+        }
+
+        /// <summary>Flashes a tapped pad green or red, then restores it after a moment.</summary>
+        private void FlashPad(PrismPad pad, Color color)
+        {
+            if (pad == null) return;
+            _flashPad = pad;
+            _flashTimer = 0.30f;
+            pad.transform.localScale = pad.BaseScale * 1.3f;
+
+            var renderer = pad.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                renderer.sharedMaterial.color = color;
+                renderer.sharedMaterial.EnableKeyword("_EMISSION");
+                renderer.sharedMaterial.SetColor("_EmissionColor", color * 0.9f);
+            }
+        }
+
+        private void TickFlash()
+        {
+            if (_flashPad == null || _flashTimer <= 0f) return;
+            _flashTimer -= Time.deltaTime;
+            if (_flashTimer <= 0f)
+            {
+                var pad = _flashPad;
+                _flashPad = null;
+                if (pad != null)
+                {
+                    pad.transform.localScale = pad.BaseScale;
+                    RestoreColor(pad);
+                }
+            }
+        }
+
+        /// <summary>Briefly brightens a pad (its own colour, slightly whiter) during playback.</summary>
+        private void Brighten(PrismPad pad, bool on)
+        {
+            var renderer = pad.GetComponent<Renderer>();
+            if (renderer == null) return;
+            if (on)
+            {
+                var baseColor = ColorOf(pad.Combo.Color);
+                renderer.sharedMaterial.color = Color.Lerp(baseColor, Color.white, 0.45f);
+                renderer.sharedMaterial.EnableKeyword("_EMISSION");
+                renderer.sharedMaterial.SetColor("_EmissionColor", baseColor * 0.8f);
+            }
+            else
+            {
+                RestoreColor(pad);
+            }
+        }
+
+        private void RestoreColor(PrismPad pad)
+        {
+            var renderer = pad.GetComponent<Renderer>();
+            if (renderer == null) return;
+            var baseColor = ColorOf(pad.Combo.Color);
+            renderer.sharedMaterial.color = baseColor;
+            if (pad.Combo.Fill == PrismFill.Bell)
+            {
+                renderer.sharedMaterial.EnableKeyword("_EMISSION");
+                renderer.sharedMaterial.SetColor("_EmissionColor", baseColor * 0.55f);
+            }
+            else
+            {
+                renderer.sharedMaterial.DisableKeyword("_EMISSION");
+            }
         }
 
         private void ResetPadScales()

@@ -20,7 +20,6 @@ namespace DshMiniGames
         public int RunCoins => TunnelRules.CoinsFor(Score);
         public int Best { get; private set; }
 
-        private const float ForwardSpeed = 7f;
         private const float RingSpacing = 2.2f;
         private const int RingCount = 24;
         private const float RingRadius = 1.9f;
@@ -29,6 +28,7 @@ namespace DshMiniGames
         private Camera _camera;
         private Transform _ship;
         private Vector2 _shipPos;
+        private Vector2 _lastHole;
         private readonly List<Obstacle> _obstacles = new List<Obstacle>();
         private readonly List<Transform> _rings = new List<Transform>();
         private float _spawnTimer;
@@ -178,6 +178,7 @@ namespace DshMiniGames
             Theme = theme;
             Score = 0;
             _shipPos = Vector2.zero;
+            _lastHole = Vector2.zero;
             _ship.localPosition = Vector3.zero;
             foreach (var o in _obstacles) if (o.Root != null) Destroy(o.Root.gameObject);
             _obstacles.Clear();
@@ -207,7 +208,7 @@ namespace DshMiniGames
                 var ring = _rings[i];
                 if (ring == null) continue;
                 var p = ring.localPosition;
-                p.z -= ForwardSpeed * dt;
+                p.z -= TunnelRules.ForwardSpeed * dt;
                 if (p.z < -7f) p.z += RingCount * RingSpacing;
                 ring.localPosition = p;
             }
@@ -216,7 +217,7 @@ namespace DshMiniGames
             {
                 var o = _obstacles[i];
                 Vector3 p = o.Root.localPosition;
-                p.z -= ForwardSpeed * dt;
+                p.z -= TunnelRules.ForwardSpeed * dt;
                 o.Root.localPosition = p;
 
                 if (o.IsGate)
@@ -254,7 +255,7 @@ namespace DshMiniGames
             if (_spawnTimer <= 0f)
             {
                 SpawnObstacle(TunnelRules.SpawnAhead);
-                _spawnTimer = TunnelRules.Spacing / ForwardSpeed;
+                _spawnTimer = TunnelRules.TimeBetweenObstacles;
             }
         }
 
@@ -267,7 +268,10 @@ namespace DshMiniGames
             var o = new Obstacle { Root = root, IsGate = Mode == TunnelMode.Survival };
             if (o.IsGate)
             {
-                o.Hole = TunnelRules.NextGateHole(_shipPos, Random.value, Random.value);
+                // Chain each hole from the previous one, so two consecutive gates are never an
+                // impossible pair no matter how the ship wanders between them.
+                o.Hole = TunnelRules.NextGateHole(_lastHole, Random.value, Random.value);
+                _lastHole = o.Hole;
                 o.Radius = TunnelRules.GateHoleRadius;
                 BuildGate(root, o.Hole);
             }

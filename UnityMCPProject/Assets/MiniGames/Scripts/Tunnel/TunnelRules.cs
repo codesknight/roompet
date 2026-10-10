@@ -35,6 +35,12 @@ namespace DshMiniGames
         /// <summary>How far two successive obstacles are apart along the tunnel.</summary>
         public const float Spacing = 4.6f;
 
+        /// <summary>How fast the tunnel scrolls past the ship, in tunnel units per second.</summary>
+        public const float ForwardSpeed = 7f;
+
+        /// <summary>Seconds between two successive obstacles reaching the ship.</summary>
+        public const float TimeBetweenObstacles = Spacing / ForwardSpeed;
+
         /// <summary>
         /// Clamps a ship position into the tunnel cross-section, which is a circle: a ship at the
         /// corner of a square tunnel would have a diagonal the circle does not allow.
@@ -47,13 +53,14 @@ namespace DshMiniGames
         }
 
         /// <summary>
-        /// The next gate hole position, reachable from <paramref name="from"/>. The reachability
-        /// rule is the fairness promise: the hole is never farther than the ship can fly in the
-        /// time one gate takes to arrive.
+        /// The next gate hole position, reachable from <paramref name="from"/> (the previous hole,
+        /// not the ship's current spot). The reachability rule is the fairness promise: two
+        /// consecutive holes are never farther apart than the ship can fly in the time between
+        /// them, so no two gates can be an impossible pair.
         /// </summary>
         public static Vector2 NextGateHole(Vector2 from, float roll1, float roll2)
         {
-            float maxJump = ShipSpeed * (Spacing / 6f);
+            float maxJump = ShipSpeed * TimeBetweenObstacles;
             float angle = roll1 * Mathf.PI * 2f;
             float radius = Mathf.Lerp(0f, TunnelRadius - GateHoleRadius - 0.15f, Mathf.Sqrt(roll2));
             var target = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
