@@ -96,8 +96,17 @@
 - 验证：385/385 全绿（含 `StartMenuTests`）；运行中探针 四按钮/副标题（宠物名）/版本正确、`OpenSettings`
   后音量滑条 active、`OpenHowTo` 后 ScrollRect 存在、5 个胶囊开关 ✅。
 
-⏳ **剩余 HUD**（PetHud——最后一个、也是最大的）
-迁完才 merge 回 main 并发布。
+**🏠 PetHud 第一刀（本轮续）**
+
+- `PetHud` 是 4490 行的 IMGUI（状态卡/聊天/换物种/地图/日历/设置/商城/背包/仓库/摆放…），体量是其它 HUD 的
+  十几倍，只能**逐块迁**。本轮迁掉最外层、也最简单的一块：**toast（顶部短提示，`SetToast` 有 15 处调用）+
+  光标提示（`SetCursorHint`，摸宠物/点东西时跟着鼠标）**，换成 uGUI Text，`Update` 里按存活时间显隐、跟随指针。
+- 纯几何函数（`ComputeLayout`/`ComputeCardLayout`/`PackRows`/`EstimatedLabelWidth` 等）与静态 API
+  （`ModalOpen`/`SetToast`/`SetCursorHint`/`FreeBandScreen` 等，相机/世界物体/几十条单测都在用）**一行未动**。
+- 验证：385/385 全绿（含全部 PetHud 几何单测）；运行中探针 PetRoom 里 toast 面板 + 光标提示 Text 构建、
+  `SetToast`/`SetCursorHint` 正常 ✅。
+
+⏳ **PetHud 剩余**（聊天 → 宠物卡 → 移动端控制 → 九个浮层面板）逐块迁，全迁完才 merge 回 main 并发布。
 
 ### 第 40 轮：宠物身体替换——程序化方块换成 Kenney Cube Pets
 

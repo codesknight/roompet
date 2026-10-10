@@ -1046,6 +1046,13 @@
      `RectTransformUtility.ScreenPointToLocalPointInRectangle(root, screenPoint, null, out local)` 转成
      Canvas 局部坐标再 `anchoredPosition`。旋钮偏移注意 Y 轴方向：屏幕/IMGUI 是"上负下正"，Canvas 是
      "上正下负"，`Stick.y` 直接加、别取反。摇杆本体用运行时生成的圆形 Sprite（别拿圆角矩形当圆）。
+157. **IMGUI 的 `OnGUI` 永远画在 uGUI 画布之上——所以一个 HUD 要么整个迁完、要么别混着迁。** 迁移时想"先迁
+     一半、剩下的留 OnGUI"是行不通的：留在 OnGUI 里的面板会盖住已经迁到 uGUI 的控件，层级根本不受 uGUI 里
+     的 sibling 顺序控制。这正是 PetHud（4490 行）不能像其它 HUD 那样"一刀换掉"、必须**逐块迁且每块都是
+     自洽的完整功能**的原因——先迁的必须是 toast/光标提示这类"本来就浮在最上、和下面面板不重叠"的独立层。
+     另外教训：**体量大的 HUD，先把"纯几何函数 + 被外部依赖的静态 API"（布局计算、`ModalOpen`、`SetToast`、
+     `FreeBandScreen`…）和"画"分开**——几何和 API 是几十条单测和其它系统（相机/世界物体）的契约，迁移时
+     一行都不能动，动的只是把 Rect 变成 RectTransform。
 
 ---
 
