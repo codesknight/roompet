@@ -679,9 +679,10 @@ namespace DshMiniGames
 
         private void Update()
         {
-            bool mouseHeld = Input.GetMouseButton(0) && !JumpQuestHud.PointerOverPanel;
+            // Mouse/touch now arrive through the uGUI HUD's full-screen hold target (HoldInput /
+            // ReleaseInput are pushed by HoldArea on pointer-down/up); only the keyboard is read here.
             bool keyHeld = Input.GetKey(KeyCode.Space) || Input.GetKey(KeyCode.W);
-            bool held = HoldInput || mouseHeld || keyHeld;
+            bool held = HoldInput || keyHeld;
 
             if (_swallowInput)
             {
