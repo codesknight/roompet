@@ -195,6 +195,40 @@ namespace DshMobile
             rt.sizeDelta = new Vector2(w, h);
         }
 
+        /// <summary>
+        /// The general layout form: explicit anchor point, pivot, anchored position and size.
+        /// <see cref="SetRect"/>, <see cref="Center"/> and <see cref="Stretch"/> are all
+        /// specialisations of this.
+        /// </summary>
+        public static void Place(RectTransform rt, Vector2 anchor, Vector2 pivot,
+            Vector2 anchoredPosition, Vector2 size)
+        {
+            rt.anchorMin = anchor;
+            rt.anchorMax = anchor;
+            rt.pivot = pivot;
+            rt.anchoredPosition = anchoredPosition;
+            rt.sizeDelta = size;
+        }
+
+        /// <summary>Centres a fixed-size rect on the screen centre.</summary>
+        public static void Center(RectTransform rt, float w, float h)
+        {
+            Place(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero,
+                new Vector2(w, h));
+        }
+
+        /// <summary>
+        /// Creates a full-screen container under the shared canvas to hold one HUD's elements.
+        /// The canvas survives scene loads, so a HUD must Destroy this container in its own
+        /// OnDestroy — otherwise a mini game's UI leaks into the room it returns to.
+        /// </summary>
+        public static RectTransform Root(string name)
+        {
+            RectTransform rt = Rect(name, EnsureCanvas().transform);
+            Stretch(rt);
+            return rt;
+        }
+
         // -------------------------------------------------------------- teardown
 
         /// <summary>Destroys the shared canvas and event system, e.g. when tests want a clean slate.</summary>

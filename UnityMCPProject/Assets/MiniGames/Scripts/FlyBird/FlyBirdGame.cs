@@ -262,13 +262,10 @@ namespace DshMiniGames
                 Flap();
             }
 
-            // Two ways in, on purpose: the mouse event covers the editor and the desktop, and the
-            // shared touch layer covers a phone — where a tap does not always arrive as a
-            // synthesized mouse click, which is exactly how "点击屏幕不能飞" happens. The tap
-            // target is registered by the HUD, which is the only thing that knows where the
-            // buttons are.
-            if (Input.GetMouseButtonDown(0) && !PointerOverUi()) Flap();
-            if (DshMobile.MobileTouch.Pressed(FlyBirdHud.TapId)) Flap();
+            // Mouse/touch now arrive through the uGUI HUD's full-screen flap button (its onClick
+            // calls Flap), which is the one place that knows where the buttons are — the panels
+            // drawn above the button swallow their own taps, so a tap on "再来一次" no longer
+            // flaps the bird at the same moment. Keyboard stays here.
 
             if (State == Phase.Dead)
             {
@@ -434,13 +431,6 @@ namespace DshMiniGames
 
         /// <summary>Coins this run has earned, for the result panel.</summary>
         public int RunCoins => FlyBirdRules.CoinsFor(Score);
-
-        /// <summary>
-        /// Whether a tap landed on the HUD. The IMGUI button consumes its own click, but the
-        /// game also reads the mouse directly, so without this every tap on "再来一次" would
-        /// flap the bird at the same moment.
-        /// </summary>
-        private static bool PointerOverUi() => FlyBirdHud.PointerOverPanel;
 
         /// <summary>Goes home, the same way the runner does.</summary>
         public void ReturnToRoom()
