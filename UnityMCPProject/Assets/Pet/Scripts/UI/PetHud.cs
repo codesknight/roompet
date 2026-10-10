@@ -163,6 +163,14 @@ namespace DshPet
         private readonly List<UnityEngine.UI.Text> _collectionTabLabels = new List<UnityEngine.UI.Text>();
         private int _builtCollectionTab = -1;
 
+        // uGUI furnish panel (fourth slice, sixth piece).
+        private UnityEngine.UI.Image _furnishPanel;
+        private UnityEngine.UI.Text _furnishInfo;
+        private UnityEngine.UI.Text _furnishMsg;
+        private RectTransform _furnishContent;
+        private readonly List<UnityEngine.UI.Text> _furnishTabLabels = new List<UnityEngine.UI.Text>();
+        private int _builtFurnishTab = -1;
+
         /// <summary>Set by hoverable world objects; shown near the cursor.</summary>
         public static void SetCursorHint(string hint) => _cursorHint = hint;
 
@@ -359,7 +367,7 @@ namespace DshPet
             if (_showPromptPreview) DrawPromptPreview(gm);
             // The journal (calendar) is now uGUI — see SyncJournalPanel.
             // The collection panel is now uGUI — see SyncCollectionPanel.
-            if (_showFurnish) DrawFurnish(gm);
+            // The furnish panel is now uGUI — see SyncFurnishPanel.
             // The placement bar is now uGUI — see SyncPlacementBar.
 
             GUI.matrix = previousMatrix;
@@ -719,6 +727,7 @@ namespace DshPet
             BuildSettingsPanel();
             BuildJournalPanel();
             BuildCollectionPanel();
+            BuildFurnishPanel();
         }
 
         private void Update()
@@ -749,6 +758,7 @@ namespace DshPet
             SyncSettingsPanel();
             SyncJournalPanel();
             SyncCollectionPanel();
+            SyncFurnishPanel();
         }
 
         /// <summary>
@@ -2402,6 +2412,389 @@ namespace DshPet
             }
 
             return y + 90f;
+        }
+
+        // ---------------------------------------------------------------- furnish (uGUI)
+
+        private void BuildFurnishPanel()
+        {
+            _furnishPanel = DshMobile.Ugui.Panel("FurnishPanel", _root, 18f,
+                new Color(0.11f, 0.10f, 0.14f, 1f), new Color(1f, 1f, 1f, 0.14f), 2f);
+            _furnishPanel.gameObject.SetActive(false);
+            var p = _furnishPanel.rectTransform;
+
+            var title = DshMobile.Ugui.Text("Title", p, "商城 · 仓库 · 背包", 24, new Color(1f, 0.94f, 0.82f), UnityEngine.TextAnchor.MiddleLeft, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 18f, 14f, 300f, 32f);
+
+            var close = DshMobile.Ugui.Button("Close", p, "关闭", 16, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRect(close.GetComponent<RectTransform>(), -94f, 16f, 76f, 30f);
+            close.onClick.AddListener(() => _showFurnish = false);
+
+            string[] tabNames = { "商城", "背包", "仓库" };
+            for (int i = 0; i < 3; i++)
+            {
+                var tab = DshMobile.Ugui.Button("Tab", p, tabNames[i], 16, new Color(0.30f, 0.40f, 0.58f));
+                DshMobile.Ugui.SetRect(tab.GetComponent<RectTransform>(), 18f + i * 80f, 48f, 72f, 34f);
+                _furnishTabLabels.Add(tab.GetComponentInChildren<UnityEngine.UI.Text>());
+                int captured = i;
+                tab.onClick.AddListener(() => { _furnishTab = captured; _builtFurnishTab = -1; });
+            }
+
+            _furnishInfo = DshMobile.Ugui.Text("Info", p, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleLeft);
+            DshMobile.Ugui.SetRect(_furnishInfo.rectTransform, 260f, 52f, 300f, 26f);
+
+            _furnishMsg = DshMobile.Ugui.Text("Msg", p, "", 14, new Color(0.62f, 0.95f, 0.70f), UnityEngine.TextAnchor.MiddleLeft);
+            DshMobile.Ugui.SetRect(_furnishMsg.rectTransform, 18f, 88f, 500f, 22f);
+
+            var viewport = new GameObject("Viewport", typeof(RectTransform));
+            viewport.transform.SetParent(p, false);
+            viewport.AddComponent<UnityEngine.UI.RectMask2D>();
+            var viewportImg = viewport.AddComponent<UnityEngine.UI.Image>();
+            viewportImg.color = new Color(0f, 0f, 0f, 0f);
+            viewportImg.raycastTarget = true;
+            var scroll = p.gameObject.AddComponent<UnityEngine.UI.ScrollRect>();
+            scroll.viewport = viewport.GetComponent<RectTransform>();
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = UnityEngine.UI.ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 30f;
+            scroll.viewport.anchorMin = new Vector2(0f, 0f);
+            scroll.viewport.anchorMax = new Vector2(1f, 1f);
+            scroll.viewport.offsetMin = new Vector2(18f, 14f);
+            scroll.viewport.offsetMax = new Vector2(-18f, -116f);
+
+            var content = new GameObject("Content", typeof(RectTransform));
+            content.transform.SetParent(viewport.transform, false);
+            _furnishContent = content.GetComponent<RectTransform>();
+            _furnishContent.anchorMin = new Vector2(0f, 1f);
+            _furnishContent.anchorMax = new Vector2(1f, 1f);
+            _furnishContent.pivot = new Vector2(0.5f, 1f);
+            scroll.content = _furnishContent;
+        }
+
+        private void SyncFurnishPanel()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            bool open = _showFurnish;
+            _furnishPanel.gameObject.SetActive(open);
+            _modalScrim.gameObject.SetActive(open || _showSettings || _showJournal || _showCollection || gm.DoorPromptOpen);
+            if (!open) return;
+
+            var w = Mathf.Min(560f, DesignWidth - 32f);
+            var h = Mathf.Min(620f, DesignHeight - 32f);
+            _furnishPanel.rectTransform.anchorMin = _furnishPanel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            _furnishPanel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            _furnishPanel.rectTransform.anchoredPosition = Vector2.zero;
+            _furnishPanel.rectTransform.sizeDelta = new Vector2(w, h);
+
+            _furnishInfo.text = "粮 " + PetInventory.Food + " · 背包 " + PetBackpack.Equipped().Count + "/" + PetBackpack.ToolSlots;
+            _furnishMsg.text = _furnishMessage;
+            _furnishMsg.color = (_furnishMessage.StartsWith("还差") || _furnishMessage.Contains("没有"))
+                ? new Color(1f, 0.72f, 0.60f) : new Color(0.62f, 0.95f, 0.70f);
+
+            for (int i = 0; i < _furnishTabLabels.Count; i++)
+                _furnishTabLabels[i].color = _furnishTab == i ? new Color(1f, 0.92f, 0.7f) : Color.white;
+
+            if (_builtFurnishTab != _furnishTab)
+            {
+                RebuildFurnishContent(gm, w);
+                _builtFurnishTab = _furnishTab;
+            }
+        }
+
+        private void RebuildFurnishContent(PetGameManager gm, float w)
+        {
+            for (int i = _furnishContent.childCount - 1; i >= 0; i--) Destroy(_furnishContent.GetChild(i).gameObject);
+            float y = 4f;
+
+            if (_furnishTab == 0) RebuildShopTab(w, ref y);
+            else if (_furnishTab == 1) RebuildBackpackTab(gm, w, ref y);
+            else RebuildWarehouseTab(gm, w, ref y);
+
+            _furnishContent.sizeDelta = new Vector2(-4f, y + 12f);
+        }
+
+        private void RebuildShopTab(float w, ref float y)
+        {
+            y = BuildFurnishLabel(_furnishContent, y, "🎰 扭蛋机");
+            y = BuildFurnishLabel(_furnishContent, y, "　投 " + PetGacha.Cost + " 币随机抽一只扭蛋专属宠物（小仓鼠 50% / 小熊猫 35% / 小企鹅 15%），不进直售。");
+
+            bool afford = DshMobile.PetWallet.CanAfford(PetGacha.Cost);
+            var roll = DshMobile.Ugui.Button("Roll", _furnishContent,
+                afford ? $"🎲 扭一次（¥{PetGacha.Cost}）" : $"还差 {PetGacha.Cost - DshMobile.PetWallet.Coins} 币",
+                16, new Color(0.98f, 0.72f, 0.22f));
+            roll.interactable = afford;
+            roll.GetComponent<RectTransform>().anchorMin = roll.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 1f);
+            roll.GetComponent<RectTransform>().pivot = new Vector2(0f, 1f);
+            roll.GetComponent<RectTransform>().anchoredPosition = new Vector2(2f, -y);
+            roll.GetComponent<RectTransform>().sizeDelta = new Vector2(Mathf.Min(w - 60f, 400f), 44f);
+            roll.onClick.AddListener(() => { string m; PetCollection.RollGacha(out m); _furnishMessage = m; DshMobile.MobileHaptics.Medium(); _builtFurnishTab = -1; });
+            y += 52f;
+
+            var sections = new[] { new { H = "🍖 食品", C = ShopCategory.Food }, new { H = "🧰 道具", C = ShopCategory.Tool }, new { H = "🛋️ 家具", C = ShopCategory.Furniture } };
+            foreach (var section in sections)
+            {
+                y = BuildFurnishLabel(_furnishContent, y, section.H);
+                foreach (var item in PetShop.All)
+                {
+                    if (item.Category != section.C) continue;
+                    y = BuildShopItem(w, item, ref y);
+                }
+            }
+        }
+
+        private float BuildShopItem(float w, ShopItem item, ref float y)
+        {
+            if (item.Produced)
+            {
+                y = BuildFurnishLabel(_furnishContent, y, $"　{item.Emoji} {item.Name} —— 世界里获得（能卖 ¥{item.SellPrice}）");
+                y = BuildFurnishLabel(_furnishContent, y, "　" + item.Blurb);
+                return y;
+            }
+
+            var row = new GameObject("Item", typeof(RectTransform));
+            row.transform.SetParent(_furnishContent, false);
+            var rowRt = row.GetComponent<RectTransform>();
+            rowRt.anchorMin = new Vector2(0f, 1f);
+            rowRt.anchorMax = new Vector2(1f, 1f);
+            rowRt.pivot = new Vector2(0f, 1f);
+            rowRt.anchoredPosition = new Vector2(0f, -y);
+            rowRt.sizeDelta = new Vector2(0f, 36f);
+
+            var name = DshMobile.Ugui.Text("Name", row.transform, $"{item.Emoji} {item.Name}", 16, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(name.rectTransform, 2f, 4f, 150f, 28f);
+
+            var price = DshMobile.Ugui.Text("Price", row.transform, "¥" + item.Price, 16, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(price.rectTransform, 158f, 4f, 70f, 28f);
+
+            bool owned = item.IsFood ? false : PetInventory.IsOwned(item.Id);
+            string buyLabel = item.IsFood ? (item.FoodUnits > 1 ? $"购买（+{item.FoodUnits}）" : "购买") : (owned ? "已拥有" : "购买");
+            var buy = DshMobile.Ugui.Button("Buy", row.transform, buyLabel, 15, new Color(0.30f, 0.55f, 0.35f));
+            buy.interactable = !owned;
+            buy.GetComponent<RectTransform>().anchorMin = buy.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 0.5f);
+            buy.GetComponent<RectTransform>().pivot = new Vector2(1f, 0.5f);
+            buy.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 0f);
+            buy.GetComponent<RectTransform>().sizeDelta = new Vector2(110f, 34f);
+            ShopItem captured = item;
+            buy.onClick.AddListener(() => { _furnishMessage = PetInventory.Buy(captured); DshMobile.MobileHaptics.Light(); _builtFurnishTab = -1; });
+
+            y += 38f;
+            y = BuildFurnishLabel(_furnishContent, y, "　" + item.Blurb);
+            if (item.IsFurniture && item.Scene != ItemScene.Anywhere)
+            {
+                bool here = item.AllowedIn(PetWorldMap.Current);
+                y = BuildFurnishLabel(_furnishContent, y, here ? "　（这里可以摆放）" : "　（只能摆在" + PetInventory.PlaceName(item.Scene) + "）");
+            }
+            return y;
+        }
+
+        private void RebuildBackpackTab(PetGameManager gm, float w, ref float y)
+        {
+            y = BuildFurnishLabel(_furnishContent, y, "道具栏（" + PetBackpack.Equipped().Count + "/" + PetBackpack.ToolSlots + "）");
+            var equipped = PetBackpack.Equipped();
+            for (int i = 0; i < PetBackpack.ToolSlots; i++)
+            {
+                string id = i < equipped.Count ? equipped[i] : "";
+                var item = string.IsNullOrEmpty(id) ? null : PetShop.Get(id);
+                y = BuildEquipRow(w, i, item, ref y);
+            }
+
+            if (PetBackpack.BucketFull) y = BuildFurnishLabel(_furnishContent, y, "水桶里装满了水，去浇苹果树吧。");
+
+            y = BuildFurnishLabel(_furnishContent, y, "没装备上的道具");
+            bool anyTool = false;
+            foreach (var item in PetShop.All)
+            {
+                if (!item.IsTool || !PetInventory.IsOwned(item.Id) || PetBackpack.IsEquipped(item.Id)) continue;
+                anyTool = true;
+                y = BuildSimpleActionRow(w, $"{item.Emoji} {item.Name}", "装备", () => { _furnishMessage = PetBackpack.Equip(item.Id); DshMobile.MobileHaptics.Light(); _builtFurnishTab = -1; }, ref y);
+            }
+            if (!anyTool) y = BuildFurnishLabel(_furnishContent, y, "还没有没装备的道具。商城买水桶、铲子，再来这里装备。");
+
+            y = BuildFurnishLabel(_furnishContent, y, "随身食物（点「投喂」直接喂给宠物）");
+            bool anyFood = false;
+            foreach (var item in PetShop.All)
+            {
+                if (!item.IsFood) continue;
+                int n = PetInventory.Count(item.Id);
+                if (n <= 0) continue;
+                anyFood = true;
+                y = BuildSimpleActionRow(w, $"{item.Emoji} {item.Name} ×{n}", "投喂", () => { if (gm != null) gm.FeedFromBackpack(item.Id); DshMobile.MobileHaptics.Light(); _builtFurnishTab = -1; }, ref y);
+            }
+            if (!anyFood) y = BuildFurnishLabel(_furnishContent, y, "背包里还没有食物。商城买粮食、水、肉，或去花园摘苹果、钓鱼。");
+            y = BuildFurnishLabel(_furnishContent, y, "宠物栏（随身 " + PetCollection.Backpack.Count + "/" + PetCollection.BackpackSlots + "）——宠物在「宠物」面板的背包页管理。");
+            y = BuildFurnishLabel(_furnishContent, y, "仓库容量：" + PetInventory.WarehouseSlots + " 格。");
+        }
+
+        private float BuildEquipRow(float w, int slot, ShopItem item, ref float y)
+        {
+            var row = new GameObject("Slot", typeof(RectTransform));
+            row.transform.SetParent(_furnishContent, false);
+            var rowRt = row.GetComponent<RectTransform>();
+            rowRt.anchorMin = new Vector2(0f, 1f);
+            rowRt.anchorMax = new Vector2(1f, 1f);
+            rowRt.pivot = new Vector2(0f, 1f);
+            rowRt.anchoredPosition = new Vector2(0f, -y);
+            rowRt.sizeDelta = new Vector2(0f, 30f);
+
+            var label = DshMobile.Ugui.Text("Label", row.transform, "第 " + (slot + 1) + " 格：" + (item != null ? $"{item.Emoji} {item.Name}" : "空"), 15, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(label.rectTransform, 2f, 2f, 250f, 26f);
+
+            if (item != null)
+            {
+                var unequip = DshMobile.Ugui.Button("Unequip", row.transform, "取下", 14, new Color(0.75f, 0.35f, 0.35f));
+                unequip.GetComponent<RectTransform>().anchorMin = unequip.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 0.5f);
+                unequip.GetComponent<RectTransform>().pivot = new Vector2(1f, 0.5f);
+                unequip.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 0f);
+                unequip.GetComponent<RectTransform>().sizeDelta = new Vector2(60f, 28f);
+                ShopItem captured = item;
+                unequip.onClick.AddListener(() => { _furnishMessage = PetBackpack.Unequip(captured.Id); DshMobile.MobileHaptics.Light(); _builtFurnishTab = -1; });
+            }
+            return y + 34f;
+        }
+
+        private void RebuildWarehouseTab(PetGameManager gm, float w, ref float y)
+        {
+            var currentPlace = PetWorldMap.Current;
+            y = BuildFurnishLabel(_furnishContent, y, "粮食 " + PetInventory.Food + " 顿　·　苹果 " + PetInventory.Count("apple") + " 个　·　鱼 " +
+                PetInventory.Count("fish") + " 条　·　水 " + PetInventory.Count("water") + " 瓶　·　肉 " + PetInventory.Count("meat") + " 份");
+
+            foreach (var item in PetShop.All)
+            {
+                if (!item.IsFood) continue;
+                int n = PetInventory.Count(item.Id);
+                if (n <= 0) continue;
+                y = BuildFeedSellRow(w, $"{item.Emoji} {item.Name} ×{n}", item, gm, ref y);
+            }
+
+            y = BuildFurnishLabel(_furnishContent, y, "摆在这里（" + RoomThemeInfo.Get(currentPlace).DisplayName + "）");
+            var placed = PetInventory.Placed(currentPlace);
+            bool anyHere = false;
+            foreach (var id in placed.Keys)
+            {
+                var item = PetShop.Get(id);
+                if (item == null) continue;
+                anyHere = true;
+                if (!PetShop.IsStarter(id))
+                {
+                    y = BuildSimpleActionRow(w, $"{item.Emoji} {item.Name}", "收回仓库", () => { _furnishMessage = PetInventory.Store(id, currentPlace); DshMobile.MobileHaptics.Light(); gm.RebuildRoom(); _builtFurnishTab = -1; }, ref y);
+                }
+                else
+                {
+                    y = BuildFurnishLabel(_furnishContent, y, $"{item.Emoji} {item.Name}");
+                }
+            }
+            if (!anyHere) y = BuildFurnishLabel(_furnishContent, y, "这里还空着，去仓库把家具摆出来。");
+
+            y = BuildFurnishLabel(_furnishContent, y, "在仓库里（还没摆进这个场景）");
+            bool any = false;
+            foreach (var item in PetShop.All)
+            {
+                if (!item.IsFurniture || !PetInventory.IsOwned(item.Id) || placed.ContainsKey(item.Id)) continue;
+                any = true;
+                bool allowed = item.AllowedIn(currentPlace);
+                y = BuildFurnishPlaceSellRow(w, item, allowed, gm, ref y);
+                if (!allowed) y = BuildFurnishLabel(_furnishContent, y, "　只能摆在" + PetInventory.PlaceName(item.Scene) + "。");
+            }
+            if (!any) y = BuildFurnishLabel(_furnishContent, y, "仓库空空的。去商城看看，家具买回来才能摆进房间。");
+        }
+
+        private float BuildFeedSellRow(float w, string label, ShopItem item, PetGameManager gm, ref float y)
+        {
+            var row = new GameObject("Food", typeof(RectTransform));
+            row.transform.SetParent(_furnishContent, false);
+            var rowRt = row.GetComponent<RectTransform>();
+            rowRt.anchorMin = new Vector2(0f, 1f);
+            rowRt.anchorMax = new Vector2(1f, 1f);
+            rowRt.pivot = new Vector2(0f, 1f);
+            rowRt.anchoredPosition = new Vector2(0f, -y);
+            rowRt.sizeDelta = new Vector2(0f, 30f);
+
+            var name = DshMobile.Ugui.Text("Name", row.transform, label, 15, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(name.rectTransform, 2f, 2f, 170f, 26f);
+
+            var feed = DshMobile.Ugui.Button("Feed", row.transform, "投喂", 14, new Color(0.30f, 0.55f, 0.35f));
+            feed.GetComponent<RectTransform>().anchorMin = feed.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 0.5f);
+            feed.GetComponent<RectTransform>().pivot = new Vector2(1f, 0.5f);
+            feed.GetComponent<RectTransform>().anchoredPosition = new Vector2(-110f, 0f);
+            feed.GetComponent<RectTransform>().sizeDelta = new Vector2(50f, 28f);
+            ShopItem captured = item;
+            feed.onClick.AddListener(() => { gm.FeedFromBackpack(captured.Id); DshMobile.MobileHaptics.Light(); _builtFurnishTab = -1; });
+
+            var sell = DshMobile.Ugui.Button("Sell", row.transform, "卖 ¥" + item.SellPrice, 14, new Color(0.75f, 0.35f, 0.35f));
+            sell.GetComponent<RectTransform>().anchorMin = sell.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 0.5f);
+            sell.GetComponent<RectTransform>().pivot = new Vector2(1f, 0.5f);
+            sell.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 0f);
+            sell.GetComponent<RectTransform>().sizeDelta = new Vector2(96f, 28f);
+            sell.onClick.AddListener(() => { _furnishMessage = PetInventory.Sell(captured.Id); DshMobile.MobileHaptics.Light(); _builtFurnishTab = -1; });
+            return y + 34f;
+        }
+
+        private float BuildFurnishPlaceSellRow(float w, ShopItem item, bool allowed, PetGameManager gm, ref float y)
+        {
+            var row = new GameObject("Furniture", typeof(RectTransform));
+            row.transform.SetParent(_furnishContent, false);
+            var rowRt = row.GetComponent<RectTransform>();
+            rowRt.anchorMin = new Vector2(0f, 1f);
+            rowRt.anchorMax = new Vector2(1f, 1f);
+            rowRt.pivot = new Vector2(0f, 1f);
+            rowRt.anchoredPosition = new Vector2(0f, -y);
+            rowRt.sizeDelta = new Vector2(0f, 30f);
+
+            var name = DshMobile.Ugui.Text("Name", row.transform, $"{item.Emoji} {item.Name}", 15, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(name.rectTransform, 2f, 2f, 150f, 26f);
+
+            var place = DshMobile.Ugui.Button("Place", row.transform, "摆放", 14, new Color(0.30f, 0.55f, 0.35f));
+            place.interactable = allowed;
+            place.GetComponent<RectTransform>().anchorMin = place.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 0.5f);
+            place.GetComponent<RectTransform>().pivot = new Vector2(1f, 0.5f);
+            place.GetComponent<RectTransform>().anchoredPosition = new Vector2(-120f, 0f);
+            place.GetComponent<RectTransform>().sizeDelta = new Vector2(50f, 30f);
+            ShopItem captured = item;
+            place.onClick.AddListener(() => { _furnishMessage = PetInventory.Place(captured.Id, PetWorldMap.Current); DshMobile.MobileHaptics.Light(); gm.RebuildRoom(); _builtFurnishTab = -1; });
+
+            var sell = DshMobile.Ugui.Button("Sell", row.transform, "卖掉 ¥" + item.SellPrice, 14, new Color(0.75f, 0.35f, 0.35f));
+            sell.GetComponent<RectTransform>().anchorMin = sell.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 0.5f);
+            sell.GetComponent<RectTransform>().pivot = new Vector2(1f, 0.5f);
+            sell.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 0f);
+            sell.GetComponent<RectTransform>().sizeDelta = new Vector2(108f, 30f);
+            sell.onClick.AddListener(() => { _furnishMessage = PetInventory.Sell(captured.Id); DshMobile.MobileHaptics.Light(); _builtFurnishTab = -1; });
+            return y + 34f;
+        }
+
+        private float BuildSimpleActionRow(float w, string label, string action, UnityEngine.Events.UnityAction onClick, ref float y)
+        {
+            var row = new GameObject("Row", typeof(RectTransform));
+            row.transform.SetParent(_furnishContent, false);
+            var rowRt = row.GetComponent<RectTransform>();
+            rowRt.anchorMin = new Vector2(0f, 1f);
+            rowRt.anchorMax = new Vector2(1f, 1f);
+            rowRt.pivot = new Vector2(0f, 1f);
+            rowRt.anchoredPosition = new Vector2(0f, -y);
+            rowRt.sizeDelta = new Vector2(0f, 30f);
+
+            var name = DshMobile.Ugui.Text("Name", row.transform, label, 15, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(name.rectTransform, 2f, 2f, 250f, 26f);
+
+            var btn = DshMobile.Ugui.Button("Action", row.transform, action, 14, new Color(0.30f, 0.40f, 0.58f));
+            btn.GetComponent<RectTransform>().anchorMin = btn.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 0.5f);
+            btn.GetComponent<RectTransform>().pivot = new Vector2(1f, 0.5f);
+            btn.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 0f);
+            btn.GetComponent<RectTransform>().sizeDelta = new Vector2(80f, 28f);
+            btn.onClick.AddListener(onClick);
+            return y + 34f;
+        }
+
+        private static float BuildFurnishLabel(RectTransform content, float y, string text)
+        {
+            var label = DshMobile.Ugui.Text("Label", content, text, 15, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            label.horizontalOverflow = HorizontalWrapMode.Wrap;
+            label.rectTransform.anchorMin = label.rectTransform.anchorMax = new Vector2(0f, 1f);
+            label.rectTransform.pivot = new Vector2(0f, 1f);
+            label.rectTransform.anchoredPosition = new Vector2(2f, -y);
+            label.rectTransform.sizeDelta = new Vector2(-4f, 24f);
+            return y + 26f;
         }
 
         /// <summary>
