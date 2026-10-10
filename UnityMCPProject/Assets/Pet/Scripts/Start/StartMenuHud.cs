@@ -1,336 +1,345 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
 
 namespace DshPet
 {
     /// <summary>
-    /// The front door's interface: a title, four buttons, and the two panels behind them.
-    ///
-    /// IMGUI in design pixels with <c>GUI.matrix</c>, like every other screen in this project, so the
-    /// phone layout and the desktop one are the same code. The one thing specific to this screen is that
-    /// it is the *first* thing anybody sees: the buttons are big, the text says what the game is, and
-    /// every panel can be dismissed by tapping the same corner it came from.
+    /// The front door's interface, now in uGUI: a title, four buttons, and the settings / how-to /
+    /// quit panels behind them. The settings switches are pill buttons that say 开/关 (a drawn switch
+    /// rather than Unity's default toggle, for the same reason the IMGUI version drew them: a small
+    /// grey checkbox is invisible at phone size), and the how-to text scrolls through a ScrollRect.
     /// </summary>
     public class StartMenuHud : MonoBehaviour
     {
         private StartMenu _menu;
-        private GUIStyle _title;
-        private GUIStyle _subtitle;
-        private GUIStyle _button;
-        private GUIStyle _body;
-        private GUIStyle _small;
-        private GUIStyle _centred;
-        private Texture2D _white;
-        private Vector2 _howToScroll;
+        private RectTransform _root;
 
-        private void Awake() => _menu = GetComponent<StartMenu>();
+        private GameObject _menuPanel;
+        private Text _menuSubtitle;
+        private Text _menuVersion;
 
-        private void EnsureStyles()
+        private GameObject _settingsPanel;
+        private readonly List<Text> _pillLabels = new List<Text>();
+        private readonly List<System.Func<bool>> _toggleGetters = new List<System.Func<bool>>();
+        private readonly List<System.Action<bool>> _toggleSetters = new List<System.Action<bool>>();
+        private Text _volumeLabel;
+        private Slider _volumeSlider;
+        private Text _nowPlaying;
+
+        private GameObject _howToPanel;
+
+        private GameObject _quitPanel;
+
+        private Image _fade;
+
+        private bool _built;
+
+        private static readonly Color TitleColor = new Color(1f, 0.96f, 0.86f);
+        private static readonly Color SubtitleColor = new Color(1f, 0.92f, 0.82f, 0.92f);
+        private static readonly Color BodyColor = new Color(0.96f, 0.96f, 0.99f);
+        private static readonly Color SmallColor = new Color(0.90f, 0.92f, 0.97f, 0.9f);
+        private static readonly Color PrimaryTint = new Color(0.80f, 0.58f, 0.22f);
+        private static readonly Color SlateTint = new Color(0.30f, 0.32f, 0.44f);
+
+        private void Awake()
         {
-            if (_title != null) return;
-
-            _title = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 46,
-                fontStyle = FontStyle.Bold,
-                alignment = TextAnchor.MiddleCenter
-            };
-            _title.normal.textColor = new Color(1f, 0.96f, 0.86f);
-
-            _subtitle = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 18,
-                alignment = TextAnchor.MiddleCenter,
-                wordWrap = true
-            };
-            _subtitle.normal.textColor = new Color(1f, 0.92f, 0.82f, 0.92f);
-
-            _button = new GUIStyle(GUI.skin.button)
-            {
-                fontSize = 22,
-                fontStyle = FontStyle.Bold,
-                padding = new RectOffset(18, 18, 12, 12)
-            };
-
-            _body = new GUIStyle(GUI.skin.label) { fontSize = 16, wordWrap = true };
-            _body.normal.textColor = new Color(0.96f, 0.96f, 0.99f);
-
-            _small = new GUIStyle(GUI.skin.label) { fontSize = 14, wordWrap = true };
-            _small.normal.textColor = new Color(0.90f, 0.92f, 0.97f, 0.9f);
-
-            _centred = new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter };
-
-            _pill = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 19,
-                fontStyle = FontStyle.Bold,
-                alignment = TextAnchor.MiddleCenter
-            };
-            _pill.normal.textColor = new Color(1f, 0.99f, 0.94f);
-
-            _buttonPrimary = new GUIStyle(_button);
-            _buttonPrimary.normal.textColor = new Color(0.20f, 0.12f, 0.04f);
-            _buttonPrimary.fontSize = 25;
-
-            _white = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-            _white.SetPixel(0, 0, Color.white);
-            _white.Apply();
-            _white.hideFlags = HideFlags.HideAndDontSave;
+            _menu = GetComponent<StartMenu>();
+            Build();
         }
 
-        private void OnGUI()
+        private void OnDestroy()
         {
-            if (_menu == null) return;
-            EnsureStyles();
-
-            var safe = DshMobile.MobileUi.SafeArea;
-            float scale = DshMobile.MobileUi.UseTouchControls ? DshMobile.MobileUi.UiScale : 1f;
-            float width = Mathf.Max(320f, safe.width / scale);
-            float height = Mathf.Max(240f, safe.height / scale);
-
-            var previous = GUI.matrix;
-            if (scale != 1f || safe.x != 0f || safe.y != 0f)
-            {
-                GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x, safe.y, 0f), Quaternion.identity,
-                    new Vector3(scale, scale, 1f));
-            }
-
-            switch (_menu.Phase)
-            {
-                case StartPhase.Menu:
-                    DrawMenu(width, height);
-                    break;
-                case StartPhase.Settings:
-                    DrawSettings(width, height);
-                    break;
-                case StartPhase.HowTo:
-                    DrawHowTo(width, height);
-                    break;
-                case StartPhase.Quit:
-                    DrawQuit(width, height);
-                    break;
-                case StartPhase.Opening:
-                case StartPhase.Leaving:
-                    DrawFade(width, height);
-                    break;
-            }
-
-            GUI.matrix = previous;
+            if (_root != null) Destroy(_root.gameObject);
         }
 
-        // ------------------------------------------------------------------ the menu
-
-        private void DrawMenu(float width, float height)
+        private void Build()
         {
-            // The title sits high and the buttons low, so a thumb on a phone is nowhere near the text.
-            // Both are written on a translucent plate: the wall behind them is a bright cream, and cream
-            // text on cream is invisible — the first capture of this screen had a title you could not read.
-            float headerTop = height * 0.10f;
-            var header = new Rect(width * 0.5f - 280f, headerTop - 14f, 560f, 116f);
-            DshMobile.UiSkin.Panel(header, 22f, new Color(0.12f, 0.10f, 0.14f, 0.44f),
-                new Color(1f, 0.92f, 0.78f, 0.18f), 1.4f);
+            _root = DshMobile.Ugui.Root("StartMenuHud");
 
-            GUI.Label(new Rect(width * 0.5f - 260f, headerTop, 520f, 60f), "宠物小屋", _title);
+            _fade = DshMobile.Ugui.Image("Fade", _root, new Color(1f, 0.98f, 0.94f, 0f));
+            DshMobile.Ugui.Stretch(_fade.rectTransform);
+            _fade.raycastTarget = false;
+            _fade.gameObject.SetActive(false);
 
-            // One line, short. The first version ran the sentence out to two lines and left a full stop
-            // alone on the second — which reads as a bug at the top of the very first screen of the game.
-            GUI.Label(new Rect(width * 0.5f - 260f, headerTop + 60f, 520f, 34f),
-                "会记事、听得懂你说话的" + _menu.PetName + "，在门里面等你。", _subtitle);
+            BuildMenu();
+            BuildSettings();
+            BuildHowTo();
+            BuildQuit();
 
-            float buttonWidth = Mathf.Min(400f, width - 72f);
+            _built = true;
+        }
+
+        private GameObject Panel(string name, float w, float h, float radius = 18f)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(_root, false);
+            DshMobile.Ugui.Center(go.GetComponent<RectTransform>(), w, h);
+            var bg = DshMobile.Ugui.Panel("Bg", go.transform, radius,
+                new Color(0.10f, 0.11f, 0.16f, 0.94f), new Color(1f, 1f, 1f, 0.16f), 1.5f);
+            DshMobile.Ugui.Stretch(bg.rectTransform);
+            return go;
+        }
+
+        private void BuildMenu()
+        {
+            var go = new GameObject("Menu", typeof(RectTransform));
+            go.transform.SetParent(_root, false);
+            DshMobile.Ugui.Stretch(go.GetComponent<RectTransform>());
+            Transform m = go.transform;
+
+            var header = DshMobile.Ugui.Panel("Header", m, 22f,
+                new Color(0.12f, 0.10f, 0.14f, 0.44f), new Color(1f, 0.92f, 0.78f, 0.18f), 1.4f);
+            DshMobile.Ugui.Place(header.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -78f), new Vector2(560f, 116f));
+
+            var title = DshMobile.Ugui.Text("Title", m, "宠物小屋", 46, TitleColor, TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.Place(title.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -72f), new Vector2(520f, 60f));
+
+            _menuSubtitle = DshMobile.Ugui.Text("Subtitle", m, "", 18, SubtitleColor, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.Place(_menuSubtitle.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -132f), new Vector2(520f, 34f));
+
+            float buttonWidth = 400f;
             float buttonHeight = 66f;
             float gap = 18f;
             float total = buttonHeight * 4f + gap * 3f;
-            float y = Mathf.Max(height * 0.44f, height - 92f - total);
+            float y = total; // measured from the bottom edge upward
 
-            var start = new Rect((width - buttonWidth) * 0.5f, y, buttonWidth, buttonHeight);
-            if (MenuButton(start, "进入房间", true))
-            {
-                _menu.Begin();
-            }
+            var start = DshMobile.Ugui.Button("Start", m, "进入房间", 25, PrimaryTint);
+            DshMobile.Ugui.Place(start.GetComponent<RectTransform>(), new Vector2(0.5f, 0f),
+                new Vector2(0.5f, 0f), new Vector2(0f, y), new Vector2(buttonWidth, buttonHeight));
+            start.onClick.AddListener(() => _menu.Begin());
 
-            var howTo = new Rect(start.x, start.yMax + gap, buttonWidth, buttonHeight);
-            if (MenuButton(howTo, "玩法介绍", false)) _menu.OpenHowTo();
+            var howTo = DshMobile.Ugui.Button("HowTo", m, "玩法介绍", 22, SlateTint);
+            DshMobile.Ugui.Place(howTo.GetComponent<RectTransform>(), new Vector2(0.5f, 0f),
+                new Vector2(0.5f, 0f), new Vector2(0f, y - buttonHeight - gap), new Vector2(buttonWidth, buttonHeight));
+            howTo.onClick.AddListener(() => _menu.OpenHowTo());
 
-            var settings = new Rect(start.x, howTo.yMax + gap, buttonWidth, buttonHeight);
-            if (MenuButton(settings, "设置", false)) _menu.OpenSettings();
+            var settings = DshMobile.Ugui.Button("Settings", m, "设置", 22, SlateTint);
+            DshMobile.Ugui.Place(settings.GetComponent<RectTransform>(), new Vector2(0.5f, 0f),
+                new Vector2(0.5f, 0f), new Vector2(0f, y - (buttonHeight + gap) * 2f), new Vector2(buttonWidth, buttonHeight));
+            settings.onClick.AddListener(() => _menu.OpenSettings());
 
-            var quit = new Rect(start.x, settings.yMax + gap, buttonWidth, buttonHeight);
-            if (MenuButton(quit, "离开房间", false)) _menu.AskToQuit();
+            var quit = DshMobile.Ugui.Button("Quit", m, "离开房间", 22, SlateTint);
+            DshMobile.Ugui.Place(quit.GetComponent<RectTransform>(), new Vector2(0.5f, 0f),
+                new Vector2(0.5f, 0f), new Vector2(0f, y - (buttonHeight + gap) * 3f), new Vector2(buttonWidth, buttonHeight));
+            quit.onClick.AddListener(() => _menu.AskToQuit());
 
-            GUI.Label(new Rect(width * 0.5f - 260f, height - 40f, 520f, 24f),
-                "版本 " + _menu.Version + "　·　🐾 " + _menu.Coins.ToString("N0"), _centred);
+            _menuVersion = DshMobile.Ugui.Text("Version", m, "", 14, SmallColor, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.Place(_menuVersion.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
+                new Vector2(0f, 20f), new Vector2(520f, 24f));
+
+            _menuPanel = go;
         }
 
-        /// <summary>
-        /// A menu button: the project's rounded panel, a centred label, and an invisible button on top
-        /// for the click.
-        ///
-        /// The rounded corners are <see cref="DshMobile.UiSkin"/>'s, like every other panel in the game —
-        /// this screen is the first thing a player sees, and four default grey rectangles are a strange
-        /// way to introduce a game whose whole look is generated from code.
-        /// </summary>
-        private bool MenuButton(Rect rect, string label, bool primary)
+        private void BuildSettings()
         {
-            // Amber for 进入房间 and a dark slate for the rest: the room's palette is wood and lamplight,
-            // and a purple "primary" button (the first version) looked like it belonged to another game.
-            var fill = primary
-                ? new Color(0.87f, 0.64f, 0.27f, 0.97f)
-                : new Color(0.13f, 0.12f, 0.16f, 0.88f);
-            var border = primary
-                ? new Color(1f, 0.95f, 0.80f, 0.85f)
-                : new Color(1f, 1f, 1f, 0.22f);
-            var labelStyle = primary ? _buttonPrimary : _button;
+            var go = Panel("Settings", 500f, 600f);
+            Transform m = go.transform;
 
-            DshMobile.UiSkin.Panel(rect, 16f, fill, border, 1.7f);
-            GUI.Label(rect, label, labelStyle);
+            var title = DshMobile.Ugui.Text("Title", m, "设置", 46, TitleColor, TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 22f, 16f, 456f, 36f);
 
-            return GUI.Button(rect, GUIContent.none, Invisible);
+            float y = 68f;
+            BuildToggle(m, ref y, "背景音乐", "每个场景一首循环曲子；关掉它不影响音效和宠物的叫声。",
+                () => DshMobile.MobileMusic.Enabled, v => DshMobile.MobileMusic.Enabled = v);
+            BuildVolume(m, ref y);
+            BuildToggle(m, ref y, "朗读宠物的话", "宠物说的话会用手机自带的语音念出来（只在安卓上有）。",
+                () => DshMobile.MobileTts.Enabled, v =>
+                {
+                    DshMobile.MobileTts.Enabled = v;
+                    if (v) DshMobile.MobileTts.WarmUp();
+                    else DshMobile.MobileTts.Stop();
+                });
+            BuildToggle(m, ref y, "显示麦克风按钮", "聊天框旁边出现麦克风，按一下说话，识别到的字会填进输入框。",
+                () => DshMobile.MobileStt.Enabled, v => DshMobile.MobileStt.Enabled = v);
+            BuildToggle(m, ref y, "音效", "走路的脚步声、吃饭的声音、宠物的叫声。",
+                () => !PetAudioDirector.MutedSetting, v => PetAudioDirector.MutedSetting = !v);
+            BuildToggle(m, ref y, "震动反馈", "换道、跳跃、宠物把球叼回来时轻轻震一下。",
+                () => DshMobile.MobileHaptics.Enabled, v => DshMobile.MobileHaptics.Enabled = v);
+
+            var footnote = DshMobile.Ugui.Text("Footnote", m,
+                "这些开关在房间里随时都能改（设置面板里也有）；这里只是让你在进门之前就能调好。", 14,
+                SmallColor, TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(footnote.rectTransform, 22f, y + 4f, 456f, 60f);
+
+            _nowPlaying = DshMobile.Ugui.Text("NowPlaying", m, "", 14, SmallColor, TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(_nowPlaying.rectTransform, 22f, y + 40f, 456f, 40f);
+
+            var back = DshMobile.Ugui.Button("Back", m, "返回", 20, SlateTint);
+            DshMobile.Ugui.SetRect(back.GetComponent<RectTransform>(), 24f, 540f, 180f, 44f);
+            back.onClick.AddListener(() => _menu.Cancel());
+
+            _settingsPanel = go;
         }
 
-        private GUIStyle _buttonPrimary;
-        private GUIStyle _invisible;
-        private GUIStyle _pill;
-
-        /// <summary>Draws nothing at all: the label and the panel behind it are the button.</summary>
-        private static GUIStyle Invisible
-            => new GUIStyle { normal = { background = null } };
-
-        // ------------------------------------------------------------------ settings
-
-        private void DrawSettings(float width, float height)
+        private void BuildToggle(Transform m, ref float y, string label, string hint,
+            System.Func<bool> getter, System.Action<bool> setter)
         {
-            var panel = new Rect(width * 0.5f - 250f, height * 0.12f, 500f, Mathf.Min(600f, height * 0.78f));
-            DshMobile.UiSkin.Panel(panel, 18f, new Color(0.10f, 0.11f, 0.16f, 0.94f),
-                new Color(1f, 1f, 1f, 0.16f), 1.5f);
+            var row = new GameObject("Toggle", typeof(RectTransform));
+            row.transform.SetParent(m, false);
+            DshMobile.Ugui.SetRect(row.GetComponent<RectTransform>(), 18f, y, 464f, 60f);
 
-            GUI.Label(new Rect(panel.x + 22f, panel.y + 16f, panel.width - 44f, 36f), "设置", _title);
+            var labelText = DshMobile.Ugui.Text("Label", row.transform, label, 16, BodyColor, TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(labelText.rectTransform, 4f, 2f, 352f, 26f);
 
-            float y = panel.y + 68f;
+            var hintText = DshMobile.Ugui.Text("Hint", row.transform, hint, 14, SmallColor, TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(hintText.rectTransform, 4f, 26f, 352f, 36f);
 
-            bool music = Toggle(panel, ref y, "背景音乐", DshMobile.MobileMusic.Enabled,
-                "每个场景一首循环曲子；关掉它不影响音效和宠物的叫声。");
-            if (music != DshMobile.MobileMusic.Enabled) DshMobile.MobileMusic.Enabled = music;
-            MusicVolume(panel, ref y);
+            var pill = DshMobile.Ugui.Button("Pill", row.transform, "开", 19, new Color(0.34f, 0.60f, 0.33f));
+            DshMobile.Ugui.SetRect(pill.GetComponent<RectTransform>(), 368f, 6f, 96f, 38f);
+            var pillLabel = pill.GetComponentInChildren<Text>();
+            _pillLabels.Add(pillLabel);
+            _toggleGetters.Add(getter);
+            _toggleSetters.Add(setter);
 
-            bool speech = Toggle(panel, ref y, "朗读宠物的话", DshMobile.MobileTts.Enabled,
-                "宠物说的话会用手机自带的语音念出来（只在安卓上有）。");
-            if (speech != DshMobile.MobileTts.Enabled)
+            int index = _pillLabels.Count - 1;
+            pill.onClick.AddListener(() =>
             {
-                DshMobile.MobileTts.Enabled = speech;
-                if (speech) DshMobile.MobileTts.WarmUp();
-                else DshMobile.MobileTts.Stop();
-            }
+                var current = _toggleGetters[index]();
+                _toggleSetters[index](!current);
+            });
 
-            bool voice = Toggle(panel, ref y, "显示麦克风按钮", DshMobile.MobileStt.Enabled,
-                "聊天框旁边出现麦克风，按一下说话，识别到的字会填进输入框。");
-            if (voice != DshMobile.MobileStt.Enabled) DshMobile.MobileStt.Enabled = voice;
-
-            bool sound = Toggle(panel, ref y, "音效", !PetAudioDirector.MutedSetting,
-                "走路的脚步声、吃饭的声音、宠物的叫声。");
-            if (sound == PetAudioDirector.MutedSetting) PetAudioDirector.MutedSetting = !sound;
-
-            bool haptics = Toggle(panel, ref y, "震动反馈", DshMobile.MobileHaptics.Enabled,
-                "换道、跳跃、宠物把球叼回来时轻轻震一下。");
-            if (haptics != DshMobile.MobileHaptics.Enabled) DshMobile.MobileHaptics.Enabled = haptics;
-
-            GUI.Label(new Rect(panel.x + 22f, y + 4f, panel.width - 44f, 60f),
-                "这些开关在房间里随时都能改（设置面板里也有）；这里只是让你在进门之前就能调好。",
-                _small);
-
-            GUI.Label(new Rect(panel.x + 22f, y + 40f, panel.width - 44f, 40f),
-                DshMobile.MobileMusic.NowPlayingText, _small);
-
-            if (GUI.Button(new Rect(panel.x + 24f, panel.yMax - 62f, 180f, 44f), "返回", _button))
-            {
-                _menu.Cancel();
-            }
+            y += 68f;
         }
 
-        /// <summary>
-        /// The music volume, under its switch.
-        ///
-        /// A slider rather than only on/off: the right level for music is a matter of taste and of
-        /// where the phone is (a pocket, a quiet room, a train), so the setting people actually
-        /// reach for is "quieter", not "off" — and a game that only offers off gets muted forever.
-        /// </summary>
-        private void MusicVolume(Rect panel, ref float y)
+        private void BuildVolume(Transform m, ref float y)
         {
-            float volume = DshMobile.MobileMusic.Volume;
+            var label = DshMobile.Ugui.Text("VolumeLabel", m, "", 14, SmallColor, TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(label.rectTransform, 26f, y, 140f, 26f);
+            _volumeLabel = label;
 
-            GUI.Label(new Rect(panel.x + 26f, y, 140f, 26f),
-                "音量 " + Mathf.RoundToInt(volume * 100f) + "%", _small);
-
-            var slider = new Rect(panel.x + 170f, y + 4f, panel.width - 200f, 24f);
-            float next = GUI.HorizontalSlider(slider, volume, 0f, 1f);
-            if (!Mathf.Approximately(next, volume)) DshMobile.MobileMusic.Volume = next;
+            _volumeSlider = DshMobile.Ugui.Slider("Volume", m, 0f, 1f, DshMobile.MobileMusic.Volume,
+                new Color(0.35f, 0.6f, 0.9f), Color.white);
+            DshMobile.Ugui.SetRect(_volumeSlider.GetComponent<RectTransform>(), 170f, y + 4f, 300f, 24f);
+            _volumeSlider.onValueChanged.AddListener(v => { if (_built) DshMobile.MobileMusic.Volume = v; });
 
             y += 40f;
         }
 
-        /// <summary>
-        /// A settings row: the label, a line of explanation, and a switch on the right that says 开 or 关.
-        ///
-        /// Drawn rather than left to <c>GUI.Toggle</c>: the default tick box is a small grey square against a
-        /// dark panel, and on a phone at this size it is not possible to tell whether a setting is on.
-        /// </summary>
-        private bool Toggle(Rect panel, ref float y, string label, bool value, string hint)
+        private void BuildHowTo()
         {
-            var row = new Rect(panel.x + 18f, y, panel.width - 36f, 60f);
+            var go = Panel("HowTo", 520f, 620f);
+            Transform m = go.transform;
 
-            var pill = new Rect(row.xMax - 96f, row.y + 6f, 96f, 38f);
-            DshMobile.UiSkin.Panel(pill, 19f,
-                value ? new Color(0.34f, 0.60f, 0.33f, 0.96f) : new Color(0.22f, 0.22f, 0.27f, 0.92f),
-                new Color(1f, 1f, 1f, value ? 0.45f : 0.16f), 1.5f);
-            GUI.Label(pill, value ? "开" : "关", _pill);
+            var title = DshMobile.Ugui.Text("Title", m, "玩法介绍", 46, TitleColor, TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 22f, 14f, 476f, 34f);
 
-            GUI.Label(new Rect(row.x + 4f, row.y + 2f, row.width - 112f, 26f), label, _body);
+            // Scrollable body.
+            var viewport = new GameObject("Viewport", typeof(RectTransform));
+            viewport.transform.SetParent(m, false);
+            var viewportRt = viewport.GetComponent<RectTransform>();
+            DshMobile.Ugui.SetRect(viewportRt, 22f, 58f, 476f, 500f);
+            viewport.AddComponent<RectMask2D>();
+            var viewportImg = viewport.AddComponent<Image>();
+            viewportImg.color = new Color(0f, 0f, 0f, 0f);
+            viewportImg.raycastTarget = true;
 
-            GUI.color = new Color(1f, 1f, 1f, 0.75f);
-            GUI.Label(new Rect(row.x + 4f, row.y + 26f, row.width - 112f, 36f), hint, _small);
-            GUI.color = Color.white;
+            var content = new GameObject("Content", typeof(RectTransform));
+            content.transform.SetParent(viewport.transform, false);
+            var contentRt = content.GetComponent<RectTransform>();
+            contentRt.anchorMin = new Vector2(0f, 1f);
+            contentRt.anchorMax = new Vector2(1f, 1f);
+            contentRt.pivot = new Vector2(0.5f, 1f);
+            contentRt.sizeDelta = new Vector2(-22f, HowToHeight);
 
-            y += 68f;
-            return Toggled(value, GUI.Button(row, GUIContent.none, Invisible));
+            var body = DshMobile.Ugui.Text("Text", content.transform, HowToText(), 16, BodyColor, TextAnchor.UpperLeft);
+            body.horizontalOverflow = HorizontalWrapMode.Wrap;
+            body.verticalOverflow = VerticalWrapMode.Overflow;
+            DshMobile.Ugui.Stretch(body.rectTransform);
+
+            var scroll = go.AddComponent<ScrollRect>();
+            scroll.viewport = viewportRt;
+            scroll.content = contentRt;
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 40f;
+
+            var back = DshMobile.Ugui.Button("Back", m, "返回", 20, SlateTint);
+            DshMobile.Ugui.SetRect(back.GetComponent<RectTransform>(), 24f, 566f, 180f, 42f);
+            back.onClick.AddListener(() => _menu.Cancel());
+
+            _howToPanel = go;
         }
 
+        private void BuildQuit()
+        {
+            var go = Panel("Quit", 440f, 230f);
+            Transform m = go.transform;
+
+            var title = DshMobile.Ugui.Text("Title", m, "离开房间？", 46, TitleColor, TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 22f, 18f, 396f, 36f);
+
+            var body = DshMobile.Ugui.Text("Body", m,
+                "宠物会留在这里等你回来——它的需求、记忆和记事本都会保存。", 14, SmallColor, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(body.rectTransform, 22f, 66f, 396f, 60f);
+
+            var leave = DshMobile.Ugui.Button("Leave", m, "离开", 20, PrimaryTint);
+            DshMobile.Ugui.SetRect(leave.GetComponent<RectTransform>(), 24f, 158f, 180f, 48f);
+            leave.onClick.AddListener(() => _menu.Quit());
+
+            var stay = DshMobile.Ugui.Button("Stay", m, "再待一会儿", 20, SlateTint);
+            DshMobile.Ugui.SetRect(stay.GetComponent<RectTransform>(), 236f, 158f, 180f, 48f);
+            stay.onClick.AddListener(() => _menu.Cancel());
+
+            _quitPanel = go;
+        }
+
+        private const float HowToHeight = 1180f;
+
         /// <summary>
-        /// What a switch becomes when tapped: on → off, off → on, untapped → unchanged.
-        ///
-        /// A value rather than inline code because the first version returned the *tap* itself,
-        /// and a switch that reads a tap as its new state flips to "off" and then cannot be turned
-        /// back on — the tap is a transient, not a state. This is the whole of a switch's logic,
-        /// so it is the whole of what needs to be right.
+        /// What a switch becomes when tapped: on → off, off → on, untapped → unchanged. Kept as a
+        /// public pure function because the switch's whole logic is tested directly.
         /// </summary>
         public static bool Toggled(bool wasOn, bool tapped) => tapped ? !wasOn : wasOn;
 
-        // ------------------------------------------------------------------ how to play
-
-        private void DrawHowTo(float width, float height)
+        private void Update()
         {
-            var panel = new Rect(width * 0.5f - 260f, height * 0.10f, 520f, Mathf.Min(620f, height * 0.78f));
-            DshMobile.UiSkin.Panel(panel, 18f, new Color(0.10f, 0.11f, 0.16f, 0.95f),
-                new Color(1f, 1f, 1f, 0.16f), 1.5f);
+            if (_menu == null || !_built) return;
 
-            GUI.Label(new Rect(panel.x + 22f, panel.y + 14f, panel.width - 44f, 34f), "玩法介绍", _title);
+            bool menu = _menu.Phase == StartPhase.Menu;
+            bool settings = _menu.Phase == StartPhase.Settings;
+            bool howTo = _menu.Phase == StartPhase.HowTo;
+            bool quit = _menu.Phase == StartPhase.Quit;
+            bool fading = _menu.Phase == StartPhase.Opening || _menu.Phase == StartPhase.Leaving;
 
-            var view = new Rect(panel.x + 22f, panel.y + 58f, panel.width - 44f,
-                panel.height - 58f - 62f);
-            var content = new Rect(0f, 0f, view.width - 22f, HowToHeight);
+            _menuPanel.SetActive(menu);
+            _settingsPanel.SetActive(settings);
+            _howToPanel.SetActive(howTo);
+            _quitPanel.SetActive(quit);
 
-            _howToScroll = GUI.BeginScrollView(view, _howToScroll, content);
-            GUI.Label(content, HowToText(), _body);
-            GUI.EndScrollView();
-
-            if (GUI.Button(new Rect(panel.x + 24f, panel.yMax - 54f, 180f, 42f), "返回", _button))
+            if (menu)
             {
-                _menu.Cancel();
+                _menuSubtitle.text = "会记事、听得懂你说话的" + _menu.PetName + "，在门里面等你。";
+                _menuVersion.text = "版本 " + _menu.Version + "　·　宠物币 " + _menu.Coins.ToString("N0");
+            }
+
+            if (settings)
+            {
+                for (int i = 0; i < _pillLabels.Count; i++)
+                {
+                    bool on = _toggleGetters[i]();
+                    _pillLabels[i].text = on ? "开" : "关";
+                }
+                _volumeLabel.text = "音量 " + Mathf.RoundToInt(DshMobile.MobileMusic.Volume * 100f) + "%";
+                _nowPlaying.text = DshMobile.MobileMusic.NowPlayingText;
+            }
+
+            // Opening / leaving fade.
+            float alpha = StartSequence.FadeAlpha(_menu.OpeningSeconds);
+            _fade.gameObject.SetActive(alpha > 0.001f);
+            if (alpha > 0.001f)
+            {
+                var c = _fade.color;
+                c.a = alpha;
+                _fade.color = c;
             }
         }
 
-        /// <summary>Tall enough for the text; measured rather than guessed would need a layout pass.</summary>
-        private const float HowToHeight = 1180f;
-
-        private string HowToText()
+        private static string HowToText()
         {
             return
                 "【这是一只住在房间里的宠物】\n" +
@@ -360,48 +369,6 @@ namespace DshPet
                 "【它记得你】\n" +
                 "它有自己的记事本：聊过的重要事情会被记住，日历上能看到这些天发生了什么。\n\n" +
                 "准备好了就点「进入房间」——门会自己开。";
-        }
-
-        // ------------------------------------------------------------------ quitting
-
-        private void DrawQuit(float width, float height)
-        {
-            var panel = new Rect(width * 0.5f - 220f, height * 0.32f, 440f, 230f);
-            DshMobile.UiSkin.Panel(panel, 18f, new Color(0.10f, 0.11f, 0.16f, 0.96f),
-                new Color(1f, 1f, 1f, 0.16f), 1.5f);
-
-            GUI.Label(new Rect(panel.x + 22f, panel.y + 18f, panel.width - 44f, 36f), "离开房间？", _title);
-            GUI.Label(new Rect(panel.x + 22f, panel.y + 66f, panel.width - 44f, 60f),
-                "宠物会留在这里等你回来——它的需求、记忆和记事本都会保存。", _small);
-
-            if (GUI.Button(new Rect(panel.x + 24f, panel.yMax - 72f, 180f, 48f), "离开", _button))
-            {
-                _menu.Quit();
-            }
-
-            if (GUI.Button(new Rect(panel.xMax - 204f, panel.yMax - 72f, 180f, 48f), "再待一会儿", _button))
-            {
-                _menu.Cancel();
-            }
-
-            if (Application.isEditor)
-            {
-                GUI.Label(new Rect(panel.x + 22f, panel.yMax - 100f, panel.width - 44f, 22f),
-                    "（编辑器里不会真的退出，真机上会关掉应用）", _centred);
-            }
-        }
-
-        // ------------------------------------------------------------------ the opening
-
-        private void DrawFade(float width, float height)
-        {
-            float alpha = StartSequence.FadeAlpha(_menu.OpeningSeconds);
-            if (alpha <= 0.001f) return;
-
-            var was = GUI.color;
-            GUI.color = new Color(1f, 0.98f, 0.94f, alpha);
-            GUI.DrawTexture(new Rect(0f, 0f, width, height), _white);
-            GUI.color = was;
         }
     }
 }
