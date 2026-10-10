@@ -119,6 +119,15 @@ namespace DshPet
         private UnityEngine.UI.Image _placementBar;
         private UnityEngine.UI.Text _placementText;
 
+        // uGUI map panel (fourth slice, second piece).
+        private UnityEngine.UI.Image _modalScrim;
+        private UnityEngine.UI.Image _mapPanel;
+        private UnityEngine.UI.Text _mapBalance;
+        private UnityEngine.UI.Text _mapHere;
+        private UnityEngine.UI.Text _mapMessageText;
+        private RectTransform _mapContent;
+        private bool _mapBuilt;
+
         /// <summary>Set by hoverable world objects; shown near the cursor.</summary>
         public static void SetCursorHint(string hint) => _cursorHint = hint;
 
@@ -308,7 +317,7 @@ namespace DshPet
             // Controls sit above the room but below any modal panel.
             if (Mobile) DrawMobileControls(gm, layout);
 
-            if (gm.DoorPromptOpen) DrawMapPanel(gm);
+            // The map panel (door prompt) is now uGUI — see SyncMapPanel.
             if (_showPuzzle) DrawPuzzle(gm);
             if (_showMemory) DrawMemoryMatch(gm);
             if (_showSettings) DrawSettings(gm);
@@ -671,6 +680,7 @@ namespace DshPet
             BuildChat();
             BuildPetCard();
             BuildPlacementBar();
+            BuildMapPanel();
         }
 
         private void Update()
@@ -697,6 +707,7 @@ namespace DshPet
             SyncChat();
             SyncPetCard();
             SyncPlacementBar();
+            SyncMapPanel();
         }
 
         /// <summary>
@@ -1340,6 +1351,245 @@ namespace DshPet
             _placeMode = false;
             PlacementDragger.SetActive(false);
             DshMobile.MobileHaptics.Light();
+        }
+
+        private void BuildMapPanel()
+        {
+            _modalScrim = DshMobile.Ugui.Image("ModalScrim", _root, new Color(0f, 0f, 0f, 0.55f));
+            DshMobile.Ugui.Stretch(_modalScrim.rectTransform);
+            _modalScrim.gameObject.SetActive(false);
+
+            _mapPanel = DshMobile.Ugui.Panel("MapPanel", _root, 18f,
+                new Color(0.11f, 0.10f, 0.14f, 1f), new Color(1f, 1f, 1f, 0.14f), 2f);
+            _mapPanel.gameObject.SetActive(false);
+            var p = _mapPanel.rectTransform;
+
+            var title = DshMobile.Ugui.Text("Title", p, "地图", 24, new Color(1f, 0.94f, 0.82f), UnityEngine.TextAnchor.MiddleLeft, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 18f, 14f, 200f, 32f);
+
+            _mapBalance = DshMobile.Ugui.Text("Balance", p, "", 20, new Color(1f, 0.94f, 0.82f), UnityEngine.TextAnchor.MiddleRight, true);
+            DshMobile.Ugui.SetRect(_mapBalance.rectTransform, -260f, 14f, 180f, 32f);
+
+            var close = DshMobile.Ugui.Button("Close", p, "关闭", 16, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRect(close.GetComponent<RectTransform>(), -90f, 16f, 76f, 30f);
+            close.onClick.AddListener(OnCloseMap);
+
+            _mapHere = DshMobile.Ugui.Text("Here", p, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleLeft);
+            DshMobile.Ugui.SetRect(_mapHere.rectTransform, 18f, 48f, 500f, 22f);
+
+            _mapMessageText = DshMobile.Ugui.Text("Message", p, "", 14, new Color(0.7f, 0.95f, 0.75f), UnityEngine.TextAnchor.MiddleLeft);
+            DshMobile.Ugui.SetRect(_mapMessageText.rectTransform, 18f, 72f, 500f, 22f);
+
+            var viewport = new GameObject("Viewport", typeof(RectTransform));
+            viewport.transform.SetParent(p, false);
+            viewport.AddComponent<UnityEngine.UI.RectMask2D>();
+            var viewportImg = viewport.AddComponent<UnityEngine.UI.Image>();
+            viewportImg.color = new Color(0f, 0f, 0f, 0f);
+            viewportImg.raycastTarget = true;
+            var scroll = p.gameObject.AddComponent<UnityEngine.UI.ScrollRect>();
+            scroll.viewport = viewport.GetComponent<RectTransform>();
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = UnityEngine.UI.ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 30f;
+            scroll.viewport.anchorMin = new Vector2(0f, 0f);
+            scroll.viewport.anchorMax = new Vector2(1f, 1f);
+            scroll.viewport.offsetMin = new Vector2(18f, 14f);
+            scroll.viewport.offsetMax = new Vector2(-18f, -96f);
+
+            var content = new GameObject("Content", typeof(RectTransform));
+            content.transform.SetParent(viewport.transform, false);
+            _mapContent = content.GetComponent<RectTransform>();
+            _mapContent.anchorMin = new Vector2(0f, 1f);
+            _mapContent.anchorMax = new Vector2(1f, 1f);
+            _mapContent.pivot = new Vector2(0.5f, 1f);
+            scroll.content = _mapContent;
+        }
+
+        private void OnCloseMap()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm != null) gm.CloseDoorPrompt();
+        }
+
+        private void SyncMapPanel()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            bool open = gm.DoorPromptOpen;
+            _modalScrim.gameObject.SetActive(open);
+            _mapPanel.gameObject.SetActive(open);
+            if (!open) { _mapBuilt = false; return; }
+
+            var w = Mathf.Min(680f, DesignWidth - 32f);
+            var h = Mathf.Min(620f, DesignHeight - 32f);
+            _mapPanel.rectTransform.anchorMin = _mapPanel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            _mapPanel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            _mapPanel.rectTransform.anchoredPosition = Vector2.zero;
+            _mapPanel.rectTransform.sizeDelta = new Vector2(w, h);
+
+            _mapBalance.text = "宠物币 " + DshMobile.PetWallet.Coins.ToString("N0");
+            var here = RoomThemeInfo.Get(PetWorldMap.Current);
+            _mapHere.text = $"现在住在 {here.DisplayName}　·　{here.Effects()}";
+            _mapMessageText.text = _mapMessage;
+            _mapMessageText.color = _mapError ? new Color(1f, 0.65f, 0.55f) : new Color(0.7f, 0.95f, 0.75f);
+
+            if (!_mapBuilt) { RebuildMapContent(gm); _mapBuilt = true; }
+        }
+
+        private void RebuildMapContent(PetGameManager gm)
+        {
+            for (int i = _mapContent.childCount - 1; i >= 0; i--)
+                Destroy(_mapContent.GetChild(i).gameObject);
+
+            float y = 0f;
+            foreach (var info in RoomThemeInfo.All)
+            {
+                y = BuildPlaceRow(gm, info, _mapContent, y);
+                y += 8f;
+            }
+
+            y += 4f;
+            y = BuildMapLabel(_mapContent, y, "出去走走（赚宠物币）");
+
+            var games = gm.AvailableMiniGames();
+            if (games.Count == 0)
+            {
+                y = BuildMapLabel(_mapContent, y, "暂时没有可以去的活动。");
+            }
+            else
+            {
+                foreach (var game in games)
+                {
+                    y = BuildMapGame(_mapContent, y, game.Icon + "  " + game.DisplayName, game.Blurb, () => gm.LaunchMiniGame(game.Id));
+                }
+            }
+
+            y += 4f;
+            y = BuildMapLabel(_mapContent, y, "在屋里玩（也赚宠物币）");
+            y = BuildMapGame(_mapContent, y, "🧩 拼图", "把这间屋子的画拼回去，步数越少宠物币越多。",
+                () => { gm.CloseDoorPrompt(); OpenPuzzle(gm); });
+            y = BuildMapGame(_mapContent, y, "🃏 记忆配对", "翻开两张一样的卡片就留下，全配完给宠物币。",
+                () => { gm.CloseDoorPrompt(); OpenMemoryMatch(gm); });
+
+            _mapContent.sizeDelta = new Vector2(-8f, y + 12f);
+        }
+
+        private static float BuildMapLabel(RectTransform content, float y, string text)
+        {
+            var label = DshMobile.Ugui.Text("Label", content, text, 16, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            label.rectTransform.anchorMin = new Vector2(0f, 1f);
+            label.rectTransform.anchorMax = new Vector2(1f, 1f);
+            label.rectTransform.pivot = new Vector2(0f, 1f);
+            label.rectTransform.anchoredPosition = new Vector2(2f, -y);
+            label.rectTransform.sizeDelta = new Vector2(0f, 26f);
+            return y + 30f;
+        }
+
+        private static float BuildMapGame(RectTransform content, float y, string name, string blurb, UnityEngine.Events.UnityAction onClick)
+        {
+            var btn = DshMobile.Ugui.Button("Game", content, name, 16, new Color(0.30f, 0.40f, 0.58f));
+            btn.GetComponent<RectTransform>().anchorMin = new Vector2(0f, 1f);
+            btn.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 1f);
+            btn.GetComponent<RectTransform>().pivot = new Vector2(0f, 1f);
+            btn.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, -y);
+            btn.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, 38f);
+            btn.onClick.AddListener(onClick);
+            y += 42f;
+
+            var hint = DshMobile.Ugui.Text("Blurb", content, "　　" + blurb, 14,
+                new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.UpperLeft);
+            hint.horizontalOverflow = HorizontalWrapMode.Wrap;
+            hint.rectTransform.anchorMin = new Vector2(0f, 1f);
+            hint.rectTransform.anchorMax = new Vector2(1f, 1f);
+            hint.rectTransform.pivot = new Vector2(0f, 1f);
+            hint.rectTransform.anchoredPosition = new Vector2(0f, -y);
+            hint.rectTransform.sizeDelta = new Vector2(0f, 22f);
+            return y + 28f;
+        }
+
+        private float BuildPlaceRow(PetGameManager gm, RoomThemeInfo info, RectTransform content, float y)
+        {
+            bool unlocked = PetWorldMap.IsUnlocked(info.Theme);
+            bool current = PetWorldMap.Current == info.Theme;
+
+            var row = new GameObject("Place", typeof(RectTransform));
+            row.transform.SetParent(content, false);
+            var rowRt = row.GetComponent<RectTransform>();
+            rowRt.anchorMin = new Vector2(0f, 1f);
+            rowRt.anchorMax = new Vector2(1f, 1f);
+            rowRt.pivot = new Vector2(0f, 1f);
+            rowRt.anchoredPosition = new Vector2(0f, -y);
+            rowRt.sizeDelta = new Vector2(0f, 88f);
+
+            // Swatch: three colour bands.
+            var bands = new[] { info.Floor, info.Wall, info.Rug };
+            for (int i = 0; i < 3; i++)
+            {
+                var band = DshMobile.Ugui.Image("Band", row.transform, bands[i]);
+                band.rectTransform.anchorMin = new Vector2(0f, 1f);
+                band.rectTransform.anchorMax = new Vector2(0f, 1f);
+                band.rectTransform.pivot = new Vector2(0f, 1f);
+                band.rectTransform.anchoredPosition = new Vector2(2f + i * 14f, -8f);
+                band.rectTransform.sizeDelta = new Vector2(12f, 22f);
+            }
+
+            string title = current ? $"{info.DisplayName}　·　现在在这里" : info.DisplayName;
+            var name = DshMobile.Ugui.Text("Name", row.transform, title, 16, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(name.rectTransform, 50f, 0f, 400f, 24f);
+
+            var blurb = DshMobile.Ugui.Text("Blurb", row.transform, info.Blurb, 14,
+                new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.UpperLeft);
+            blurb.horizontalOverflow = HorizontalWrapMode.Wrap;
+            DshMobile.Ugui.SetRect(blurb.rectTransform, 50f, 24f, 400f, 34f);
+
+            var fx = DshMobile.Ugui.Text("Fx", row.transform, "效果：" + info.Effects(), 14,
+                new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(fx.rectTransform, 50f, 58f, 400f, 24f);
+
+            var button = DshMobile.Ugui.Button("Action", row.transform, "", 16, new Color(0.30f, 0.40f, 0.58f));
+            button.GetComponent<RectTransform>().anchorMin = button.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 0.5f);
+            button.GetComponent<RectTransform>().pivot = new Vector2(1f, 0.5f);
+            button.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 0f);
+            button.GetComponent<RectTransform>().sizeDelta = new Vector2(150f, 40f);
+            var buttonLabel = button.GetComponentInChildren<UnityEngine.UI.Text>();
+
+            if (current)
+            {
+                button.interactable = false;
+                buttonLabel.text = "住在这里";
+            }
+            else if (unlocked)
+            {
+                buttonLabel.text = "前往";
+                button.onClick.AddListener(() =>
+                {
+                    string message;
+                    gm.TravelTo(info.Theme, out message);
+                    SetMapMessage(message);
+                    DshMobile.MobileHaptics.Light();
+                });
+            }
+            else
+            {
+                bool afford = DshMobile.PetWallet.CanAfford(info.Price);
+                button.interactable = afford;
+                buttonLabel.text = afford ? "解锁并搬入" : $"还差 {info.Price - DshMobile.PetWallet.Coins}";
+                button.onClick.AddListener(() =>
+                {
+                    string message;
+                    if (PetWorldMap.TryUnlock(info.Theme, out message))
+                    {
+                        string moved;
+                        gm.TravelTo(info.Theme, out moved);
+                        SetMapMessage(message + "，" + moved);
+                    }
+                    else SetMapMessage(message, true);
+                    DshMobile.MobileHaptics.Light();
+                });
+            }
+
+            return y + 92f;
         }
 
         /// <summary>
