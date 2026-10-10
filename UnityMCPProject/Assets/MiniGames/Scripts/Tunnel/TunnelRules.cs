@@ -8,6 +8,9 @@ namespace DshMiniGames
     /// <summary>A colour scheme for the tunnel, picked at random per run.</summary>
     public enum TunnelTheme { Neon, Ice, Lava, Forest }
 
+    /// <summary>The shape of a gate hole. Adds variety to survival mode.</summary>
+    public enum GateShape { Circle, Square, Triangle, Semicircle }
+
     /// <summary>
     /// The tunnel runner's arithmetic: where gates and obstacles go, whether the ship can reach
     /// them, and how a run scores. Pure and testable, like every other mini-game's rules.
@@ -99,6 +102,96 @@ namespace DshMiniGames
         /// <summary>Whether the ship overlaps a gate hole (survival) or an obstacle (mine).</summary>
         public static bool Collides(Vector2 ship, Vector2 thing, float thingRadius)
             => Vector2.Distance(ship, thing) < thingRadius;
+
+        // ---------------------------------------------------------------- gate hole shapes
+
+        /// <summary>
+        /// Which hole shape to use. Early gates are all circles; as the score rises, squares,
+        /// triangles and semicircles join the mix, so the difficulty of *reading* the hole grows too.
+        /// </summary>
+        public static GateShape GateShapeFor(int score, int index)
+        {
+            int variety = score < 5 ? 1 : score < 12 ? 2 : score < 22 ? 3 : 4;
+            return (GateShape)(((index % variety) + variety) % variety);
+        }
+
+        /// <summary>Whether the ship is inside the hole of the given shape (i.e. it passes).</summary>
+        public static bool IsInsideHole(Vector2 ship, Vector2 hole, GateShape shape, float radius)
+        {
+            Vector2 d = ship - hole;
+            switch (shape)
+            {
+                case GateShape.Square:
+                    return Mathf.Abs(d.x) < radius && Mathf.Abs(d.y) < radius;
+                case GateShape.Triangle:
+                    return PointInTriangle(d,
+                        new Vector2(0f, radius),
+                        new Vector2(-0.866f * radius, -0.5f * radius),
+                        new Vector2(0.866f * radius, -0.5f * radius));
+                case GateShape.Semicircle:
+                    return d.sqrMagnitude < radius * radius && d.y > 0f;
+                default:
+                    return d.sqrMagnitude < radius * radius;
+            }
+        }
+
+        private static bool PointInTriangle(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
+        {
+            float d1 = Sign(p, a, b);
+            float d2 = Sign(p, b, c);
+            float d3 = Sign(p, c, a);
+            bool hasNeg = d1 < 0f || d2 < 0f || d3 < 0f;
+            bool hasPos = d1 > 0f || d2 > 0f || d3 > 0f;
+            return !(hasNeg && hasPos);
+        }
+
+        private static float Sign(Vector2 p1, Vector2 p2, Vector2 p3)
+            => (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+
+        /// <summary>
+        /// The boundary points of a hole shape (relative to the hole centre), for drawing the glowing
+        /// rim and the spokes that make it read as a wall with a shaped hole cut in it.
+        /// </summary>
+        public static Vector2[] GateShapePoints(GateShape shape, float radius, int count)
+        {
+            var pts = new System.Collections.Generic.List<Vector2>();
+            switch (shape)
+            {
+                case GateShape.Square:
+                    pts.Add(new Vector2(-radius, -radius));
+                    pts.Add(new Vector2(radius, -radius));
+                    pts.Add(new Vector2(radius, radius));
+                    pts.Add(new Vector2(-radius, radius));
+                    break;
+                case GateShape.Triangle:
+                    pts.Add(new Vector2(0f, radius));
+                    pts.Add(new Vector2(-0.866f * radius, -0.5f * radius));
+                    pts.Add(new Vector2(0.866f * radius, -0.5f * radius));
+                    break;
+                case GateShape.Semicircle:
+                    int half = Mathf.Max(2, count / 2);
+                    for (int i = 0; i <= half; i++)
+                    {
+                        float a = Mathf.PI * i / half;
+                        pts.Add(new Vector2(Mathf.Cos(a) * radius, Mathf.Sin(a) * radius));
+                    }
+                    pts.Add(new Vector2(-radius, 0f));
+                    break;
+                default:
+                    for (int i = 0; i < count; i++)
+                    {
+                        float a = Mathf.PI * 2f * i / count;
+                        pts.Add(new Vector2(Mathf.Cos(a) * radius, Mathf.Sin(a) * radius));
+                    }
+                    break;
+            }
+            return pts.ToArray();
+        }
+
+        // ---------------------------------------------------------------- sensitivity
+
+        /// <summary>Clamps a sensitivity multiplier (how fast the ship answers the stick).</summary>
+        public static float ClampSensitivity(float value) => Mathf.Clamp(value, 0.5f, 2f);
 
         /// <summary>Score for passing one gate / dodging one mine.</summary>
         public static int ScoreForPass(int gatesPassed) => Mathf.Max(0, gatesPassed);

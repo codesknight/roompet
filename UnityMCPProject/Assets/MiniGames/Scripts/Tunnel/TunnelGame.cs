@@ -20,6 +20,13 @@ namespace DshMiniGames
         public int RunCoins => TunnelRules.CoinsFor(Score);
         public int Best { get; private set; }
 
+        /// <summary>How fast the ship answers the stick. Player-adjustable and persisted.</summary>
+        public float Sensitivity
+        {
+            get => TunnelRules.ClampSensitivity(PlayerPrefs.GetFloat("dshtunnel.sensitivity", 1f));
+            set => PlayerPrefs.SetFloat("dshtunnel.sensitivity", TunnelRules.ClampSensitivity(value));
+        }
+
         private const float RingSpacing = 2.2f;
         private const int RingCount = 24;
         private const float RingRadius = 1.9f;
@@ -29,6 +36,7 @@ namespace DshMiniGames
         private Transform _ship;
         private Vector2 _shipPos;
         private Vector2 _lastHole;
+        private int _gateIndex;
         private readonly List<Obstacle> _obstacles = new List<Obstacle>();
         private readonly List<Transform> _rings = new List<Transform>();
         private float _spawnTimer;
@@ -37,10 +45,16 @@ namespace DshMiniGames
         private class Obstacle
         {
             public Transform Root;
+            public Transform Visual;
             public bool IsGate;
-            public Vector2 Hole;
+            public Vector2 Hole;       // gate: hole centre; mine: current (drifting) centre
+            public Vector2 BaseHole;   // mine: centre before drift
             public float Radius;
             public bool Scored;
+            public GateShape Shape;
+            public float DriftPhase;
+            public float DriftRadius;
+            public float DriftSpeed;
         }
 
         private void Awake()
@@ -181,6 +195,7 @@ namespace DshMiniGames
             Score = 0;
             _shipPos = Vector2.zero;
             _lastHole = Vector2.zero;
+            _gateIndex = 0;
             _ship.localPosition = Vector3.zero;
             foreach (var o in _obstacles) if (o.Root != null) Destroy(o.Root.gameObject);
             _obstacles.Clear();
@@ -199,8 +214,9 @@ namespace DshMiniGames
         {
             float dt = Time.deltaTime;
 
-            // The ship moves in the cross-section, driven by the HUD's single stick.
-            _shipPos += TunnelHud.Stick * TunnelRules.ShipSpeed * dt;
+            // The ship moves in the cross-section, driven by the HUD's single stick, scaled by the
+            // player's sensitivity setting.
+            _shipPos += TunnelHud.Stick * TunnelRules.ShipSpeed * Sensitivity * dt;
             _shipPos = TunnelRules.ClampToTunnel(_shipPos);
             _ship.localPosition = new Vector3(_shipPos.x, _shipPos.y, 0f);
 
@@ -222,12 +238,21 @@ namespace DshMiniGames
                 p.z -= TunnelRules.ForwardSpeed * dt;
                 o.Root.localPosition = p;
 
+                // Floating mines drift in a small circle, so the obstacle is never sitting still.
+                if (!o.IsGate && o.Visual != null)
+                {
+                    o.DriftPhase += dt * o.DriftSpeed;
+                    Vector2 drift = new Vector2(Mathf.Cos(o.DriftPhase), Mathf.Sin(o.DriftPhase)) * o.DriftRadius;
+                    o.Hole = TunnelRules.ClampToTunnel(o.BaseHole + drift);
+                    o.Visual.localPosition = new Vector3(o.Hole.x, o.Hole.y, 0f);
+                }
+
                 if (o.IsGate)
                 {
                     if (p.z <= 0f && !o.Scored)
                     {
                         o.Scored = true;
-                        if (TunnelRules.Collides(_shipPos, o.Hole, o.Radius))
+                        if (TunnelRules.IsInsideHole(_shipPos, o.Hole, o.Shape, o.Radius))
                         {
                             Score++;
                             DshMobile.MobileHaptics.Light();
@@ -274,57 +299,70 @@ namespace DshMiniGames
             {
                 // Chain each hole from the previous one, so two consecutive gates are never an
                 // impossible pair no matter how the ship wanders between them. The hole starts
-                // wide and shrinks as the score rises (progressive difficulty).
+                // wide and shrinks as the score rises, and its shape widens from circles to
+                // squares / triangles / semicircles as the run goes on.
                 float r = TunnelRules.GateHoleRadiusFor(Score);
+                o.Shape = TunnelRules.GateShapeFor(Score, _gateIndex++);
                 o.Hole = TunnelRules.NextGateHole(_lastHole, Random.value, Random.value, r);
                 _lastHole = o.Hole;
                 o.Radius = r;
-                BuildGate(root, o.Hole, r);
+                BuildGate(root, o.Hole, o.Shape, r);
             }
             else
             {
                 float r = TunnelRules.MineRadiusFor(Score);
-                o.Hole = TunnelRules.NextMine(_shipPos, Random.value, Random.value);
+                o.BaseHole = TunnelRules.NextMine(_shipPos, Random.value, Random.value);
+                o.Hole = o.BaseHole;
                 o.Radius = r;
-                BuildMine(root, o.Hole, r);
+                o.DriftPhase = Random.value * Mathf.PI * 2f;
+                o.DriftRadius = 0.28f;
+                o.DriftSpeed = 1.2f + Random.value * 0.8f;
+                o.Visual = BuildMine(root, o.Hole, r);
             }
             _obstacles.Add(o);
         }
 
-        /// <summary>A "wall with a hole": radial spokes from the hole rim out to the tunnel wall.</summary>
-        private void BuildGate(Transform root, Vector2 hole, float radius)
+        /// <summary>
+        /// A wall with a shaped hole: a glowing outline of the hole plus radial spokes from the
+        /// outline out to the tunnel wall, so it reads as a solid wall with that shape cut out.
+        /// </summary>
+        private void BuildGate(Transform root, Vector2 hole, GateShape shape, float radius)
         {
             var accent = TunnelRules.TunnelColor(Theme, true);
-            float r = radius;
-            int spokes = 20;
-            for (int s = 0; s < spokes; s++)
+            var points = TunnelRules.GateShapePoints(shape, radius, 16);
+
+            // Spokes: from each outline point, outward to the tunnel wall along its radial direction.
+            for (int s = 0; s < points.Length; s++)
             {
-                float angle = s * Mathf.PI * 2f / spokes;
-                float midR = (r + RingRadius) * 0.5f;
-                float length = RingRadius - r;
+                Vector2 dir = points[s].normalized;
+                if (dir.sqrMagnitude < 0.0001f) dir = Vector2.up;
+                float inner = points[s].magnitude;
+                float midR = (inner + RingRadius) * 0.5f;
+                float length = RingRadius - inner;
                 Prim("Spoke", PrimitiveType.Cube, root,
-                    new Vector3(hole.x + Mathf.Cos(angle) * midR, hole.y + Mathf.Sin(angle) * midR, 0f),
-                    new Vector3(length, 0.14f, 0.12f),
-                    Quaternion.Euler(0f, 0f, angle * Mathf.Rad2Deg),
-                    accent, 0.85f);
+                    new Vector3(hole.x + dir.x * midR, hole.y + dir.y * midR, 0f),
+                    new Vector3(length, 0.12f, 0.12f),
+                    Quaternion.Euler(0f, 0f, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg),
+                    accent, 0.8f);
             }
-            // A glowing rim around the hole, so the target reads as "fly through here".
-            for (int s = 0; s < 12; s++)
+
+            // The glowing outline of the hole shape itself.
+            for (int s = 0; s < points.Length; s++)
             {
-                float angle = s * Mathf.PI * 2f / 12;
                 Prim("Rim", PrimitiveType.Cube, root,
-                    new Vector3(hole.x + Mathf.Cos(angle) * r, hole.y + Mathf.Sin(angle) * r, 0f),
-                    new Vector3(0.34f, 0.16f, 0.14f),
-                    Quaternion.Euler(0f, 0f, angle * Mathf.Rad2Deg),
+                    new Vector3(hole.x + points[s].x, hole.y + points[s].y, 0f),
+                    new Vector3(0.26f, 0.16f, 0.14f),
+                    Quaternion.identity,
                     new Color(1f, 0.95f, 0.6f), 1.2f);
             }
         }
 
-        private void BuildMine(Transform root, Vector2 at, float radius)
+        private Transform BuildMine(Transform root, Vector2 at, float radius)
         {
-            Prim("MineBody", PrimitiveType.Sphere, root,
+            var body = Prim("MineBody", PrimitiveType.Sphere, root,
                 new Vector3(at.x, at.y, 0f), Vector3.one * (radius * 2f),
                 Quaternion.identity, new Color(0.95f, 0.32f, 0.28f), 1.2f);
+            return body.transform;
         }
 
         // ------------------------------------------------------------------ helpers

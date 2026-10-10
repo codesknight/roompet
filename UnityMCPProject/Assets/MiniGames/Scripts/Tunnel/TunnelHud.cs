@@ -88,15 +88,10 @@ namespace DshMiniGames
             {
                 Vector2 now = Input.mousePosition;
                 Vector2 delta = now - _stickCentre;
-                // Re-centre the stick once the finger passes the rim, so the knob stays under
-                // the finger instead of lagging behind it.
-                if (delta.magnitude > StickRadius)
-                {
-                    _stickCentre = now - delta.normalized * StickRadius;
-                    delta = now - _stickCentre;
-                }
+                // The knob tracks the finger exactly within the rim (base stays put). This is the
+                // "stick under the finger" feel: no re-centring, no lag, one-to-one.
                 Stick = Vector2.ClampMagnitude(delta / StickRadius, 1f);
-                if (Stick.magnitude < 0.16f) Stick = Vector2.zero;
+                if (Stick.magnitude < 0.08f) Stick = Vector2.zero;
             }
 
             if (!Input.GetMouseButton(0))
@@ -157,6 +152,13 @@ namespace DshMiniGames
             DrawThemeButton(new Rect(cx + 0f, y, 120f, 40f), "熔岩", TunnelTheme.Lava);
             DrawThemeButton(new Rect(cx + 130f, y, 120f, 40f), "绿林", TunnelTheme.Forest);
             y += 56f;
+
+            // Sensitivity: how fast the ship answers the stick.
+            GUI.Label(new Rect(cx - 220f, y, 440f, 24f), "灵敏度　" + Mathf.RoundToInt(_game.Sensitivity * 100f) + "%", Centered());
+            y += 28f;
+            float sens = GUI.HorizontalSlider(new Rect(cx - 180f, y, 360f, 22f), _game.Sensitivity, 0.5f, 2f);
+            if (Mathf.Abs(sens - _game.Sensitivity) > 0.001f) _game.Sensitivity = sens;
+            y += 36f;
 
             if (GUI.Button(new Rect(cx - 130f, y, 260f, 54f), "开始", _button))
             {
@@ -221,9 +223,9 @@ namespace DshMiniGames
             if (!_stickVisible) return;
 
             // The stick centre is in screen (bottom-left) coords; GUI draws in top-left coords,
-            // so convert. Drawn with an identity matrix so it sits under the thumb, not the panel.
+            // so flip Y. Drawn with an identity matrix so it sits under the thumb, not the panel.
             GUI.matrix = Matrix4x4.identity;
-            Vector2 centre = GUIUtility.ScreenToGUIPoint(_stickCentre);
+            Vector2 centre = new Vector2(_stickCentre.x, Screen.height - _stickCentre.y);
 
             var baseRect = new Rect(centre.x - StickRadius, centre.y - StickRadius,
                 StickRadius * 2f, StickRadius * 2f);
@@ -231,8 +233,10 @@ namespace DshMiniGames
             GUI.DrawTexture(baseRect, Circle());
             GUI.color = Color.white;
 
-            var knob = new Rect(centre.x + Stick.x * StickRadius - 24f,
-                centre.y - Stick.y * StickRadius - 24f, 48f, 48f);
+            // Knob sits exactly under the finger (clamped to the rim), at full radius.
+            const float knobHalf = 28f;
+            var knob = new Rect(centre.x + Stick.x * StickRadius - knobHalf,
+                centre.y - Stick.y * StickRadius - knobHalf, knobHalf * 2f, knobHalf * 2f);
             GUI.color = new Color(1f, 0.9f, 0.4f, 0.9f);
             GUI.DrawTexture(knob, Circle());
             GUI.color = Color.white;

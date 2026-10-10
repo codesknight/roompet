@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **374/374 通过**（虚拟宠物 216 + 跑酷 15 + 手机端 49 + 小游戏 94），EditMode |
+| 测试 | **377/377 通过**（虚拟宠物 216 + 跑酷 15 + 手机端 49 + 小游戏 97），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -976,6 +976,14 @@
     一过船就立刻回收**，相机再往后挪一点。棱镜那边一个独立的小坑：**同一垫子在序列里连亮两次，
     如果只在"下一次高亮时才复位"，两次会糊成一次长亮**——每个音符要有个"亮起→0.3 秒回落"的
     独立脉冲，重复音符才是两下可数的闪。
+147. **"摇杆跟手"最稳的做法是固定底座 + 旋钮精确贴手，别自作聪明搞 re-center。** re-center（手指超出
+    半径就把底座朝手指搬）会让底座"追着手指跑"，玩家感觉整个摇杆在滑，反而更不跟手；改成**底座点在
+    哪就固定在哪、旋钮按满半径精确画在手指（钳在圈内）**，死区压到 0.08，才是 1:1 的跟手。另外自绘
+    摇杆的**画法要自己显式做 Y 翻转**（`Screen.height - y`），别依赖 `ScreenToGUIPoint` 在 `GUI.matrix`
+    恒等时的行为——那是个隐式约定，换个矩阵就错位。障碍"太单一"的解法：**把洞口的形状和碰撞一起抽成
+    规则**（`IsInsideHole` 按圆/方/三角/半圆判定 + `GateShapePoints` 给轮廓画辐条墙），形状随分数逐步
+    解锁；"漂浮物"就给障碍加个小圈飘移（`BaseHole + 圆轨道`），别让它傻站。最后**灵敏度要落成
+    `ClampSensitivity` + PlayerPrefs + 滑条**，让"跟手"可以被玩家自己调，而不是写死一个手感。
 
 ---
 
