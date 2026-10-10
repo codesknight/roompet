@@ -1053,6 +1053,13 @@
      另外教训：**体量大的 HUD，先把"纯几何函数 + 被外部依赖的静态 API"（布局计算、`ModalOpen`、`SetToast`、
      `FreeBandScreen`…）和"画"分开**——几何和 API 是几十条单测和其它系统（相机/世界物体）的契约，迁移时
      一行都不能动，动的只是把 Rect 变成 RectTransform。
+158. **移动端"摇杆 + 按钮同按"迁不到纯 uGUI：uGUI 旧输入（StandaloneInputModule）只有一个指针。** 这是
+     `MobileTouch` 自建层存在的根本原因。迁 uGUI 时的正确姿势是**只迁"画"、输入留在 `MobileTouch`**：圆键/
+     摇杆画成 uGUI 圆片（`UguiRounded.Circle` + `ScreenPointToLocalPointInRectangle` 摆位），但每个按钮仍
+     `MobileTouch.RegisterButton` 注册命中区、`MobileTouch.Pressed/Held` 读按压，摇杆读 `MobileTouch.Stick`。
+     想真做"双手同按"的多点 uGUI，得换新输入系统（`InputSystemUIInputModule`），那不是"迁移"是"换输入栈"。
+     另外 uGUI 画世界锚定的东西（瞄准落点/心情标签）用 `RectTransformUtility.ScreenPointToLocalPointInRectangle`
+     把 `Camera.WorldToScreenPoint` 的屏幕点转成 Canvas 局部坐标，别再用设计像素换算。
 
 ---
 
