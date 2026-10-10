@@ -88,8 +88,16 @@
   键盘菜单快捷键从 OnGUI 的 `Event` 循环搬到 `Update` 的 `Input.GetKeyDown`。
 - 验证：385/385 全绿；运行中探针 主菜单文本正确、`StartRun`→Playing、`TogglePause` 开关、`Fail`→GameOver ✅。
 
-⏳ **剩余 HUD**（PetHud / StartMenuHud——最后两个、最大的）
-逐个迁到 uGUI，全部迁完才 merge 回 main 并发布。
+**🚪 第九个 HUD 已迁（本轮续）：StartMenuHud（开始界面）**
+
+- 主菜单（标题 + 副标题 + 进入房间/玩法介绍/设置/离开房间四按钮 + 版本·宠物币）/ 设置（**5 个开/关胶囊开关**
+  + 音量滑条 + 正在播放 + 返回）/ 玩法介绍（**ScrollRect 滚动长文**）/ 离开确认 / 开场·离场淡入淡出，全部 uGUI。
+- 设置开关仍画成"开/关胶囊"（不是 Unity 默认小勾选框——手机上太小看不清）；`Toggled` 纯函数保留（有单测）。
+- 验证：385/385 全绿（含 `StartMenuTests`）；运行中探针 四按钮/副标题（宠物名）/版本正确、`OpenSettings`
+  后音量滑条 active、`OpenHowTo` 后 ScrollRect 存在、5 个胶囊开关 ✅。
+
+⏳ **剩余 HUD**（PetHud——最后一个、也是最大的）
+迁完才 merge 回 main 并发布。
 
 ### 第 40 轮：宠物身体替换——程序化方块换成 Kenney Cube Pets
 

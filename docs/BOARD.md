@@ -83,7 +83,8 @@
 - [x] **AngryBirds HUD 迁到 uGUI**：四面板/五按钮迁到 uGUI，弹弓拖拽输入不动；顺手修掉 `PointerOverPanel` 死代码导致"点按钮也拉弓白打一发"的 bug（`PointerWorld` 用 `IsPointerOverGameObject` 挡）。运行中探针 文本正确、state=Ready ✅
 - [x] **Tunnel + Prism HUD 迁到 uGUI（小游戏全部迁完 7/7）**：Tunnel 浮动摇杆用圆形精灵 + `ScreenPointToLocalPointInRectangle` 绘制、灵敏度用 `Ugui.Slider`；Prism 难度锁禁用 + `PrismPad` 用 `IsPointerOverGameObject` 挡 UI。运行中探针 Tunnel `StartRun`→Running、Prism `StartRun`→Playback + 6 垫子 ✅
 - [x] **跑酷 HudController 迁到 uGUI**：主菜单/关卡选择/暂停/结算/通关五屏 + 局内 HUD（分数/进度条/道具条/提示）+ 手势提示；手势输入不动，键盘快捷键搬到 `Input.GetKeyDown`。运行中探针 主菜单文本正确、`StartRun`/`TogglePause`/`Fail` 状态转换 ✅
-- [ ] ⏳ **后续轮**：剩余 HUD（PetHud / StartMenuHud）迁到 uGUI，全部迁完才 merge 回 main 并发布
+- [x] **StartMenuHud 迁到 uGUI**：四按钮 + 设置（5 开/关胶囊 + 音量滑条）+ 玩法介绍 ScrollRect + 退出确认 + 淡入淡出；`Toggled` 纯函数保留。运行中探针 副标题/版本正确、音量滑条/ScrollRect/胶囊开关构建 ✅
+- [ ] ⏳ **最后一轮**：PetHud（宠物房间主界面）迁到 uGUI，迁完才 merge 回 main 并发布
 - [ ] ⏳ **真机确认**：uGUI 中文字体渲染、按钮可点、缩放/安全区正确（FlyBird 已可在真机看全屏点按 + 面板遮挡）
 
 ## 明确推迟或不做
