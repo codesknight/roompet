@@ -120,6 +120,8 @@ namespace DshMiniGames
         private bool _feedbackRoundComplete;
         private PrismPad _flashPad;
         private float _flashTimer;
+        private PrismPad _pulsePad;
+        private float _pulseTimer;
 
         // ------------------------------------------------------------------ setup
 
@@ -350,6 +352,8 @@ namespace DshMiniGames
             InputStep = 0;
             _flashPad = null;
             _flashTimer = 0f;
+            _pulsePad = null;
+            _pulseTimer = 0f;
             _timer = 0.55f;
             State = Phase.Playback;
         }
@@ -405,8 +409,12 @@ namespace DshMiniGames
                 if (pad == null) continue;
                 if (pad.Combo == combo)
                 {
-                    pad.transform.localScale = pad.BaseScale * 1.3f;
+                    pad.transform.localScale = pad.BaseScale * 1.35f;
                     Brighten(pad, true);
+                    // A short pulse: the pad lights up and then drops back, so when the SAME pad
+                    // appears twice in a row the two flashes are clearly two blinks, not one long one.
+                    _pulsePad = pad;
+                    _pulseTimer = 0.30f;
                 }
                 else
                 {
@@ -435,6 +443,23 @@ namespace DshMiniGames
 
         private void TickFlash()
         {
+            // Playback pulse: drop a highlighted pad back to base after a short blink.
+            if (_pulsePad != null)
+            {
+                _pulseTimer -= Time.deltaTime;
+                if (_pulseTimer <= 0f)
+                {
+                    var pulse = _pulsePad;
+                    _pulsePad = null;
+                    if (pulse != null)
+                    {
+                        pulse.transform.localScale = pulse.BaseScale;
+                        RestoreColor(pulse);
+                    }
+                }
+            }
+
+            // Tap feedback flash: green/red, then restore.
             if (_flashPad == null || _flashTimer <= 0f) return;
             _flashTimer -= Time.deltaTime;
             if (_flashTimer <= 0f)

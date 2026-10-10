@@ -23,23 +23,36 @@ namespace DshMiniGames
         /// <summary>How fast the ship can move in the cross-section, in tunnel units per second.</summary>
         public const float ShipSpeed = 2.6f;
 
-        /// <summary>Radius of a gate hole the ship flies through.</summary>
+        /// <summary>Radius of a gate hole the ship flies through. Kept as the comfortable default;
+        /// live difficulty shrinks it via <see cref="GateHoleRadiusFor"/>.</summary>
         public const float GateHoleRadius = 0.52f;
 
         /// <summary>Radius of a mine obstacle.</summary>
         public const float MineRadius = 0.34f;
 
         /// <summary>Distance ahead at which the next obstacle spawns.</summary>
-        public const float SpawnAhead = 14f;
+        public const float SpawnAhead = 18f;
 
-        /// <summary>How far two successive obstacles are apart along the tunnel.</summary>
-        public const float Spacing = 4.6f;
+        /// <summary>How far two successive obstacles are apart along the tunnel. Wide enough that
+        /// an obstacle never lingers between the camera and the ship after it has passed.</summary>
+        public const float Spacing = 6.5f;
 
         /// <summary>How fast the tunnel scrolls past the ship, in tunnel units per second.</summary>
         public const float ForwardSpeed = 7f;
 
         /// <summary>Seconds between two successive obstacles reaching the ship.</summary>
         public const float TimeBetweenObstacles = Spacing / ForwardSpeed;
+
+        /// <summary>
+        /// The gate hole radius at a given score. Starts wide and easy, shrinks as the run goes on,
+        /// so the difficulty ramps gradually rather than hitting the player at full strength.
+        /// </summary>
+        public static float GateHoleRadiusFor(int score)
+            => Mathf.Lerp(0.85f, 0.44f, Mathf.Clamp01(score / 30f));
+
+        /// <summary>Mine radius at a given score: slightly smaller early, slightly larger late.</summary>
+        public static float MineRadiusFor(int score)
+            => Mathf.Lerp(0.40f, 0.30f, Mathf.Clamp01(score / 40f));
 
         /// <summary>
         /// Clamps a ship position into the tunnel cross-section, which is a circle: a ship at the
@@ -58,11 +71,11 @@ namespace DshMiniGames
         /// consecutive holes are never farther apart than the ship can fly in the time between
         /// them, so no two gates can be an impossible pair.
         /// </summary>
-        public static Vector2 NextGateHole(Vector2 from, float roll1, float roll2)
+        public static Vector2 NextGateHole(Vector2 from, float roll1, float roll2, float holeRadius)
         {
             float maxJump = ShipSpeed * TimeBetweenObstacles;
             float angle = roll1 * Mathf.PI * 2f;
-            float radius = Mathf.Lerp(0f, TunnelRadius - GateHoleRadius - 0.15f, Mathf.Sqrt(roll2));
+            float radius = Mathf.Lerp(0f, TunnelRadius - holeRadius - 0.15f, Mathf.Sqrt(roll2));
             var target = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
             var delta = target - from;
             if (delta.magnitude > maxJump) target = from + delta.normalized * maxJump;

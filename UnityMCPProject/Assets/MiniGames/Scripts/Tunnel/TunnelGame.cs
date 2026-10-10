@@ -63,8 +63,10 @@ namespace DshMiniGames
                 go.AddComponent<AudioListener>();
             }
             existing.orthographic = false;
-            existing.fieldOfView = 60f;
-            existing.transform.position = new Vector3(0f, 0f, -6.6f);
+            existing.fieldOfView = 62f;
+            // A little further back and wider than the first pass, so the ship and the incoming
+            // obstacle are both in frame and the view is never swallowed by a gate up close.
+            existing.transform.position = new Vector3(0f, 0f, -8.2f);
             existing.transform.rotation = Quaternion.identity;
             existing.clearFlags = CameraClearFlags.SolidColor;
             existing.backgroundColor = new Color(0.02f, 0.02f, 0.06f);
@@ -225,7 +227,7 @@ namespace DshMiniGames
                     if (p.z <= 0f && !o.Scored)
                     {
                         o.Scored = true;
-                        if (TunnelRules.Collides(_shipPos, o.Hole, TunnelRules.GateHoleRadius))
+                        if (TunnelRules.Collides(_shipPos, o.Hole, o.Radius))
                         {
                             Score++;
                             DshMobile.MobileHaptics.Light();
@@ -238,13 +240,15 @@ namespace DshMiniGames
                     }
                 }
                 else if (Mathf.Abs(p.z) < 0.4f &&
-                         TunnelRules.Collides(_shipPos, o.Hole, TunnelRules.MineRadius + TunnelRules.ShipRadius))
+                         TunnelRules.Collides(_shipPos, o.Hole, o.Radius + TunnelRules.ShipRadius))
                 {
                     Die();
                     return;
                 }
 
-                if (p.z < -5f)
+                // Recycle as soon as it is behind the ship, so a passed gate never lingers
+                // between the camera and the ship to block the view of what is coming.
+                if (p.z < -2f)
                 {
                     Destroy(o.Root.gameObject);
                     _obstacles.RemoveAt(i);
@@ -269,26 +273,29 @@ namespace DshMiniGames
             if (o.IsGate)
             {
                 // Chain each hole from the previous one, so two consecutive gates are never an
-                // impossible pair no matter how the ship wanders between them.
-                o.Hole = TunnelRules.NextGateHole(_lastHole, Random.value, Random.value);
+                // impossible pair no matter how the ship wanders between them. The hole starts
+                // wide and shrinks as the score rises (progressive difficulty).
+                float r = TunnelRules.GateHoleRadiusFor(Score);
+                o.Hole = TunnelRules.NextGateHole(_lastHole, Random.value, Random.value, r);
                 _lastHole = o.Hole;
-                o.Radius = TunnelRules.GateHoleRadius;
-                BuildGate(root, o.Hole);
+                o.Radius = r;
+                BuildGate(root, o.Hole, r);
             }
             else
             {
+                float r = TunnelRules.MineRadiusFor(Score);
                 o.Hole = TunnelRules.NextMine(_shipPos, Random.value, Random.value);
-                o.Radius = TunnelRules.MineRadius;
-                BuildMine(root, o.Hole);
+                o.Radius = r;
+                BuildMine(root, o.Hole, r);
             }
             _obstacles.Add(o);
         }
 
         /// <summary>A "wall with a hole": radial spokes from the hole rim out to the tunnel wall.</summary>
-        private void BuildGate(Transform root, Vector2 hole)
+        private void BuildGate(Transform root, Vector2 hole, float radius)
         {
             var accent = TunnelRules.TunnelColor(Theme, true);
-            float r = TunnelRules.GateHoleRadius;
+            float r = radius;
             int spokes = 20;
             for (int s = 0; s < spokes; s++)
             {
@@ -313,10 +320,10 @@ namespace DshMiniGames
             }
         }
 
-        private void BuildMine(Transform root, Vector2 at)
+        private void BuildMine(Transform root, Vector2 at, float radius)
         {
             Prim("MineBody", PrimitiveType.Sphere, root,
-                new Vector3(at.x, at.y, 0f), Vector3.one * (TunnelRules.MineRadius * 2f),
+                new Vector3(at.x, at.y, 0f), Vector3.one * (radius * 2f),
                 Quaternion.identity, new Color(0.95f, 0.32f, 0.28f), 1.2f);
         }
 

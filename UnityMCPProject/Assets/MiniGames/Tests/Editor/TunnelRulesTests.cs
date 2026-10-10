@@ -23,7 +23,7 @@ namespace DshMiniGames.Tests
             var from = Vector2.zero;
             for (int i = 0; i < 200; i++)
             {
-                var hole = TunnelRules.NextGateHole(from, Random.value, Random.value);
+                var hole = TunnelRules.NextGateHole(from, Random.value, Random.value, TunnelRules.GateHoleRadiusFor(0));
                 float maxJump = TunnelRules.ShipSpeed * TunnelRules.TimeBetweenObstacles;
                 Assert.LessOrEqual(Vector2.Distance(from, hole), maxJump + 0.001f,
                     "the next hole is always within the ship's reach");

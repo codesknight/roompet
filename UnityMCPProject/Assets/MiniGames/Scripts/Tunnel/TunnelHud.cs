@@ -88,6 +88,13 @@ namespace DshMiniGames
             {
                 Vector2 now = Input.mousePosition;
                 Vector2 delta = now - _stickCentre;
+                // Re-centre the stick once the finger passes the rim, so the knob stays under
+                // the finger instead of lagging behind it.
+                if (delta.magnitude > StickRadius)
+                {
+                    _stickCentre = now - delta.normalized * StickRadius;
+                    delta = now - _stickCentre;
+                }
                 Stick = Vector2.ClampMagnitude(delta / StickRadius, 1f);
                 if (Stick.magnitude < 0.16f) Stick = Vector2.zero;
             }
@@ -224,8 +231,8 @@ namespace DshMiniGames
             GUI.DrawTexture(baseRect, Circle());
             GUI.color = Color.white;
 
-            var knob = new Rect(centre.x + Stick.x * StickRadius * 0.7f - 24f,
-                centre.y - Stick.y * StickRadius * 0.7f - 24f, 48f, 48f);
+            var knob = new Rect(centre.x + Stick.x * StickRadius - 24f,
+                centre.y - Stick.y * StickRadius - 24f, 48f, 48f);
             GUI.color = new Color(1f, 0.9f, 0.4f, 0.9f);
             GUI.DrawTexture(knob, Circle());
             GUI.color = Color.white;
