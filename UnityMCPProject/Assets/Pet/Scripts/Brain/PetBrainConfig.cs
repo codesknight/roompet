@@ -50,6 +50,13 @@ namespace DshPet
         /// </summary>
         public string ExtraInstructions = "";
 
+        /// <summary>
+        /// Full override of the generated system prompt. Empty = use the generated one. Advanced:
+        /// the generated prompt carries the reply-format contract, so this is for users who want to
+        /// write the whole prompt themselves.
+        /// </summary>
+        public string SystemPrompt = "";
+
         public bool HasEndpoint => !string.IsNullOrWhiteSpace(BaseUrl);
 
         public bool CanUseNetwork =>

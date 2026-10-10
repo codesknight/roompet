@@ -1129,6 +1129,12 @@
      "没发出去"。修法：给 `PetGameManager` 暴露 `PendingUserMessage`，HUD 在 `RebuildTranscript` 里当 `IsThinking` 时把
      它当一条用户气泡画出来；重建守卫要把 `IsThinking + PendingUserMessage` 一起算进去（不然消息出现/消失都不会触发重画）。
      **凡是「异步回复」的聊天，UI 先画"pending"，别让历史列表自己慢慢补。**
+171. **可拖动/可输入的控件，`targetGraphic` 必须开着 `raycastTarget`——这是 InputField、Slider、拼图拼块三处同一个坑。**
+     共享的 `Ugui.Image/RawImage` 为了"静态面板不挡触摸"默认 `raycastTarget=false`，于是用它当背景的输入框点不中、
+     用它当手柄的滑条拖不动、用它当拼块的拼图点不动。修法在控件工厂里就地打开：`InputField` 把背景 `raycastTarget=true`
+     + `targetGraphic=bg`；`Slider` 把背景和手柄都 `raycastTarget=true`；拼块作为 Button 的 targetGraphic 也打开。
+     **"静态不挡触摸"和"可交互"是两个相反需求，别用同一个工厂默认值糊过去——凡是要响应用户的控件，它的 targetGraphic
+     都得能接收射线。**
 
 ## 八、一分钟速查
 

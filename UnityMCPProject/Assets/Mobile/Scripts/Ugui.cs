@@ -214,6 +214,7 @@ namespace DshMobile
 
             var bg = Image("Background", rt, new Color(0f, 0f, 0f, 0.4f));
             Stretch(bg.rectTransform);
+            bg.raycastTarget = true;   // the track must receive the drag or the slider cannot be moved
 
             var fillArea = new GameObject("FillArea", typeof(RectTransform));
             fillArea.transform.SetParent(rt, false);
@@ -226,6 +227,7 @@ namespace DshMobile
             Stretch(handleArea.GetComponent<RectTransform>());
             var handle = Image("Handle", handleArea.transform, handleColor);
             handle.rectTransform.sizeDelta = new Vector2(26f, 26f);
+            handle.raycastTarget = true;   // the handle is the drag target
 
             slider.fillRect = fill.rectTransform;
             slider.handleRect = handle.rectTransform;

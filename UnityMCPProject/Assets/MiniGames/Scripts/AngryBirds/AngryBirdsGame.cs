@@ -72,6 +72,14 @@ namespace DshMiniGames
         private readonly List<Transform> _pigViews = new List<Transform>();
         private readonly List<float> _pigDiedAt = new List<float>();
 
+        private class Debris
+        {
+            public Transform Transform;
+            public Vector3 Velocity;
+            public float Age;
+        }
+        private readonly List<Debris> _debris = new List<Debris>();
+
         private Vector2 _dragWorld;
         private bool _dragging;
         private bool _hasDrag;
@@ -786,6 +794,7 @@ namespace DshMiniGames
             if (_level == null) return;
 
             AnimatePigs();
+            TickDebris(Time.deltaTime);
 
             if (Paused)
             {
@@ -1032,9 +1041,9 @@ namespace DshMiniGames
                 case BirdEventKind.BlockBroken:
                     if (e.Index >= 0 && e.Index < _level.Blocks.Count)
                     {
-                        HideView(_blockViews, e.Index);
+                        BurstBlock(e.Index);
                         Score += BirdRules.ScoreFor(_level.Blocks[e.Index].Kind);
-                        DshMobile.MobileHaptics.Light();
+                        DshMobile.MobileHaptics.Medium();
                     }
                     break;
 
@@ -1083,6 +1092,54 @@ namespace DshMiniGames
             var view = views[index];
             if (view == null) return;
             view.gameObject.SetActive(false);
+        }
+
+        /// <summary>Bursts a block into little fragments that fly out and fade — the "破坏感" the
+        /// plain vanish never had. The fragments are driven by <see cref="TickDebris"/>.</summary>
+        private void BurstBlock(int index)
+        {
+            var view = index >= 0 && index < _blockViews.Count ? _blockViews[index] : null;
+            Vector3 pos = view != null ? view.position : new Vector3(_level.Blocks[index].X, _level.Blocks[index].Y, 0f);
+            Color color = ColourFor(_level.Blocks[index].Kind);
+            HideView(_blockViews, index);
+
+            int pieces = 7;
+            for (int i = 0; i < pieces; i++)
+            {
+                var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                go.name = "Debris";
+                go.transform.SetParent(transform, false);
+                go.transform.position = pos;
+                go.transform.localScale = Vector3.one * 0.16f;
+                Paint(go, color);
+                Destroy(go.GetComponent<Collider>());
+
+                float angle = (float)i / pieces * Mathf.PI * 2f + Random.value * 0.6f;
+                float speed = 2.6f + Random.value * 3.4f;
+                _debris.Add(new Debris
+                {
+                    Transform = go.transform,
+                    Velocity = new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f) * speed,
+                    Age = 0f
+                });
+            }
+        }
+
+        private void TickDebris(float dt)
+        {
+            for (int i = _debris.Count - 1; i >= 0; i--)
+            {
+                var d = _debris[i];
+                if (d == null || d.Transform == null) { _debris.RemoveAt(i); continue; }
+                d.Age += dt;
+                d.Velocity += new Vector3(0f, -14f * dt, 0f);   // gravity
+                d.Transform.position += d.Velocity * dt;
+
+                const float life = 0.6f;
+                if (d.Age >= life) { Destroy(d.Transform.gameObject); _debris.RemoveAt(i); continue; }
+                float fade = 1f - d.Age / life;
+                d.Transform.localScale = Vector3.one * 0.16f * fade;
+            }
         }
 
         private void FinishCleared()

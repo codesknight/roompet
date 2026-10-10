@@ -1518,6 +1518,7 @@ namespace DshPet
                 DayDigest = Journal.RecentDigest(3),
                 LastInteraction = lastInteraction,
                 ExtraInstructions = BrainConfig != null ? BrainConfig.ExtraInstructions : "",
+                SystemPrompt = BrainConfig != null ? BrainConfig.SystemPrompt : "",
                 Perception = DescribePerception()
             };
         }

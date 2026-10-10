@@ -170,6 +170,10 @@ namespace DshPet
         /// <summary>Player-authored text appended to the system prompt (see PetBrainConfig).</summary>
         public string ExtraInstructions;
 
+        /// <summary>Full override of the generated system prompt. Empty means "use the generated
+        /// one". Editing this is advanced: the generated prompt carries the reply-format contract.</summary>
+        public string SystemPrompt;
+
         /// <summary>
         /// What the pet can see right now: where it is in the room, where its things are, and where the
         /// owner is (see <see cref="PetPerception"/>).

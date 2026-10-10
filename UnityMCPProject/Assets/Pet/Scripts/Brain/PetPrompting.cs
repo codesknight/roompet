@@ -25,6 +25,11 @@ namespace DshPet
 
         public static string BuildSystemPrompt(PetContext ctx, int maxSentences = 2)
         {
+            // A player-authored system prompt overrides the generated one entirely. It is the
+            // advanced path: the generated prompt carries the reply-format contract, so this is
+            // only taken when the player explicitly wrote their own.
+            if (!string.IsNullOrWhiteSpace(ctx.SystemPrompt)) return ctx.SystemPrompt.Trim();
+
             var sb = new StringBuilder();
 
             sb.AppendLine($"你是一只名叫「{Fallback(ctx.PetName, "小家伙")}」的{ctx.SpeciesName}，是主人的宠物，不是 AI 助手。");

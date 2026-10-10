@@ -369,25 +369,11 @@ namespace DshMiniGames
         private void BuildGate(Transform root, Vector2 hole, GateShape shape, float radius)
         {
             var accent = TunnelRules.TunnelColor(Theme, true);
-            // Dense spokes + a bright rim so the gate reads as a SOLID wall with a hole cut in it
-            // (the first version's 16 thin spokes read as random floating bars and people flew
-            // into the wall).
-            var points = TunnelRules.GateShapePoints(shape, radius, 40);
+            var points = TunnelRules.GateShapePoints(shape, radius, 48);
 
-            // Spokes: from each outline point, outward to the tunnel wall along its radial direction.
-            for (int s = 0; s < points.Length; s++)
-            {
-                Vector2 dir = points[s].normalized;
-                if (dir.sqrMagnitude < 0.0001f) dir = Vector2.up;
-                float inner = points[s].magnitude;
-                float midR = (inner + RingRadius) * 0.5f;
-                float length = RingRadius - inner;
-                Prim("Spoke", PrimitiveType.Cube, root,
-                    new Vector3(hole.x + dir.x * midR, hole.y + dir.y * midR, 0f),
-                    new Vector3(length, 0.22f, 0.22f),
-                    Quaternion.Euler(0f, 0f, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg),
-                    accent, 0.8f);
-            }
+            // A SOLID face from the shaped hole out to the tunnel ring — a wall with the shape cut
+            // out of it — instead of spokes, which read as floating bars on triangle/square holes.
+            BuildFace(root, hole, points, accent);
 
             // The glowing outline of the hole shape itself.
             for (int s = 0; s < points.Length; s++)
@@ -398,6 +384,53 @@ namespace DshMiniGames
                     Quaternion.identity,
                     new Color(1f, 0.95f, 0.6f), 1.3f);
             }
+        }
+
+        /// <summary>Builds the wall mesh: a quad strip from the shaped hole out to the ring, drawn
+        /// double-sided so it is visible from either side of the gate.</summary>
+        private void BuildFace(Transform root, Vector2 hole, Vector2[] points, Color color)
+        {
+            int n = points.Length;
+            var verts = new Vector3[n * 2];
+            for (int i = 0; i < n; i++)
+            {
+                Vector2 hp = hole + points[i];
+                Vector2 dir = hp.normalized;
+                if (dir.sqrMagnitude < 0.0001f) dir = Vector2.up;
+                Vector2 rp = dir * RingRadius;
+                verts[2 * i] = new Vector3(hp.x, hp.y, 0f);
+                verts[2 * i + 1] = new Vector3(rp.x, rp.y, 0f);
+            }
+
+            // Double-sided: each quad is emitted in both windings so the wall shows from both sides.
+            var tris = new int[n * 12];
+            for (int i = 0; i < n; i++)
+            {
+                int next = (i + 1) % n;
+                int h0 = 2 * i, r0 = 2 * i + 1, h1 = 2 * next, r1 = 2 * next + 1;
+                int t = i * 12;
+                tris[t] = h0; tris[t + 1] = r0; tris[t + 2] = r1;
+                tris[t + 3] = h0; tris[t + 4] = r1; tris[t + 5] = h1;
+                tris[t + 6] = h0; tris[t + 7] = r1; tris[t + 8] = r0;
+                tris[t + 9] = h0; tris[t + 10] = h1; tris[t + 11] = r1;
+            }
+
+            var mesh = new Mesh { name = "GateFace" };
+            mesh.vertices = verts;
+            mesh.triangles = tris;
+            mesh.RecalculateNormals();
+
+            var go = new GameObject("GateFace");
+            go.transform.SetParent(root, false);
+            var mf = go.AddComponent<MeshFilter>();
+            mf.mesh = mesh;
+            var mr = go.AddComponent<MeshRenderer>();
+            var material = new Material(Shader.Find("Standard"));
+            material.color = color;
+            material.SetFloat("_Glossiness", 0.35f);
+            mr.material = material;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
         }
 
         private Transform BuildMine(Transform root, Vector2 at, float radius)

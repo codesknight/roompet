@@ -64,6 +64,7 @@ namespace DshPet
         private string _editModel;
         private string _editKey;
         private string _editExtraInstructions = "";
+        private string _editSystemPrompt = "";
         private bool _editAnonymous;
         private bool _editOffline;
         private string _testResult = "";
@@ -180,6 +181,7 @@ namespace DshPet
         private UnityEngine.UI.Image _promptPanel;
         private UnityEngine.UI.Text _promptText;
         private UnityEngine.UI.InputField _promptEdit;
+        private UnityEngine.UI.InputField _promptSystemEdit;
         private UnityEngine.UI.Text _promptSaveLabel;
 
         // uGUI memory match panel (fourth slice, eighth piece).
@@ -857,6 +859,7 @@ namespace DshPet
         {
             _chatPanel = DshMobile.Ugui.Panel("ChatPanel", _root, 16f,
                 new Color(0.10f, 0.09f, 0.13f, 0.94f), new Color(1f, 1f, 1f, 0.10f), 2f);
+            _chatPanel.raycastTarget = true;   // the expanded chat must block clicks to the room behind it
             _chatPanel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
             _chatPanel.gameObject.SetActive(false);
             var p = _chatPanel.rectTransform;
@@ -1194,6 +1197,7 @@ namespace DshPet
         {
             _cardPanel = DshMobile.Ugui.Panel("CardPanel", _root, 16f,
                 new Color(0.11f, 0.10f, 0.14f, 0.95f), new Color(1f, 1f, 1f, 0.10f), 2f);
+            _cardPanel.raycastTarget = true;   // the always-on card must block clicks to the room behind it
             _cardPanel.gameObject.SetActive(false);
             var p = _cardPanel.rectTransform;
 
@@ -2887,6 +2891,12 @@ namespace DshPet
                 if (!allowed) y = BuildFurnishLabel(_furnishContent, y, "　只能摆在" + PetInventory.PlaceName(item.Scene) + "。");
             }
             if (!any) y = BuildFurnishLabel(_furnishContent, y, "仓库空空的。去商城看看，家具买回来才能摆进房间。");
+
+            // The free-placement entry lives under the warehouse list (it was lost in the uGUI
+            // migration): tap it to close the panel and drag furniture around the room.
+            y += 8f;
+            y = BuildSimpleActionRow(w, "想给家具换个位置？", "🧭 自由摆放",
+                () => { _showFurnish = false; EnterPlacementMode(); }, ref y);
         }
 
         private float BuildFeedSellRow(float w, string label, ShopItem item, PetGameManager gm, ref float y)
@@ -3012,7 +3022,7 @@ namespace DshPet
             scroll.scrollSensitivity = 30f;
             scroll.viewport.anchorMin = new Vector2(0f, 0f);
             scroll.viewport.anchorMax = new Vector2(1f, 1f);
-            scroll.viewport.offsetMin = new Vector2(16f, 150f);
+            scroll.viewport.offsetMin = new Vector2(16f, 215f);
             scroll.viewport.offsetMax = new Vector2(-16f, -52f);
 
             var content = new GameObject("Content", typeof(RectTransform));
@@ -3030,8 +3040,20 @@ namespace DshPet
             _promptText.rectTransform.offsetMin = new Vector2(2f, 0f);
             _promptText.rectTransform.offsetMax = new Vector2(-2f, 0f);
 
+            // Editable system prompt (advanced: empty = use the generated one).
+            var sysLabel = DshMobile.Ugui.Text("SysLabel", p, "系统提示词（留空则用自动生成的那套）", 15, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRectBottomLeft(sysLabel.rectTransform, 16f, 188f, 600f, 22f);
+
+            _promptSystemEdit = DshMobile.Ugui.InputField("SystemEdit", p);
+            _promptSystemEdit.lineType = UnityEngine.UI.InputField.LineType.MultiLineNewline;
+            _promptSystemEdit.GetComponent<RectTransform>().anchorMin = new Vector2(0f, 0f);
+            _promptSystemEdit.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 0f);
+            _promptSystemEdit.GetComponent<RectTransform>().pivot = new Vector2(0.5f, 0f);
+            _promptSystemEdit.GetComponent<RectTransform>().offsetMin = new Vector2(16f, 128f);
+            _promptSystemEdit.GetComponent<RectTransform>().offsetMax = new Vector2(-16f, 184f);
+
             var editLabel = DshMobile.Ugui.Text("EditLabel", p, "额外要求（追加在系统提示后面，会保存）", 15, Color.white, UnityEngine.TextAnchor.UpperLeft);
-            DshMobile.Ugui.SetRectBottomLeft(editLabel.rectTransform, 16f, 118f, 500f, 22f);
+            DshMobile.Ugui.SetRectBottomLeft(editLabel.rectTransform, 16f, 114f, 500f, 22f);
 
             _promptEdit = DshMobile.Ugui.InputField("Edit", p);
             _promptEdit.lineType = UnityEngine.UI.InputField.LineType.MultiLineNewline;
@@ -3041,7 +3063,7 @@ namespace DshPet
             _promptEdit.GetComponent<RectTransform>().offsetMin = new Vector2(16f, 44f);
             _promptEdit.GetComponent<RectTransform>().offsetMax = new Vector2(-16f, 104f);
 
-            var save = DshMobile.Ugui.Button("Save", p, "保存额外要求", 16, new Color(0.30f, 0.55f, 0.35f));
+            var save = DshMobile.Ugui.Button("Save", p, "保存提示词设置", 16, new Color(0.30f, 0.55f, 0.35f));
             DshMobile.Ugui.SetRectBottomLeft(save.GetComponent<RectTransform>(), 16f, 8f, 150f, 36f);
             _promptSaveLabel = save.GetComponentInChildren<UnityEngine.UI.Text>();
             save.onClick.AddListener(OnSavePrompt);
@@ -3083,8 +3105,12 @@ namespace DshPet
             if (!_promptEdit.isFocused) _promptEdit.text = _editExtraInstructions ?? "";
             if (_promptEdit.isFocused) _editExtraInstructions = _promptEdit.text;
 
-            bool dirty = (gm.BrainConfig.ExtraInstructions ?? "") != (_editExtraInstructions ?? "");
-            _promptSaveLabel.text = dirty ? "保存额外要求 *" : "保存额外要求";
+            if (!_promptSystemEdit.isFocused) _promptSystemEdit.text = _editSystemPrompt ?? "";
+            if (_promptSystemEdit.isFocused) _editSystemPrompt = _promptSystemEdit.text;
+
+            bool dirty = (gm.BrainConfig.ExtraInstructions ?? "") != (_editExtraInstructions ?? "") ||
+                         (gm.BrainConfig.SystemPrompt ?? "") != (_editSystemPrompt ?? "");
+            _promptSaveLabel.text = dirty ? "保存提示词设置 *" : "保存提示词设置";
             _promptSaveLabel.color = dirty ? new Color(1f, 0.9f, 0.6f) : Color.white;
         }
 
@@ -3093,6 +3119,7 @@ namespace DshPet
             var gm = PetGameManager.Instance;
             if (gm == null) return;
             gm.BrainConfig.ExtraInstructions = _editExtraInstructions ?? "";
+            gm.BrainConfig.SystemPrompt = _editSystemPrompt ?? "";
             gm.BrainConfig.Save();
             gm.RebuildBrain();
         }
@@ -4390,10 +4417,13 @@ namespace DshPet
             else if (label == "提示词") OpenPromptPreview(gm);
             else if (label == "详情" || label == "简略") _statusDetail = !_statusDetail;
             else if (label.Contains("宠物") || label.Contains("背包")) _showCollection = !_showCollection;
-            else if (label == "家具")
+            else if (label == "商城" || label == "仓库" || label == "背包")
             {
-                _showFurnish = !_showFurnish;
-                if (_showFurnish) _furnishMessage = "";
+                // The three furnish tabs became three buttons; each opens the panel on its own tab.
+                _furnishTab = label == "商城" ? 0 : (label == "背包" ? 1 : 2);
+                _showFurnish = true;
+                _furnishMessage = "";
+                _builtFurnishTab = -1;
             }
             else if (label.Contains("展开") || label.Contains("收起")) gm.SelectPet(gm.SelectedPetIndex, toggleIfSame: true);
             else if (label.Contains("地图"))
@@ -4442,8 +4472,8 @@ namespace DshPet
             var labels = collapsed
                 ? new[] { "展开", "地图", "设置" }
                 : (mobile
-                    ? new[] { "收起", "本子", "宠物", "家具", "地图", "设置", "提示词", detailLabel, "重置" }
-                    : new[] { "收起", "记事本", "宠物", "家具", "地图", "设置", "提示词", "重置" });
+                    ? new[] { "收起", "本子", "宠物", "商城", "仓库", "背包", "地图", "设置", "提示词", detailLabel, "重置" }
+                    : new[] { "收起", "记事本", "宠物", "商城", "仓库", "背包", "地图", "设置", "提示词", "重置" });
 
             float budget = Mathf.Max(96f, availableWidth - RowPackingSlack);
             return PackRows(labels, budget, fontSize);
@@ -6997,6 +7027,7 @@ namespace DshPet
             _editAnonymous = gm.BrainConfig.AllowAnonymous;
             _editOffline = gm.BrainConfig.ForceOffline;
             _editExtraInstructions = gm.BrainConfig.ExtraInstructions ?? "";
+            _editSystemPrompt = gm.BrainConfig.SystemPrompt ?? "";
         }
 
         private PetBrainConfig BuildEditConfig()
