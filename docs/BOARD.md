@@ -62,15 +62,13 @@
 
 ---
 
-## 这一轮（第 37 轮）的验收清单
+## 这一轮（第 38 轮）的验收清单
 
-- [x] **隧道沉浸感**：相机 -8.2 → -6.0，飞船更大、隧道壁贴边掠过。运行中验证：camera z=-6.0
-- [x] **棱镜 UI 美化**：圆角彩色按钮（难度橙/蓝/紫、模式绿/红、开始亮绿，顶部微高光圆角背景）
-- [x] **BGM**：`TrackForScene` 加 Tunnel→SliceFruit(The Rush)、Prism→Puzzle(Contemplation)，sceneLoaded 自动播放。运行中验证：Music Current=SliceFruit
-- [x] **音效**：隧道过门"叮"/撞毁闷响；棱镜整轮琶音/点错 buzz（程序化合成）
-- [x] **测试**：377/377 全绿（纯画面/UI/音频，无新单测）
-- [x] 文档：本文件 + REQUIREMENTS 阶段 37 + CHANGELOG 第 37 轮 + DEVLOG 坑 148
-- [ ] ⏳ **真机确认**：① 隧道更沉浸、过门有音效；② 棱镜按钮好看、成功/失败有音效；③ 两个游戏都有 BGM
+- [x] **隧道相机跟随**：相机 X/Y 按 `ship × 0.5` 带阻尼跟随（`1 - e^(-7t)` 平滑），镜头随机动侧移
+- [x] **配乐更贴合**：隧道 → Party Sector（电子派对）、棱镜 → Funky Disco Beats（放克轻快）。运行中验证：Music Current=JumpQuest
+- [x] **测试**：377/377 全绿（相机/配乐，无新单测）
+- [x] 文档：本文件 + REQUIREMENTS 阶段 38 + CHANGELOG 第 38 轮 + DEVLOG 坑 149
+- [ ] ⏳ **真机确认**：① 隧道飞船机动时镜头有跟随感；② 隧道/棱镜新配乐对味
 
 ## 明确推迟或不做
 

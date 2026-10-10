@@ -228,6 +228,12 @@ namespace DshMiniGames
             _shipPos = TunnelRules.ClampToTunnel(_shipPos);
             _ship.localPosition = new Vector3(_shipPos.x, _shipPos.y, 0f);
 
+            // Camera follows the ship with a dampened offset, so the whole view shifts as the ship
+            // banks left/right/up/down — the parallax that sells "I'm flying this", not watching it.
+            Vector3 camTarget = new Vector3(_shipPos.x * 0.5f, _shipPos.y * 0.5f, _camera.transform.position.z);
+            _camera.transform.position = Vector3.Lerp(_camera.transform.position, camTarget,
+                1f - Mathf.Exp(-7f * dt));
+
             // Rings scroll past the ship and wrap, which is the forward-motion illusion.
             for (int i = 0; i < _rings.Count; i++)
             {

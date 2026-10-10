@@ -505,6 +505,16 @@
 | R37.5 | 全套回归 | 纯画面/UI/音频无新单测，377/377 全绿 | 测试全绿 ✅ |
 
 
+## 阶段 38：隧道相机跟随 + 两个游戏换更贴合的配乐
+
+| 编号 | 需求 | 实现 | 验收证据 |
+|---|---|---|---|
+| R38.1 | 隧道加相机跟随 | 相机 X/Y 按 `ship × 0.5` 带阻尼跟随（`1 - e^(-7t)` 平滑），镜头随机动侧移 | 运行中：编译通过 ✅ |
+| R38.2 | 隧道配乐科幻激情 | `TrackForScene("Tunnel")` → `MusicId.JumpQuest`（Party Sector 电子派对） | 运行中：Music Current=JumpQuest ✅ |
+| R38.3 | 棱镜配乐欢快有趣 | `TrackForScene("Prism")` → `MusicId.FlyBird`（Funky Disco Beats 放克轻快） | 运行中：TrackForScene(Prism)=FlyBird ✅ |
+| R38.4 | 全套回归 | 相机/配乐无新单测，377/377 全绿 | 测试全绿 ✅ |
+
+
 ## 非功能需求 / 设计约束
 
 
