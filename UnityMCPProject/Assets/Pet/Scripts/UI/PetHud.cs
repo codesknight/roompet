@@ -201,6 +201,29 @@ namespace DshPet
         private UnityEngine.UI.Text _puzzleFooter;
         private UnityEngine.UI.Text _puzzleToggleLabel;
 
+        // uGUI mobile controls + collapsed chat bar (fourth slice, tenth piece — drawing only;
+        // input stays on MobileTouch, which is the multi-touch layer).
+        private GameObject _mobileRoot;
+        private UnityEngine.UI.Image _stickBase;
+        private UnityEngine.UI.Image _stickKnob;
+        private UnityEngine.UI.Image _actionBtn;
+        private UnityEngine.UI.Text _actionLabel;
+        private UnityEngine.UI.Image _throwBtn;
+        private UnityEngine.UI.Text _throwLabel;
+        private UnityEngine.UI.Image _chatBtn;
+        private UnityEngine.UI.Text _chatLabel;
+        private UnityEngine.UI.Image _stickHint;
+        private UnityEngine.UI.Text _stickHintLabel;
+        private UnityEngine.UI.Image _chatBar;
+        private UnityEngine.UI.Image _chatBarPill;
+        private UnityEngine.UI.Text _chatBarPillLabel;
+        private UnityEngine.UI.Image _chatBarMic;
+        private UnityEngine.UI.Text _chatBarMicLabel;
+        private UnityEngine.UI.Text _chatBarLine;
+        private UnityEngine.UI.Image _chatBarDot;
+        private float _stickHintBornAt = -1f;
+        private bool _stickHintUsed;
+
         /// <summary>Set by hoverable world objects; shown near the cursor.</summary>
         public static void SetCursorHint(string hint) => _cursorHint = hint;
 
@@ -357,20 +380,7 @@ namespace DshPet
 
             var layout = ComputeLayout(designWidth, designHeight, PetSpecies.Count, TranscriptVisible);
 
-            // The touch layer has to know whether the play area is interactive at all.
-            if (Mobile)
-            {
-                MobileTouch.PlayInputEnabled = !ModalOpen;
-                MobileTouch.StickEnabled = !ModalOpen && !_chatExpanded;
-
-                // The stick's claim area is the SAME rect the hint is drawn in, and that rect stops
-                // above the collapsed chat bar. It used to be a second, larger rectangle (the left
-                // 46% of the whole lower 60% of the screen) which swallowed the bottom strip — so a
-                // tap on 「和它说说话」 started the joystick instead of opening the chat, and the
-                // button read as dead. Two definitions of one area is one definition too many.
-                MobileTouch.StickZone = ToScreen(
-                    ComputeMobileControls(layout).StickZone);
-            }
+            // The touch layer's interactive state is now set in SyncMobileControls (Update).
 
             // While a modal panel is up, the panels behind it must not react. GUI.enabled is
             // how IMGUI is told a control is inert, and it is order-independent — unlike the
@@ -379,16 +389,12 @@ namespace DshPet
             bool modal = ModalOpen;
             if (modal) GUI.enabled = false;
             // The pet card is now uGUI — see SyncPetCard.
-            if (Mobile) DrawMobileChat(gm, layout);
-            // The expanded chat (and the whole desktop chat) is now uGUI — see SyncChat.
+            // The mobile chat bar + controls are now uGUI — see SyncMobileControls.
             DrawViewSwitcher(gm, layout);
             if (!Mobile) DrawThrowMeter(gm, layout);
             else ShowMobileAimGuide(gm);
             DrawOverlays(gm, layout);
             GUI.enabled = true;
-
-            // Controls sit above the room but below any modal panel.
-            if (Mobile) DrawMobileControls(gm, layout);
 
             // The map panel (door prompt) is now uGUI — see SyncMapPanel.
             // The puzzle panel is now uGUI — see SyncPuzzlePanel.
@@ -761,6 +767,7 @@ namespace DshPet
             BuildPromptPanel();
             BuildMemoryPanel();
             BuildPuzzlePanel();
+            BuildMobileControls();
         }
 
         private void Update()
@@ -795,6 +802,7 @@ namespace DshPet
             SyncPromptPanel();
             SyncMemoryPanel();
             SyncPuzzlePanel();
+            SyncMobileControls();
         }
 
         /// <summary>
@@ -3268,6 +3276,212 @@ namespace DshPet
             _puzzlePaid = false;
             _puzzleStartedAt = Time.realtimeSinceStartup;
             SetPuzzleMessage("重新打乱了，慢慢来。");
+        }
+
+        // ----------------------------------------------------------- mobile controls (uGUI)
+
+        private void BuildMobileControls()
+        {
+            _mobileRoot = DshMobile.Ugui.Root("PetMobileControls").gameObject;
+
+            _stickBase = Circle("StickBase", new Color(1f, 1f, 1f, 0.10f), 78f);
+            _stickKnob = Circle("StickKnob", new Color(1f, 0.93f, 0.72f, 0.75f), 28f);
+            _stickHint = Circle("StickHint", new Color(1f, 1f, 1f, 0.05f), 60f);
+            _stickHintLabel = DshMobile.Ugui.Text("StickHintLabel", _mobileRoot.transform, "这里拖动移动", 14,
+                new Color(1f, 1f, 1f, 0.45f), UnityEngine.TextAnchor.MiddleCenter);
+
+            _actionBtn = Circle("Action", new Color(0.35f, 0.68f, 0.46f), 52f);
+            _actionLabel = DshMobile.Ugui.Text("ActionLabel", _actionBtn.transform, "互动", 16, Color.white, UnityEngine.TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.Stretch(_actionLabel.rectTransform);
+
+            _throwBtn = Circle("Throw", new Color(0.80f, 0.42f, 0.22f), 42f);
+            _throwLabel = DshMobile.Ugui.Text("ThrowLabel", _throwBtn.transform, "蓄力", 15, Color.white, UnityEngine.TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.Stretch(_throwLabel.rectTransform);
+
+            _chatBtn = Circle("Chat", new Color(0.28f, 0.54f, 0.84f), 62f);
+            _chatLabel = DshMobile.Ugui.Text("ChatLabel", _chatBtn.transform, "聊天", 15, Color.white, UnityEngine.TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.Stretch(_chatLabel.rectTransform);
+
+            _chatBar = DshMobile.Ugui.Panel("ChatBar", _mobileRoot.transform, 16f,
+                new Color(0.11f, 0.10f, 0.15f, 0.95f), new Color(1f, 1f, 1f, 0.12f), 2f);
+            _chatBarPill = DshMobile.Ugui.Panel("ChatBarPill", _chatBar.rectTransform, 12f,
+                new Color(0.30f, 0.60f, 0.86f, 0.9f), new Color(1f, 1f, 1f, 0.2f), 1.5f);
+            _chatBarPillLabel = DshMobile.Ugui.Text("ChatBarPillLabel", _chatBarPill.rectTransform, "和它说说话", 16,
+                Color.white, UnityEngine.TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.Stretch(_chatBarPillLabel.rectTransform);
+
+            _chatBarMic = Circle("ChatBarMic", new Color(0.34f, 0.60f, 0.86f), 32f);
+            _chatBarMicLabel = DshMobile.Ugui.Text("ChatBarMicLabel", _chatBarMic.transform, "说", 15, Color.white, UnityEngine.TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.Stretch(_chatBarMicLabel.rectTransform);
+
+            _chatBarLine = DshMobile.Ugui.Text("ChatBarLine", _chatBar.rectTransform, "", 16,
+                new Color(0.20f, 0.15f, 0.12f), UnityEngine.TextAnchor.MiddleLeft);
+            _chatBarLine.horizontalOverflow = HorizontalWrapMode.Wrap;
+
+            _chatBarDot = Circle("ChatBarDot", new Color(1f, 0.55f, 0.35f, 0.6f), 6f);
+
+            _mobileRoot.SetActive(false);
+        }
+
+        private UnityEngine.UI.Image Circle(string name, Color color, float radius)
+        {
+            var img = DshMobile.Ugui.Image(name, _mobileRoot.transform, color);
+            img.sprite = DshMobile.UguiRounded.Circle(radius, Color.white);
+            img.rectTransform.anchorMin = img.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            img.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            img.rectTransform.sizeDelta = new Vector2(radius * 2f, radius * 2f);
+            return img;
+        }
+
+        private void SyncMobileControls()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+
+            // The MobileTouch input state the HUD owns (moved out of OnGUI).
+            MobileTouch.PlayInputEnabled = !ModalOpen;
+            MobileTouch.StickEnabled = !ModalOpen && !_chatExpanded;
+
+            bool showControls = Mobile && !ModalOpen && !_chatExpanded;
+            bool showBar = Mobile && !_chatExpanded && !ModalOpen;
+            _mobileRoot.SetActive(showControls || showBar);
+
+            if (!showControls && !showBar) return;
+
+            var layout = ComputeLayout(DesignWidth, DesignHeight, PetSpecies.Count, TranscriptVisible);
+            var controls = ComputeMobileControls(layout);
+            MobileTouch.StickZone = ToScreen(controls.StickZone);
+
+            var player = gm.Player;
+            bool holdingBall = player != null && player.Ball != null && player.Ball.State == BallState.Held;
+            bool charging = holdingBall && MobileTouch.Held(MobileButtonIds.PetThrow);
+
+            // Register the buttons (input) + draw the circles (uGUI).
+            MobileTouch.RegisterButton(MobileButtonIds.PetChat, ToScreen(controls.Chat), true, "聊天");
+            MobileTouch.RegisterButton(MobileButtonIds.PetThrow, ToScreen(controls.Throw), holdingBall, charging ? "扔出" : "蓄力");
+            MobileTouch.RegisterButton(MobileButtonIds.PetAction, ToScreen(controls.Action), true, ActionLabel(gm));
+
+            // Chat button.
+            _chatBtn.gameObject.SetActive(showControls);
+            PositionFromDesign(_chatBtn.rectTransform, controls.Chat);
+            _chatLabel.text = "聊天";
+            if (showControls && MobileTouch.Pressed(MobileButtonIds.PetChat))
+            {
+                _chatExpanded = true;
+                FillEditConfig(gm);
+            }
+
+            // Throw button.
+            _throwBtn.gameObject.SetActive(showControls);
+            PositionFromDesign(_throwBtn.rectTransform, controls.Throw);
+            _throwLabel.text = charging ? "扔出" : "蓄力";
+            _throwBtn.color = charging ? new Color(0.94f, 0.52f, 0.24f) : new Color(0.80f, 0.42f, 0.22f);
+            _throwBtn.gameObject.SetActive(showControls && holdingBall);
+
+            // Action button.
+            _actionBtn.gameObject.SetActive(showControls);
+            PositionFromDesign(_actionBtn.rectTransform, controls.Action);
+            _actionLabel.text = ActionLabel(gm);
+            _actionBtn.color = ActionTint(gm);
+
+            // Joystick (input stays on MobileTouch; drawing follows its state).
+            _stickBase.gameObject.SetActive(showControls && MobileTouch.Stick.Active);
+            _stickKnob.gameObject.SetActive(showControls && MobileTouch.Stick.Active);
+            if (MobileTouch.Stick.Active)
+            {
+                Vector2 originLocal, knobLocal;
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(_mobileRoot.GetComponent<RectTransform>(),
+                    MobileTouch.Stick.Origin, null, out originLocal);
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(_mobileRoot.GetComponent<RectTransform>(),
+                    MobileTouch.Stick.Knob, null, out knobLocal);
+                _stickBase.rectTransform.anchoredPosition = originLocal;
+                _stickKnob.rectTransform.anchoredPosition = knobLocal;
+            }
+
+            // Stick hint (ghost circle until first use).
+            if (_stickHintBornAt < 0f) _stickHintBornAt = Time.realtimeSinceStartup;
+            if (MobileTouch.Stick.Active) _stickHintUsed = true;
+            bool hintOn = showControls && !_stickHintUsed && (Time.realtimeSinceStartup - _stickHintBornAt) < 9f;
+            _stickHint.gameObject.SetActive(hintOn);
+            _stickHintLabel.gameObject.SetActive(hintOn);
+            if (hintOn)
+            {
+                PositionFromDesign(_stickHint.rectTransform,
+                    new Rect(controls.StickZone.x + controls.StickZone.width * 0.5f - 60f,
+                        controls.StickZone.yMax - 60f, 120f, 120f));
+                _stickHintLabel.rectTransform.anchorMin = _stickHintLabel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+                _stickHintLabel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+                _stickHintLabel.rectTransform.anchoredPosition = _stickHint.rectTransform.anchoredPosition;
+                _stickHintLabel.rectTransform.sizeDelta = new Vector2(140f, 24f);
+            }
+
+            // Collapsed chat bar (drawing moved here; input still via MobileTouch registration).
+            _chatBar.gameObject.SetActive(showBar);
+            if (showBar)
+            {
+                var barRect = new Rect(layout.Chat.x, layout.Chat.yMax - MobileChatBarHeight, layout.Chat.width, MobileChatBarHeight);
+                ApplyDesignRect(_chatBar.rectTransform, barRect);
+
+                DshMobile.MobileStt.Tick();
+                bool micHere = DshMobile.MobileStt.Offered;
+                MobileTouch.RegisterButton(MobileButtonIds.PetChatBar, ToScreen(new Rect(barRect.x + 10f, barRect.y + 8f, barRect.width - 20f, barRect.height - 16f)), true, "和它说说话");
+
+                _chatBarMic.gameObject.SetActive(micHere);
+                if (micHere)
+                {
+                    bool listening = DshMobile.MobileStt.Listening;
+                    _chatBarMicLabel.text = listening ? "停" : (DshMobile.MobileStt.PendingPermission ? "等" : "说");
+                    _chatBarMic.color = listening ? new Color(0.90f, 0.42f, 0.36f)
+                        : (DshMobile.MobileStt.PendingPermission ? new Color(0.82f, 0.66f, 0.30f) : new Color(0.34f, 0.60f, 0.86f));
+                    var micRect = new Rect(barRect.x + 10f, barRect.y + 8f, 64f, barRect.height - 16f);
+                    MobileTouch.RegisterButton(MobileButtonIds.PetMic, ToScreen(micRect), true, "说");
+                    PositionFromDesign(_chatBarMic.rectTransform, new Rect(micRect.x + 32f, micRect.y + (micRect.height - 64f) * 0.5f, 64f, 64f));
+
+                    if (MobileTouch.Pressed(MobileButtonIds.PetMic))
+                    {
+                        _chatExpanded = true;
+                        FillEditConfig(gm);
+                        if (listening) DshMobile.MobileStt.StopListening();
+                        else StartListeningAndSay(gm);
+                        _unreadMark = gm.Memory.Recent.Count;
+                    }
+                    string heard = DshMobile.MobileStt.TakeResult();
+                    if (!string.IsNullOrEmpty(heard)) { _chatExpanded = true; _input = heard; }
+                }
+
+                // "和它说说话" pill.
+                var pillRect = new Rect(micHere ? barRect.x + 84f : barRect.x + 10f, barRect.y + 8f, 124f, barRect.height - 16f);
+                MobileTouch.RegisterButton(MobileButtonIds.PetChat, ToScreen(pillRect), true, "和它说说话");
+                PositionFromDesign(_chatBarPill.rectTransform, pillRect);
+                _chatBarPillLabel.text = "和它说说话";
+
+                if (MobileTouch.Pressed(MobileButtonIds.PetChat) || MobileTouch.Pressed(MobileButtonIds.PetChatBar))
+                {
+                    _chatExpanded = true;
+                    FillEditConfig(gm);
+                }
+
+                // Last line bubble + unread dot.
+                var lineRect = new Rect(pillRect.xMax + 10f, barRect.y + 8f, Mathf.Max(0f, barRect.xMax - pillRect.xMax - 20f), barRect.height - 16f);
+                _chatBarLine.gameObject.SetActive(lineRect.width > 60f);
+                if (lineRect.width > 60f)
+                {
+                    PositionFromDesign(_chatBarLine.rectTransform, lineRect);
+                    _chatBarLine.text = LastLine(gm);
+                }
+                _chatBarDot.gameObject.SetActive(UnreadFromPet(gm));
+                if (UnreadFromPet(gm))
+                {
+                    float pulse = 0.6f + 0.4f * Mathf.Sin(Time.unscaledTime * 5f);
+                    _chatBarDot.color = new Color(1f, 0.55f, 0.35f, pulse);
+                    PositionFromDesign(_chatBarDot.rectTransform, new Rect(barRect.xMax - 14f, barRect.y - 2f, 12f, 12f));
+                }
+            }
+        }
+
+        private void PositionFromDesign(RectTransform rt, Rect design)
+        {
+            ApplyDesignRect(rt, design);
         }
 
         /// <summary>
