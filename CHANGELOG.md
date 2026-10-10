@@ -79,7 +79,16 @@
 - 验证：385/385 全绿；运行中探针 Tunnel 菜单/滑条/摇杆构建、`StartRun`→Running；Prism 难度锁（best=0 时
   光谱/棱镜禁用）、`StartRun`→Playback、6 个垫子生成 ✅。
 
-⏳ **剩余 HUD**（跑酷 HudController / PetHud / StartMenuHud——三个最大的）
+**🏃 第八个 HUD 已迁（本轮续）：跑酷 HudController**
+
+- 主菜单（最高分/最远/累计果子 + 无尽/关卡/重置/回小屋）/ 关卡选择（解锁禁用 + 最佳成绩）/ 暂停 /
+  游戏结束（失败原因 + 分数）/ 通关五屏 + 局内 HUD（分数/距离/倍率/果子/速度 + 关卡进度条 + 四个道具条 +
+  底部操作提示 + 触屏暂停按钮）+ 首局手势提示，全部 uGUI。
+- **输入不动**：换道/跳跃/滑铲仍是手势（游戏读 `MobileTouch`），HUD 只把 `PlayInputEnabled` 和游戏状态对齐；
+  键盘菜单快捷键从 OnGUI 的 `Event` 循环搬到 `Update` 的 `Input.GetKeyDown`。
+- 验证：385/385 全绿；运行中探针 主菜单文本正确、`StartRun`→Playing、`TogglePause` 开关、`Fail`→GameOver ✅。
+
+⏳ **剩余 HUD**（PetHud / StartMenuHud——最后两个、最大的）
 逐个迁到 uGUI，全部迁完才 merge 回 main 并发布。
 
 ### 第 40 轮：宠物身体替换——程序化方块换成 Kenney Cube Pets
