@@ -123,6 +123,19 @@ namespace DshMiniGames
             var root = new GameObject("Ship").transform;
             root.SetParent(transform, false);
 
+            // The ship is the pet's animal (Kenney chick) facing +Z into the tunnel, with a small
+            // glow behind it so it still reads as "flying". Falls back to the rocket when missing.
+            var model = DshMobile.KenneyModel.Load("animal-chick", root, 0.75f, centerVertically: true);
+            if (model != null)
+            {
+                model.localRotation = Quaternion.Euler(0f, 180f, 0f);
+                Prim("Glow", PrimitiveType.Sphere, root,
+                    new Vector3(0f, 0f, -0.5f), new Vector3(0.4f, 0.4f, 0.4f),
+                    Quaternion.identity, new Color(1f, 0.7f, 0.3f), 1.3f);
+                _ship = root;
+                return;
+            }
+
             // A little rocket: a body, a nose, and a glowing engine cone.
             Prim("Body", PrimitiveType.Cylinder, root,
                 new Vector3(0f, 0f, 0.2f), new Vector3(0.34f, 0.62f, 0.34f),
@@ -314,11 +327,14 @@ namespace DshMiniGames
 
         private void SpawnObstacle(float z)
         {
-            var root = new GameObject(Mode == TunnelMode.Survival ? "Gate" : "Mine").transform;
+            // Survival mode adds mines on top of gates as the difficulty ramps; mine mode is all mines.
+            bool isMine = Mode == TunnelMode.Mine ||
+                (Mode == TunnelMode.Survival && Score >= 5 && Random.value < 0.30f);
+            var root = new GameObject(isMine ? "Mine" : "Gate").transform;
             root.SetParent(transform, false);
             root.localPosition = new Vector3(0f, 0f, z);
 
-            var o = new Obstacle { Root = root, IsGate = Mode == TunnelMode.Survival };
+            var o = new Obstacle { Root = root, IsGate = !isMine };
             if (o.IsGate)
             {
                 // Chain each hole from the previous one, so two consecutive gates are never an
@@ -386,10 +402,22 @@ namespace DshMiniGames
 
         private Transform BuildMine(Transform root, Vector2 at, float radius)
         {
-            var body = Prim("MineBody", PrimitiveType.Sphere, root,
-                new Vector3(at.x, at.y, 0f), Vector3.one * (radius * 2f),
-                Quaternion.identity, new Color(0.95f, 0.32f, 0.28f), 1.2f);
-            return body.transform;
+            // A black bomb with a lit fuse, so it reads as "dodge me" instead of a generic red ball.
+            // The whole bomb lives under one visual node so the drift moves body + fuse + spark together.
+            var visual = new GameObject("MineVisual").transform;
+            visual.SetParent(root, false);
+            visual.localPosition = new Vector3(at.x, at.y, 0f);
+
+            Prim("MineBody", PrimitiveType.Sphere, visual,
+                Vector3.zero, Vector3.one * (radius * 2f),
+                Quaternion.identity, new Color(0.13f, 0.12f, 0.15f), 0.9f);
+            Prim("Fuse", PrimitiveType.Cylinder, visual,
+                new Vector3(0f, radius * 1.15f, 0f), new Vector3(0.06f, radius * 0.7f, 0.06f),
+                Quaternion.identity, new Color(0.44f, 0.30f, 0.18f), 0.4f);
+            Prim("Spark", PrimitiveType.Sphere, visual,
+                new Vector3(0f, radius * 1.6f, 0f), Vector3.one * (radius * 0.5f),
+                Quaternion.identity, new Color(1f, 0.82f, 0.25f), 1.5f);
+            return visual;
         }
 
         // ------------------------------------------------------------------ helpers

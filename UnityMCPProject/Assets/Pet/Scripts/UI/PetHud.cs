@@ -99,6 +99,8 @@ namespace DshPet
         private UnityEngine.UI.Text _voiceStatus;
         private readonly List<GameObject> _bubbles = new List<GameObject>();
         private int _builtMessageCount = -1;
+        private bool _builtThinking;
+        private string _builtPendingMessage = "";
 
         // uGUI pet card (third slice).
         private UnityEngine.UI.Image _cardPanel;
@@ -792,6 +794,11 @@ namespace DshPet
             BuildPuzzlePanel();
             BuildMobileControls();
             BuildOverlayUi();
+
+            // The cursor hint must float above every panel or it gets clipped behind the pet card /
+            // chat window. The room overlays (nearby prompt, mood label) are built last already.
+            if (_cursorHintText != null) _cursorHintText.transform.SetAsLastSibling();
+            if (_toastPanel != null) _toastPanel.transform.SetAsLastSibling();
         }
 
         private void Update()
@@ -1045,9 +1052,13 @@ namespace DshPet
 
             // Guard on the FULL count, not the capped display window: once the log passes
             // MaxLogLines the window size stays pinned and a count-based guard would never fire
-            // again, so the newest replies stop appearing.
-            if (recent.Count == _builtMessageCount) return;
+            // again, so the newest replies stop appearing. Also rebuild when the pending message
+            // appears/clears while the pet thinks, so the user's own line shows immediately.
+            if (recent.Count == _builtMessageCount && gm.IsThinking == _builtThinking &&
+                gm.PendingUserMessage == _builtPendingMessage) return;
             _builtMessageCount = recent.Count;
+            _builtThinking = gm.IsThinking;
+            _builtPendingMessage = gm.PendingUserMessage;
 
             foreach (var b in _bubbles) if (b != null) Destroy(b);
             _bubbles.Clear();
@@ -1105,6 +1116,39 @@ namespace DshPet
                 bubble.rectTransform.anchoredPosition = new Vector2(isUser ? width - 24f - textW : 12f, -y);
                 bubble.rectTransform.sizeDelta = new Vector2(textW, textH);
 
+                _bubbles.Add(bubble.gameObject);
+                y += textH + 8f;
+            }
+
+            // The player's message while the pet thinks: it only lands in Recent once the reply
+            // arrives, so show it here or the chat box looks like it ignored the latest input.
+            if (gm.IsThinking && !string.IsNullOrEmpty(gm.PendingUserMessage))
+            {
+                string pending = gm.PendingUserMessage;
+                bool isUser = true;
+                var tint = new Color(0.30f, 0.52f, 0.78f, 0.95f);
+                var bubble = DshMobile.Ugui.Panel("BubblePending", _chatContent, 12f, tint,
+                    new Color(1f, 1f, 1f, 0.12f), 1.5f);
+                bubble.rectTransform.anchorMin = new Vector2(0f, 1f);
+                bubble.rectTransform.anchorMax = new Vector2(0f, 1f);
+                bubble.rectTransform.pivot = new Vector2(0f, 1f);
+
+                var label = DshMobile.Ugui.Text("Text", bubble.rectTransform, pending, 16,
+                    Color.white, UnityEngine.TextAnchor.UpperLeft);
+                label.horizontalOverflow = HorizontalWrapMode.Wrap;
+                label.rectTransform.anchorMin = label.rectTransform.anchorMax = new Vector2(0f, 1f);
+                label.rectTransform.pivot = new Vector2(0f, 1f);
+
+                float maxW = width * 0.78f;
+                label.rectTransform.sizeDelta = new Vector2(maxW - 24f, 0f);
+                float textH = Mathf.Max(24f, label.preferredHeight + 14f);
+                float textW = Mathf.Min(maxW, label.preferredWidth + 24f);
+                textW = Mathf.Max(textW, 62f);
+                label.rectTransform.anchoredPosition = new Vector2(12f, -7f);
+                label.rectTransform.sizeDelta = new Vector2(textW - 24f, textH - 14f);
+
+                bubble.rectTransform.anchoredPosition = new Vector2(width - 24f - textW, -y);
+                bubble.rectTransform.sizeDelta = new Vector2(textW, textH);
                 _bubbles.Add(bubble.gameObject);
                 y += textH + 8f;
             }
@@ -1384,7 +1428,13 @@ namespace DshPet
             }
 
             _detailText.text = sb.ToString();
-            _detailText.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, Mathf.Max(60f, _detailText.preferredHeight + 10f));
+            // Size the scroll CONTENT to the wrapped text (the text is stretched to it), so the
+            // detail scrolls instead of clipping — "详情/简略" was switching text but the content
+            // stayed at zero height, which truncated it.
+            float detailH = Mathf.Max(60f, _detailText.preferredHeight + 10f);
+            _detailText.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, detailH);
+            var detailContent = _detailText.rectTransform.parent.GetComponent<RectTransform>();
+            if (detailContent != null) detailContent.sizeDelta = new Vector2(0f, detailH);
             _detailText.rectTransform.anchoredPosition = new Vector2(0f, -4f);
         }
 
@@ -1850,21 +1900,22 @@ namespace DshPet
 
             _settingsContent.sizeDelta = new Vector2(-4f, y);
 
-            // Footer (pinned).
+            // Footer (pinned). Four buttons on a 520px panel: they must not overlap, so each gets
+            // just enough width for its label.
             var save = DshMobile.Ugui.Button("Save", p, "保存并应用", 16, new Color(0.30f, 0.55f, 0.35f));
-            DshMobile.Ugui.SetRectBottomLeft(save.GetComponent<RectTransform>(), 16f, 8f, 150f, 40f);
+            DshMobile.Ugui.SetRectBottomLeft(save.GetComponent<RectTransform>(), 16f, 8f, 120f, 40f);
             save.onClick.AddListener(OnSaveSettings);
 
             var test = DshMobile.Ugui.Button("Test", p, "测试连接", 16, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRectBottomLeft(test.GetComponent<RectTransform>(), 176f, 8f, 130f, 40f);
+            DshMobile.Ugui.SetRectBottomLeft(test.GetComponent<RectTransform>(), 144f, 8f, 96f, 40f);
             test.onClick.AddListener(() => TestConnection());
 
             var env = DshMobile.Ugui.Button("Env", p, "读环境变量", 16, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRectBottomLeft(env.GetComponent<RectTransform>(), 316f, 8f, 130f, 40f);
+            DshMobile.Ugui.SetRectBottomLeft(env.GetComponent<RectTransform>(), 248f, 8f, 110f, 40f);
             env.onClick.AddListener(OnReadEnv);
 
             var cancel = DshMobile.Ugui.Button("Cancel", p, "取消", 16, new Color(0.75f, 0.35f, 0.35f));
-            DshMobile.Ugui.SetRectBottomRight(cancel.GetComponent<RectTransform>(), 16f, 8f, 130f, 40f);
+            DshMobile.Ugui.SetRectBottomLeft(cancel.GetComponent<RectTransform>(), 366f, 8f, 76f, 40f);
             cancel.onClick.AddListener(() => _showSettings = false);
         }
 
@@ -3452,8 +3503,8 @@ namespace DshPet
             MobileTouch.StickEnabled = !ModalOpen && !_chatExpanded;
 
             bool showControls = Mobile && !ModalOpen && !_chatExpanded;
-            bool showBar = Mobile && !_chatExpanded && !ModalOpen;
-            _mobileRoot.SetActive(showControls || showBar);
+            bool showBar = false;   // the "和它说话" bar is removed — the 聊天 round button opens chat
+            _mobileRoot.SetActive(showControls);
 
             if (!showControls && !showBar) return;
 
@@ -4846,9 +4897,11 @@ namespace DshPet
         /// This is the one control the whole game hangs on — the room, the pet and the conversation
         /// are the game — so it is sized to be a target rather than a strip: 80 design pixels is
         /// about 40dp on a phone, which is the smallest a thumb reliably hits without looking, and
-        /// it is tall enough to hold the microphone at the same size as the round action buttons.
+        /// <summary>
+        /// The collapsed "和它说话" bar was removed (the 聊天 round button opens the chat), so this
+        /// is 0 now: the round buttons sit against the bottom edge instead of above a bar.
         /// </summary>
-        public const float MobileChatBarHeight = 80f;
+        public const float MobileChatBarHeight = 0f;
 
         /// <summary>
         /// Geometry for the touch controls.

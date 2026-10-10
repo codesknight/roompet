@@ -47,6 +47,7 @@ namespace DshMiniGames
         private Text _pausedLine1;
 
         private bool _built;
+        private float _aimStartedAt = -1f;
 
         private static readonly Color Gold = new Color(1f, 0.97f, 0.82f);
         private static readonly Color Cream = new Color(1f, 0.98f, 0.9f);
@@ -253,7 +254,14 @@ namespace DshMiniGames
 
             bool generating = _game.Generating;
             bool paused = _game.Paused;
-            bool ready = !generating && !paused && (_game.State == AngryBirdsGame.Phase.Ready || _game.State == AngryBirdsGame.Phase.Aiming);
+            // The level intro auto-dismisses: it stays through the Ready phase, then for ~2.5s of
+            // Aiming, so the player gets a look at the level instead of having the panel sit there
+            // until launch.
+            if (_game.State == AngryBirdsGame.Phase.Aiming && _aimStartedAt < 0f) _aimStartedAt = Time.unscaledTime;
+            if (_game.State != AngryBirdsGame.Phase.Aiming) _aimStartedAt = -1f;
+            bool introActive = _game.State == AngryBirdsGame.Phase.Ready ||
+                (_game.State == AngryBirdsGame.Phase.Aiming && Time.unscaledTime - _aimStartedAt < 2.5f);
+            bool ready = !generating && !paused && introActive;
             bool result = !generating && !paused && (_game.State == AngryBirdsGame.Phase.Cleared || _game.State == AngryBirdsGame.Phase.Failed);
 
             _generatingPanel.SetActive(generating);

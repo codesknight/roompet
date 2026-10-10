@@ -1245,6 +1245,10 @@ namespace DshPet
         private string _pendingUserMessage;
         private bool _pendingIsNudge;
 
+        /// <summary>The player's message while the pet is still thinking — it only lands in
+        /// <see cref="PetMemory.Recent"/> once the reply arrives, so the HUD shows it from here.</summary>
+        public string PendingUserMessage => _pendingUserMessage;
+
         // -------------------------------------------------------------------- brains
 
         public void RebuildBrain()
