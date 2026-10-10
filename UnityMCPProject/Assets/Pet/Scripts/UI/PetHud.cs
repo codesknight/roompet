@@ -71,6 +71,13 @@ namespace DshPet
 
         private static string _cursorHint;
 
+        // uGUI overlays (toast + cursor hint), the first slice of PetHud migrated off IMGUI.
+        private RectTransform _root;
+        private UnityEngine.UI.Image _toastPanel;
+        private UnityEngine.UI.Text _toastText;
+        private UnityEngine.UI.Text _cursorHintText;
+        private bool _overlaysBuilt;
+
         /// <summary>Set by hoverable world objects; shown near the cursor.</summary>
         public static void SetCursorHint(string hint) => _cursorHint = hint;
 
@@ -256,7 +263,6 @@ namespace DshPet
             else ShowMobileAimGuide(gm);
             DrawOverlays(gm, layout);
             GUI.enabled = true;
-            DrawToast();
 
             // Controls sit above the room but below any modal panel.
             if (Mobile) DrawMobileControls(gm, layout);
@@ -585,9 +591,64 @@ namespace DshPet
         /// <summary>True when a pet HUD is live, so other systems can frame around its panels.</summary>
         public static bool Exists => _instance != null;
 
-        private void Awake() { if (_instance == null) _instance = this; }
+        private void Awake() { if (_instance == null) _instance = this; BuildOverlays(); }
 
-        private void OnDestroy() { if (_instance == this) _instance = null; }
+        private void OnDestroy()
+        {
+            if (_instance == this) _instance = null;
+            if (_root != null) Destroy(_root.gameObject);
+        }
+
+        /// <summary>
+        /// The uGUI toast and cursor hint, the first slice of this HUD migrated off IMGUI. The
+        /// canvas survives scene loads, so the container is destroyed in OnDestroy like every other
+        /// HUD. The rest of the HUD is still IMGUI and draws over these overlays until the whole
+        /// file moves, so the toast is positioned to clear the IMGUI top panels.
+        /// </summary>
+        private void BuildOverlays()
+        {
+            if (_overlaysBuilt) return;
+            _overlaysBuilt = true;
+
+            _root = DshMobile.Ugui.Root("PetHudOverlays");
+
+            _toastPanel = DshMobile.Ugui.Panel("Toast", _root, 12f,
+                new Color(0.08f, 0.09f, 0.13f, 0.92f), new Color(1f, 0.85f, 0.4f, 0.5f), 1.4f);
+            DshMobile.Ugui.Place(_toastPanel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -70f), new Vector2(420f, 40f));
+            _toastText = DshMobile.Ugui.Text("ToastText", _toastPanel.rectTransform, "", 14,
+                new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleCenter);
+            DshMobile.Ugui.Stretch(_toastText.rectTransform);
+            _toastPanel.gameObject.SetActive(false);
+
+            _cursorHintText = DshMobile.Ugui.Text("CursorHint", _root, "", 14,
+                new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleLeft);
+            DshMobile.Ugui.Place(_cursorHintText.rectTransform, new Vector2(0.5f, 0.5f),
+                new Vector2(0f, 0f), Vector2.zero, new Vector2(320f, 24f));
+            _cursorHintText.gameObject.SetActive(false);
+        }
+
+        private void Update()
+        {
+            if (!_overlaysBuilt) return;
+
+            // Toast: show while fresh, then clear.
+            if (!string.IsNullOrEmpty(_toast) && Time.realtimeSinceStartup > _toastUntil) _toast = "";
+            _toastPanel.gameObject.SetActive(!string.IsNullOrEmpty(_toast));
+            if (_toastPanel.gameObject.activeSelf) _toastText.text = _toast;
+
+            // Cursor hint follows the pointer.
+            _cursorHintText.gameObject.SetActive(!string.IsNullOrEmpty(_cursorHint));
+            if (_cursorHintText.gameObject.activeSelf)
+            {
+                Vector2 local;
+                if (RectTransformUtility.ScreenPointToLocalPointInRectangle(_root, Input.mousePosition, null, out local))
+                {
+                    _cursorHintText.rectTransform.anchoredPosition = local + new Vector2(16f, -8f);
+                }
+                _cursorHintText.text = _cursorHint;
+            }
+        }
 
         /// <summary>
         /// True while a panel is open over the room. World clicks, WASD and E are ignored
@@ -3346,23 +3407,6 @@ namespace DshPet
             PlacementDragger.SetActive(true);
         }
 
-        /// <summary>The short toast from <see cref="SetToast"/>, if it is still fresh.</summary>
-        private void DrawToast()
-        {
-            if (string.IsNullOrEmpty(_toast)) return;
-            if (Time.realtimeSinceStartup > _toastUntil)
-            {
-                _toast = "";
-                return;
-            }
-
-            var width = 420f;
-            var bar = new Rect(DesignWidth * 0.5f - width * 0.5f, 70f, width, 40f);
-            DshMobile.UiSkin.Panel(bar, 12f, new Color(0.08f, 0.09f, 0.13f, 0.92f),
-                new Color(1f, 0.85f, 0.4f, 0.5f), 1.4f);
-            GUI.Label(bar, _toast, _small);
-        }
-
         private void DrawPlacementHud(PetGameManager gm)
         {
             // A slim bar at the top: the mode is on, the exit is always reachable.
@@ -3406,13 +3450,8 @@ namespace DshPet
                 GUI.color = Color.white;
             }
 
-            if (!string.IsNullOrEmpty(_cursorHint))
-            {
-                // Event.current.mousePosition is already in the current GUI space, so it needs
-                // no conversion — unlike WorldToScreenPoint just below.
-                var pos = Event.current.mousePosition;
-                GUI.Label(new Rect(pos.x + 16f, pos.y + 8f, 320f, 24f), _cursorHint, _small);
-            }
+            // The cursor hint is now a uGUI element (see BuildOverlays/Update); it was drawn here
+            // before the migration and now lives on top of the room as a canvas label.
 
             var cam = Camera.main;
             if (cam != null && gm.Avatar != null)
