@@ -25,7 +25,19 @@
 **测试**：378 → **385**（新增 `UguiTests` 7 条）。运行中探针：Text 用 Noto Sans CJK SC、中文「宠物房间」
 算出 `preferredWidth > 0`、圆角 Sprite 尺寸 = 半径×2+2 且 Sliced。
 
-⏳ **本轮只铺基础层**：各 HUD 逐个迁到 uGUI 在后续轮进行，全部迁完才 merge 回 main 并发布。
+**🐦 首个 HUD 已迁（本轮续）：FlyBird**
+
+- `FlyBirdHud` 从 IMGUI 整体迁到 uGUI：分数 / 最高分·宠物币 / 开始提示 / 结算面板 / 底部提示，
+  全部由 `Ugui` 工厂动态搭建。
+- **输入迁移的关键**：旧的 `PointerOverPanel`（每帧算鼠标在哪）+ 共享触控层的全屏 tap 注册，换成
+  **一张全屏透明 uGUI Button** 垫在最底层——它上面的面板/按钮天然把点击"挡"掉，点「再来一次」不会再
+  同时扇翅膀。游戏里的鼠标/触控扇翅膀路径随之删除（键盘保留）。
+- 一个有意的小改进：结算后**点面板外的空白也能重开**（0.6 秒保护），手机和桌面行为一致了。
+- 验证：385/385 全绿；运行中探针 `FlapTarget.onClick` → 状态 Ready→Flying ✅；面板 `raycastTarget=true`
+  遮挡全屏按钮。
+
+⏳ **其余 HUD**（Slice / JumpQuest / CatchFruit / AngryBirds / Tunnel / Prism / 跑酷 / PetHud / StartMenuHud）
+逐个迁到 uGUI，全部迁完才 merge 回 main 并发布。
 
 ### 第 40 轮：宠物身体替换——程序化方块换成 Kenney Cube Pets
 

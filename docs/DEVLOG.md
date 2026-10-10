@@ -1019,6 +1019,15 @@
      `git update-index --no-skip-worktree` → 写"去掉 MCP 条目"的干净版 → `git add` → 提交 → 写回带 MCP 的
      本地版 → 重新 `--skip-worktree`（干净版用 `-replace` 只删 MCP 那一条，其余保持原样）。**skip-worktree
      只适合"藏本机私货"，真依赖必须进提交。**
+153. **IMGUI 的"全屏 tap + 鼠标在不在面板上"迁到 uGUI，用一张全屏透明 Button 垫底最省心。** FlyBird 旧
+     IMGUI 每帧算 `PointerOverPanel`（鼠标落在哪个面板矩形上）+ 往共享触控层注册一张全屏 tap，游戏再读
+     两个来源决定扇不扇翅膀。uGUI 里把这事并成一个东西：**先建一张全屏透明 `Image`+`Button` 垫在最底**
+     （`color.a=0` 但仍 `raycastTarget=true`），再把面板/按钮按"后来的叠在上面"的顺序加——uGUI 射线从顶
+     往下取第一个命中，点面板/按钮天然挡掉背后的全屏按钮，`PointerOverPanel` 和触控注册全删了。两个
+     必踩的细节：① 全屏按钮 `transition=None`，否则手指一点整屏闪一下；② **每个 HUD 建一个 `Root()`
+     容器，`OnDestroy` 里 `Destroy` 它**——共享 Canvas 跨场景存活，不清理会把上一个游戏的 UI 漏进下一
+     个场景（这也是"回到房间后画面上还挂着上一局按钮"的根源）。全屏按钮的 `onClick` 是"抬手"触发，
+     不是按下触发；如果玩法要"按下就响应"，别用 Button 的 onClick，得自己接 `IPointerDownHandler`。
 
 ---
 
