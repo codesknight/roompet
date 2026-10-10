@@ -32,13 +32,43 @@ namespace DshPet
 
             var info = theme ?? RoomThemeInfo.Get(RoomTheme.Cabin);
             var fur = species != null ? (Color)species.Fur : new Color(0.86f, 0.55f, 0.28f);
-            bool night = info.Theme == RoomTheme.Terrace;
+            // The terrace always paints a night scene (its identity); other rooms cycle through
+            // day / sunset / meadow by seed so the puzzle shows several pictures rather than one.
+            int scene = info.Theme == RoomTheme.Terrace ? 3 : (seed < 0 ? 0 : seed % 3);
 
-            Color skyTop = night ? new Color(0.16f, 0.18f, 0.34f) : Color.Lerp(info.Wall, Color.white, 0.35f);
-            Color skyBottom = night ? new Color(0.32f, 0.30f, 0.48f) : Color.Lerp(info.Light, info.Wall, 0.45f);
-            Color ground = info.Floor;
-            Color roof = info.Rug;
-            Color wall = Color.Lerp(info.Wall, Color.white, 0.25f);
+            Color skyTop, skyBottom, ground, roof, wall;
+            switch (scene)
+            {
+                case 1:  // sunset
+                    skyTop = new Color(0.42f, 0.22f, 0.44f);
+                    skyBottom = new Color(0.96f, 0.62f, 0.36f);
+                    ground = new Color(0.32f, 0.40f, 0.28f);
+                    roof = new Color(0.72f, 0.34f, 0.26f);
+                    wall = new Color(0.86f, 0.70f, 0.56f);
+                    break;
+                case 2:  // meadow
+                    skyTop = new Color(0.32f, 0.56f, 0.82f);
+                    skyBottom = new Color(0.72f, 0.88f, 0.84f);
+                    ground = new Color(0.46f, 0.72f, 0.42f);
+                    roof = new Color(0.80f, 0.50f, 0.28f);
+                    wall = new Color(0.90f, 0.82f, 0.64f);
+                    break;
+                case 3:  // night
+                    skyTop = new Color(0.12f, 0.14f, 0.30f);
+                    skyBottom = new Color(0.26f, 0.24f, 0.44f);
+                    ground = new Color(0.20f, 0.28f, 0.24f);
+                    roof = new Color(0.42f, 0.32f, 0.54f);
+                    wall = new Color(0.40f, 0.38f, 0.52f);
+                    break;
+                default: // day
+                    skyTop = Color.Lerp(info.Wall, Color.white, 0.35f);
+                    skyBottom = Color.Lerp(info.Light, info.Wall, 0.45f);
+                    ground = info.Floor;
+                    roof = info.Rug;
+                    wall = Color.Lerp(info.Wall, Color.white, 0.25f);
+                    break;
+            }
+            bool night = scene == 3;
 
             // Sky: a vertical gradient, which is most of what makes a painted picture read as
             // painted rather than as a diagram.
@@ -94,10 +124,44 @@ namespace DshPet
             // A mat under the pet, so it is standing on the ground rather than floating.
             FillRect(pixels, bodyX - 13, 20, 26, 3, Color.Lerp(ground, Color.white, 0.35f));
 
+            // A scene-specific decoration on the right, so the four pictures are distinct.
+            DrawDecoration(pixels, scene, rng, ground, roof);
+
             texture.SetPixels32(pixels);
             texture.Apply(false, false);
             return texture;
         }
+
+        private static void DrawDecoration(Color32[] pixels, int scene, System.Random rng, Color ground, Color roof)
+        {
+            switch (scene)
+            {
+                case 0: // a leafy tree
+                    FillRect(pixels, 84, 22, 4, 16, new Color(0.42f, 0.28f, 0.16f));
+                    Circle(pixels, 86, 40, 10, new Color(0.30f, 0.62f, 0.34f));
+                    Circle(pixels, 79, 46, 7, new Color(0.36f, 0.70f, 0.38f));
+                    Circle(pixels, 93, 46, 7, new Color(0.26f, 0.56f, 0.30f));
+                    break;
+                case 1: // a low mountain range
+                    Triangle(pixels, 66, 22, 84, 22, 75, 46, new Color(0.52f, 0.32f, 0.44f));
+                    Triangle(pixels, 78, 22, 96, 22, 87, 38, new Color(0.44f, 0.26f, 0.40f));
+                    break;
+                case 2: // flowers on the grass
+                    for (int i = 0; i < 5; i++)
+                    {
+                        int fx = 70 + rng.Next(22);
+                        int fy = 20 + rng.Next(8);
+                        Circle(pixels, fx, fy, 2, i % 2 == 0 ? new Color(1f, 0.62f, 0.72f) : new Color(0.98f, 0.86f, 0.42f));
+                    }
+                    break;
+                default: // a big moon
+                    Circle(pixels, 84, 66, 10, new Color(1f, 0.94f, 0.78f));
+                    Circle(pixels, 88, 69, 9, skyDark);
+                    break;
+            }
+        }
+
+        private static readonly Color skyDark = new Color(0.12f, 0.14f, 0.30f);
 
         private static void FillRect(Color32[] pixels, int x, int y, int w, int h, Color color)
         {

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -674,6 +674,15 @@ namespace DshMiniGames
 
         private void BuildPig(Transform root, float radius)
         {
+            // Prefer the Kenney pig over the green sphere. +90° Y turns its -Z face toward -X (the
+            // sling, where the bird is coming from); the death pop still scales the whole view.
+            var model = DshMobile.KenneyModel.Load("animal-pig", root, radius * 2f, centerVertically: true);
+            if (model != null)
+            {
+                model.localRotation = Quaternion.Euler(0f, 90f, 0f);
+                return;
+            }
+
             AddPart(root, PrimitiveType.Sphere, Vector3.zero, Vector3.one * radius * 2f,
                 new Color(0.52f, 0.78f, 0.42f));
             AddPart(root, PrimitiveType.Sphere, new Vector3(0f, -radius * 0.1f, -radius * 0.8f),

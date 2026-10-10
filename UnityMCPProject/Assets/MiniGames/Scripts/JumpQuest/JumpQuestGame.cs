@@ -179,7 +179,10 @@ namespace DshMiniGames
             root.SetParent(transform, false);
 
             _kind = DshMobile.MiniAnimal.Current;
-            DshMobile.MiniAnimal.Build(root, _kind, AnimalHeight);
+            var animal = DshMobile.MiniAnimal.Build(root, _kind, AnimalHeight);
+            // The animal models face -Z (toward the camera); the hop runs along +X (toward the next
+            // box). -90° Y turns -Z into +X so the face points where the animal is going.
+            if (animal != null) animal.localRotation = Quaternion.Euler(0f, -90f, 0f);
 
             // A soft blob under its feet: without it the animal is hard to place against a box of a
             // similar colour, and "am I on the box or beside it" is the whole game. (The first

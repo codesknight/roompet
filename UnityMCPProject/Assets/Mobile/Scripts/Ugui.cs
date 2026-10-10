@@ -276,6 +276,13 @@ namespace DshMobile
             input.textComponent = text;
             input.placeholder = placeholder;
             input.characterLimit = 400;
+            // The InputField must raycast against something or it can never be tapped to focus —
+            // the shared Image factory leaves raycastTarget off (static panels must not eat touches),
+            // so the field's background is turned back on and wired as the target graphic here.
+            bg.raycastTarget = true;
+            input.targetGraphic = bg;
+            text.raycastTarget = false;
+            placeholder.raycastTarget = false;
             return input;
         }
 

@@ -228,9 +228,9 @@ namespace DshRunner
             if (IsSliding) return;
             IsSliding = true;
             _slideTimer = GameConfig.SlideDuration;
-            // Crouch (shorter + wider), not stretch: a slide is a duck, not a stretch. The old
+            // Lie flat ("趴下"), not just crouch: a slide is a belly-dive under the bar. The old
             // 1.25 + SlideScaleY shrink made the whole character look like it was shrinking.
-            _squash = 0.6f;
+            _squash = 0.35f;
             DshMobile.MobileHaptics.Light();
         }
 

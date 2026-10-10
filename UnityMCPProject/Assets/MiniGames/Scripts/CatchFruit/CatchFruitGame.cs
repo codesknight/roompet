@@ -35,6 +35,7 @@ namespace DshMiniGames
             public float Y;
             public float FallSpeed;
             public bool Counted;
+            public bool IsBomb;
         }
 
         private Transform _basket;
@@ -132,11 +133,11 @@ namespace DshMiniGames
                 float x = Mathf.Lerp(-span * 0.88f, span * 0.88f, t);
                 float length = 2.2f + (i % 3) * 1.1f;
                 NeonRay("NeonRay" + i, new Vector3(x, top - length * 0.5f, 0f),
-                    new Vector3(0.22f, length, 0.05f), colors[i]);
+                    new Vector3(0.22f, length, 0.05f), colors[i], 2.5f + i * 1.1f);
             }
         }
 
-        private void NeonRay(string name, Vector3 position, Vector3 scale, Color color)
+        private void NeonRay(string name, Vector3 position, Vector3 scale, Color color, float pulseSpeed)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             go.name = name;
@@ -144,12 +145,17 @@ namespace DshMiniGames
             go.transform.localPosition = position;
             go.transform.localScale = scale;
 
+            // The DSH/Neon shader gives a rim glow + a per-ray pulse ("发光闪耀"), unlike the
+            // Standard shader's flat emission which read as plain coloured bars.
             var renderer = go.GetComponent<Renderer>();
-            var material = new Material(Shader.Find("Standard"));
-            material.color = color;
-            material.EnableKeyword("_EMISSION");
-            material.SetColor("_EmissionColor", color * 2.4f);
-            material.SetFloat("_Glossiness", 0.85f);
+            var material = new Material(Shader.Find("DSH/Neon") ?? Shader.Find("Standard"));
+            material.SetColor("_Color", color);
+            material.SetColor("_RimColor", color);
+            material.SetFloat("_RimStrength", 0.9f);
+            material.SetFloat("_RimPower", 2.2f);
+            material.SetFloat("_Emission", 1.7f);
+            material.SetFloat("_PulseSpeed", pulseSpeed);
+            material.SetFloat("_PulseDepth", 0.35f);
             renderer.material = material;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
@@ -309,11 +315,18 @@ namespace DshMiniGames
 
                     if (CatchRules.Catches(_basketX, fruit.X, _settings))
                     {
+                        if (fruit.IsBomb)
+                        {
+                            // Catching a bomb ends the run immediately — that is the whole point of
+                            // dodging it.
+                            Die();
+                            return;
+                        }
                         Caught++;
                         if (Caught > Best) Best = Caught;
                         DshMobile.MobileHaptics.Light();
                     }
-                    else
+                    else if (!fruit.IsBomb)
                     {
                         Missed++;
                         Lives--;
@@ -340,21 +353,53 @@ namespace DshMiniGames
 
         private void Spawn()
         {
+            bool isBomb = CatchRules.RollBomb((float)_rng.NextDouble(), Caught);
             float x = CatchRules.SpawnX((float)_rng.NextDouble(), _basketX, _settings);
+
+            if (isBomb)
+            {
+                // Keep the bomb away from the last falling thing so the two can't be confused.
+                if (_fruits.Count > 0)
+                {
+                    float last = _fruits[_fruits.Count - 1].X;
+                    int guard = 0;
+                    while (Mathf.Abs(x - last) < CatchRules.MinBombFruitGap && guard++ < 8)
+                        x = CatchRules.SpawnX((float)_rng.NextDouble(), _basketX, _settings);
+                }
+
+                var root = new GameObject("Bomb").transform;
+                root.SetParent(transform, false);
+                root.position = new Vector3(x, _settings.SpawnHeight, 0f);
+                BuildBomb(root, _settings.FruitHalfWidth);
+                _fruits.Add(new Fruit { Transform = root, X = x, Y = _settings.SpawnHeight, IsBomb = true });
+                return;
+            }
+
             var kind = CatchRules.FruitFor(_fruitIndex++);
 
-            var root = new GameObject("Fruit_" + CatchRules.FruitName(kind)).transform;
-            root.SetParent(transform, false);
-            root.position = new Vector3(x, _settings.SpawnHeight, 0f);
+            var fruitRoot = new GameObject("Fruit_" + CatchRules.FruitName(kind)).transform;
+            fruitRoot.SetParent(transform, false);
+            fruitRoot.position = new Vector3(x, _settings.SpawnHeight, 0f);
 
-            BuildFruit(root, kind, _settings.FruitHalfWidth);
+            BuildFruit(fruitRoot, kind, _settings.FruitHalfWidth);
 
             _fruits.Add(new Fruit
             {
-                Transform = root,
+                Transform = fruitRoot,
                 X = x,
                 Y = _settings.SpawnHeight
             });
+        }
+
+        /// <summary>A round black bomb with a lit fuse, so it reads as danger at a glance.</summary>
+        private void BuildBomb(Transform root, float half)
+        {
+            Ball(root, "BombBody", Vector3.zero, new Vector3(1f, 1.05f, 1f) * half * 2f, new Color(0.13f, 0.12f, 0.15f));
+            Stick(root, "Fuse", new Vector3(0f, half * 1.05f, 0f), new Vector3(0.06f, half * 0.55f, 0.06f), StemBrown, 16f);
+            Ball(root, "Spark", new Vector3(0f, half * 1.42f, 0f),
+                new Vector3(half * 0.5f, half * 0.4f, half * 0.5f), new Color(1f, 0.82f, 0.25f));
+            Ball(root, "Warning", new Vector3(0f, 0f, -half * 0.9f),
+                new Vector3(half * 1.1f, half * 0.5f, half * 0.2f), new Color(1f, 0.92f, 0.4f));
         }
 
         /// <summary>

@@ -278,11 +278,21 @@ namespace DshMiniGames
                         }
                     }
                 }
-                else if (Mathf.Abs(p.z) < 0.4f &&
-                         TunnelRules.Collides(_shipPos, o.Hole, o.Radius + TunnelRules.ShipRadius))
+                else
                 {
-                    Die();
-                    return;
+                    // Mine mode: a mine you did NOT hit is a mine you dodged — that is the score.
+                    if (Mathf.Abs(p.z) < 0.4f &&
+                        TunnelRules.Collides(_shipPos, o.Hole, o.Radius + TunnelRules.ShipRadius))
+                    {
+                        Die();
+                        return;
+                    }
+                    if (!o.Scored && p.z < -0.6f)
+                    {
+                        o.Scored = true;
+                        Score++;
+                        DshMobile.MobileHaptics.Light();
+                    }
                 }
 
                 // Recycle as soon as it is behind the ship, so a passed gate never lingers
@@ -343,7 +353,10 @@ namespace DshMiniGames
         private void BuildGate(Transform root, Vector2 hole, GateShape shape, float radius)
         {
             var accent = TunnelRules.TunnelColor(Theme, true);
-            var points = TunnelRules.GateShapePoints(shape, radius, 16);
+            // Dense spokes + a bright rim so the gate reads as a SOLID wall with a hole cut in it
+            // (the first version's 16 thin spokes read as random floating bars and people flew
+            // into the wall).
+            var points = TunnelRules.GateShapePoints(shape, radius, 40);
 
             // Spokes: from each outline point, outward to the tunnel wall along its radial direction.
             for (int s = 0; s < points.Length; s++)
@@ -355,7 +368,7 @@ namespace DshMiniGames
                 float length = RingRadius - inner;
                 Prim("Spoke", PrimitiveType.Cube, root,
                     new Vector3(hole.x + dir.x * midR, hole.y + dir.y * midR, 0f),
-                    new Vector3(length, 0.12f, 0.12f),
+                    new Vector3(length, 0.22f, 0.22f),
                     Quaternion.Euler(0f, 0f, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg),
                     accent, 0.8f);
             }
@@ -365,9 +378,9 @@ namespace DshMiniGames
             {
                 Prim("Rim", PrimitiveType.Cube, root,
                     new Vector3(hole.x + points[s].x, hole.y + points[s].y, 0f),
-                    new Vector3(0.26f, 0.16f, 0.14f),
+                    new Vector3(0.32f, 0.20f, 0.16f),
                     Quaternion.identity,
-                    new Color(1f, 0.95f, 0.6f), 1.2f);
+                    new Color(1f, 0.95f, 0.6f), 1.3f);
             }
         }
 

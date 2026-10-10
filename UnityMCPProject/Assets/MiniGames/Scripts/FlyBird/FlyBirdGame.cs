@@ -403,7 +403,8 @@ namespace DshMiniGames
             root.SetParent(transform, false);
             root.position = new Vector3(HalfWidth + 1.6f, 0f, 0f);
 
-            var green = new Color(0.30f, 0.62f, 0.34f);
+            var green = new Color(0.28f, 0.60f, 0.32f);
+            var greenLight = new Color(0.46f, 0.74f, 0.42f);
             float bottomTop = centre - gap * 0.5f;
             float topBottom = centre + gap * 0.5f;
 
@@ -413,11 +414,21 @@ namespace DshMiniGames
             bottom.SetParent(root, false);
             bottom.localPosition = new Vector3(0f, worldBottom + bottomHeight * 0.5f, 0f);
 
+            // Mario-style lip: a wider rim at the mouth of each pipe, so the pipe reads as a 3D
+            // pipe rather than a flat green slab.
+            var bottomLip = Box("PipeBottomLip", Vector3.zero, new Vector3(1.42f, 0.26f, 1.42f), greenLight);
+            bottomLip.SetParent(root, false);
+            bottomLip.localPosition = new Vector3(0f, bottomTop - 0.13f, 0f);
+
             float worldTop = _settings.PlayHeight + 2.4f;
             float topHeight = worldTop - topBottom;
             var top = Box("PipeTop", Vector3.zero, new Vector3(1.1f, topHeight, 1.1f), green);
             top.SetParent(root, false);
             top.localPosition = new Vector3(0f, topBottom + topHeight * 0.5f, 0f);
+
+            var topLip = Box("PipeTopLip", Vector3.zero, new Vector3(1.42f, 0.26f, 1.42f), greenLight);
+            topLip.SetParent(root, false);
+            topLip.localPosition = new Vector3(0f, topBottom + 0.13f, 0f);
 
             _pipes.Add(new Pipe { Root = root, Centre = centre, Gap = gap });
         }

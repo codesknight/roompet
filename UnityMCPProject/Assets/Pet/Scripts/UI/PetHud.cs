@@ -150,6 +150,8 @@ namespace DshPet
         private UnityEngine.UI.Text _journalStatusText;
         private RectTransform _journalGrid;
         private RectTransform _journalDayContent;
+        private RectTransform _journalDayViewport;
+        private UnityEngine.UI.ScrollRect _journalDayScroll;
         private UnityEngine.UI.Text _journalDayLabel;
         private UnityEngine.UI.Button _deleteDayButton;
         private UnityEngine.UI.Text _deleteDayLabel;
@@ -1258,37 +1260,41 @@ namespace DshPet
 
             float innerW = plan.Panel.width - 28f;
 
-            // Header summary.
+            // Header summary + rename field share one line. The summary reads "名字 · 心情 · 想要";
+            // the rename field replaces it while the primary pet is expanded, so they never overlap.
+            bool renaming = expanded && card.Primary;
             string mood = card.Needs != null ? PetUtil.MoodLabel(card.Needs.Mood) : "—";
             string need = card.Needs != null ? card.Needs.DominantNeed : "";
             string who = card.Species != null ? card.Species.DisplayName : "";
             string summary = $"{card.Name}　·　{mood}　·　{(string.IsNullOrEmpty(need) ? "状态不错" : "想要：" + need)}";
             _headerSummary.text = summary;
+            _headerSummary.gameObject.SetActive(!renaming);
             _headerSummary.rectTransform.anchorMin = _headerSummary.rectTransform.anchorMax = new Vector2(0f, 1f);
             _headerSummary.rectTransform.pivot = new Vector2(0f, 1f);
             _headerSummary.rectTransform.anchoredPosition = new Vector2(14f, -(12f + plan.ChipsHeight + 4f));
             _headerSummary.rectTransform.sizeDelta = new Vector2(innerW, plan.HeaderHeight - 8f);
 
-            // Rename field (primary, expanded only).
-            _renameField.gameObject.SetActive(expanded && card.Primary);
-            if (expanded && card.Primary)
+            _renameField.gameObject.SetActive(renaming);
+            if (renaming)
             {
                 if (_editPetName == null || _editPetName != gm.PetName) _editPetName = gm.PetName;
                 if (!_renameField.isFocused) _renameField.text = _editPetName;
                 if (_renameField.isFocused) _editPetName = _renameField.text;
                 _renameField.GetComponent<RectTransform>().anchorMin = _renameField.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 1f);
                 _renameField.GetComponent<RectTransform>().pivot = new Vector2(0f, 1f);
-                _renameField.GetComponent<RectTransform>().anchoredPosition = new Vector2(14f, -(12f + plan.ChipsHeight + 2f));
+                _renameField.GetComponent<RectTransform>().anchoredPosition = new Vector2(14f, -(12f + plan.ChipsHeight + 4f));
                 _renameField.GetComponent<RectTransform>().sizeDelta = new Vector2(innerW - 60f, 30f);
             }
             IsTextInputFocused = IsTextInputFocused || _renameField.isFocused;
 
             // Detail (needs bars + text), rebuilt when the selected pet/expansion changes.
-            // The needs bars are pinned below the header; the scroll viewport sits below them.
+            // The needs bars are pinned below the header; the scroll viewport sits below them. Both
+            // exist only in the expanded card — the collapsed card keeps just chips + footer.
             float detailY = 12f + plan.ChipsHeight + plan.HeaderHeight;
             float barsH = 5f * 24f;   // four needs + the bladder slot
             float footerH = plan.FooterHeight + 12f;
 
+            _detailScroll.viewport.gameObject.SetActive(expanded);
             _detailScroll.viewport.anchorMin = new Vector2(0f, 0f);
             _detailScroll.viewport.anchorMax = new Vector2(1f, 1f);
             _detailScroll.viewport.offsetMin = new Vector2(12f, footerH);
@@ -1300,7 +1306,7 @@ namespace DshPet
                 _builtCardExpanded = expanded;
                 _builtStatusDetail = _statusDetail;
             }
-            SyncNeedsBars(card.Needs, plan.Panel.width, detailY);
+            SyncNeedsBars(card.Needs, plan.Panel.width, detailY, expanded);
 
             // Footer buttons (rebuilt when the plan changes).
             RebuildFooter(gm, plan, p, plan.Panel.width);
@@ -1382,7 +1388,7 @@ namespace DshPet
             _detailText.rectTransform.anchoredPosition = new Vector2(0f, -4f);
         }
 
-        private void SyncNeedsBars(PetNeeds needs, float designWidth, float topY)
+        private void SyncNeedsBars(PetNeeds needs, float designWidth, float topY, bool show)
         {
             var bars = new[] {
                 new { Label = "饱食", Value = needs != null ? needs.Hunger : 0f, Color = new Color(0.95f, 0.62f, 0.30f) },
@@ -1398,6 +1404,7 @@ namespace DshPet
 
             for (int i = 0; i < 5; i++)
             {
+                if (!show) { _needLabels[i].transform.parent.gameObject.SetActive(false); continue; }
                 if (i == 4 && !showBladder) { _needLabels[i].transform.parent.gameObject.SetActive(false); continue; }
                 _needLabels[i].transform.parent.gameObject.SetActive(true);
                 var rowRt = _needLabels[i].transform.parent.GetComponent<RectTransform>();
@@ -2018,8 +2025,29 @@ namespace DshPet
             _deleteDayLabel = _deleteDayButton.GetComponentInChildren<UnityEngine.UI.Text>();
             _deleteDayButton.onClick.AddListener(OnDeleteDay);
 
+            // Day-detail scroll: a clipped viewport + content, so a day with many entries scrolls
+            // inside the panel instead of spilling out of the bottom of the UI.
+            var dayViewport = new GameObject("DayViewport", typeof(RectTransform));
+            dayViewport.transform.SetParent(p, false);
+            dayViewport.AddComponent<UnityEngine.UI.RectMask2D>();
+            var dayViewportImg = dayViewport.AddComponent<UnityEngine.UI.Image>();
+            dayViewportImg.color = new Color(0f, 0f, 0f, 0f);
+            dayViewportImg.raycastTarget = true;
+            _journalDayViewport = dayViewport.GetComponent<RectTransform>();
+
+            _journalDayScroll = p.gameObject.AddComponent<UnityEngine.UI.ScrollRect>();
+            _journalDayScroll.viewport = _journalDayViewport;
+            _journalDayScroll.horizontal = false;
+            _journalDayScroll.vertical = true;
+            _journalDayScroll.movementType = UnityEngine.UI.ScrollRect.MovementType.Clamped;
+            _journalDayScroll.scrollSensitivity = 30f;
+
             _journalDayContent = new GameObject("DayContent", typeof(RectTransform)).GetComponent<RectTransform>();
-            _journalDayContent.SetParent(p, false);
+            _journalDayContent.SetParent(dayViewport.transform, false);
+            _journalDayContent.anchorMin = new Vector2(0f, 1f);
+            _journalDayContent.anchorMax = new Vector2(1f, 1f);
+            _journalDayContent.pivot = new Vector2(0.5f, 1f);
+            _journalDayScroll.content = _journalDayContent;
         }
 
         private void SyncJournalPanel()
@@ -2131,7 +2159,7 @@ namespace DshPet
                 _deleteDayButton.GetComponent<RectTransform>().sizeDelta = new Vector2(130f, 26f);
             }
 
-            DshMobile.Ugui.SetRect(_journalDayContent, 18f, detailY + 26f, w - 36f, Mathf.Max(40f, h - detailY - 26f - 16f));
+            DshMobile.Ugui.SetRect(_journalDayViewport, 18f, detailY + 26f, w - 36f, Mathf.Max(40f, h - detailY - 26f - 16f));
 
             float y = 4f;
             if (entries.Count == 0)
@@ -2142,6 +2170,7 @@ namespace DshPet
                 empty.rectTransform.pivot = new Vector2(0f, 1f);
                 empty.rectTransform.anchoredPosition = new Vector2(2f, -y);
                 empty.rectTransform.sizeDelta = new Vector2(300f, 22f);
+                _journalDayContent.sizeDelta = new Vector2(0f, 40f);
                 return;
             }
 
@@ -2178,6 +2207,10 @@ namespace DshPet
                     y += 24f;
                 }
             }
+
+            // Size the scroll content to the laid-out entries so the day list scrolls inside the
+            // viewport instead of spilling out of the panel.
+            _journalDayContent.sizeDelta = new Vector2(0f, y + 12f);
         }
 
         private void OnDeleteDay()
@@ -3118,12 +3151,15 @@ namespace DshPet
             int columns = PetMemoryMatch.Columns;
             int rows = Mathf.CeilToInt(_memory.Count / (float)columns);
             float cell = Mathf.Max(52f, Mathf.Min((w - 36f - (columns - 1) * 8f) / columns, (380f - (rows - 1) * 8f) / Mathf.Max(1, rows)));
+            // Centre the card grid in the panel instead of pinning it to the left edge.
+            float totalW = columns * cell + (columns - 1) * 8f;
+            float leftX = Mathf.Max(12f, (w - totalW) * 0.5f);
 
             for (int i = 0; i < _memory.Count; i++)
             {
                 int row = i / columns, col = i % columns;
                 var card = DshMobile.Ugui.Button("Card", _memoryBoard, "", 14, new Color(0.28f, 0.36f, 0.55f));
-                float x = 18f + col * (cell + 8f) + cell * 0.5f;
+                float x = leftX + col * (cell + 8f) + cell * 0.5f;
                 float y = 150f + row * (cell + 8f) + cell * 0.5f;
                 DshMobile.Ugui.Place(card.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(0.5f, 0.5f),
                     new Vector2(x, -y), new Vector2(cell, cell));
@@ -3239,6 +3275,9 @@ namespace DshPet
                 tile.gameObject.AddComponent<UnityEngine.UI.Button>();
                 var btn = tile.GetComponent<UnityEngine.UI.Button>();
                 btn.targetGraphic = tile;
+                // The RawImage factory leaves raycastTarget off, so the tile's target graphic must be
+                // turned back on or the button can never be tapped — the puzzle was "unplayable".
+                tile.raycastTarget = true;
                 var number = DshMobile.Ugui.Text("Num", tile.transform, "", 14, new Color(1f, 1f, 1f, 0.72f), UnityEngine.TextAnchor.UpperLeft);
                 DshMobile.Ugui.Stretch(number.rectTransform);
                 number.rectTransform.offsetMin = new Vector2(5f, 5f);

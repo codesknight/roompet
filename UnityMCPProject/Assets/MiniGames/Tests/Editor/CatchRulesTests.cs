@@ -254,5 +254,24 @@ namespace DshMiniGames.Tests
             Assert.GreaterOrEqual((int)CatchRules.FruitFor(-1), 0);
             Assert.Less((int)CatchRules.FruitFor(-7), CatchRules.FruitKindCount);
         }
+
+        [Test]
+        public void Bomb_StaysOutOfTheFirstCatchesAndRampsToACeiling()
+        {
+            // Bombs teach themselves in after the first few catches, then ramp to a ceiling — a
+            // run should never open with a bomb, and the ceiling keeps bombs a spicy exception.
+            Assert.IsFalse(CatchRules.RollBomb(0f, 0), "no bombs before the run has taught the catch");
+            Assert.IsFalse(CatchRules.RollBomb(0f, 2), "no bombs in the first three catches");
+
+            Assert.IsTrue(CatchRules.RollBomb(0.01f, 3), "bombs begin at three catches");
+            Assert.IsTrue(CatchRules.RollBomb(0.01f, 10), "bombs keep appearing mid-run");
+
+            Assert.IsFalse(CatchRules.RollBomb(0.99f, 3), "a high roll is never a bomb");
+            Assert.IsFalse(CatchRules.RollBomb(0.99f, 100), "the ceiling still lets a high roll through");
+
+            // A bomb never lands on top of the previous fruit: the minimum gap is positive and sane.
+            Assert.Greater(CatchRules.MinBombFruitGap, 1f, "the bomb/fruit gap must be readable on a phone");
+            Assert.Less(CatchRules.MinBombFruitGap, 3f, "…but not so wide the bomb has nowhere to go");
+        }
     }
 }

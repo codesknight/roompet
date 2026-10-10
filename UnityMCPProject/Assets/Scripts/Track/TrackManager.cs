@@ -313,9 +313,11 @@ namespace DshRunner
                     prop = LogProp;
                     modelSize = 2.5f;
                     yaw = 90f;
-                    colliderSize = new Vector3(2.2f, 0.7f, 1.1f);
-                    colliderCentre = new Vector3(0f, 1.62f, 0f);
-                    topY = 1.95f;
+                    // The bar must overlap the standing player (collider spans y 0..1) or the trigger
+                    // never fires and the runner walks straight through it without sliding.
+                    colliderSize = new Vector3(2.2f, 0.6f, 1.1f);
+                    colliderCentre = new Vector3(0f, 0.75f, 0f);
+                    topY = 1.05f;
                     message = "没滑铲过去";
                     break;
 

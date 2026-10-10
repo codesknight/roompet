@@ -189,6 +189,23 @@ namespace DshMiniGames
         /// <summary>Lives the run starts with.</summary>
         public const int StartLives = 3;
 
+        /// <summary>
+        /// Whether a roll produces a bomb, given the current score.
+        ///
+        /// Bombs stay out of the first few catches (the run has to teach the catch first), then
+        /// ramp from 5% up to a 14% ceiling so they stay a spicy exception rather than the norm.
+        /// </summary>
+        public static bool RollBomb(float roll, int score)
+        {
+            if (score < 3) return false;
+            float chance = Mathf.Min(0.14f, 0.05f + (score - 3) * 0.01f);
+            return roll < chance;
+        }
+
+        /// <summary>A bomb never spawns this close to the previous falling thing, so the two are
+        /// never confused on a phone.</summary>
+        public const float MinBombFruitGap = 1.6f;
+
         /// <summary>Coins a run is worth.</summary>
         public static int CoinsFor(int caught) => Mathf.Max(0, caught) + Mathf.Max(0, caught) / 10;
 
