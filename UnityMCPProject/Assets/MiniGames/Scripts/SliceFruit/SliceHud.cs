@@ -1,95 +1,238 @@
 ﻿using UnityEngine;
+using UnityEngine.UI;
 
 namespace DshMiniGames
 {
     /// <summary>
-    /// 切水果's interface: the score, the lives, the mode, and the blade.
+    /// 切水果's interface — the score, the lives, the mode, the panels and the buttons — now in
+    /// uGUI, migrated in round 41 like FlyBird. The blade is NOT here: it is a world-space ribbon
+    /// owned by <see cref="SliceGame"/> (see its <c>BuildBlade</c>), which is why that part of the
+    /// old IMGUI HUD simply disappears instead of being redrawn.
     ///
-    /// The blade trail is drawn here rather than in the game because it is a *drawing* of the swipe
-    /// the game already computed — one source of truth (the world-space segment in
-    /// <see cref="SliceGame.BladeFrom"/>) and one place that turns it into pixels. Drawing it in the
-    /// game would have meant a second copy of the same input, free to disagree with the hit test.
+    /// Input note: unlike FlyBird there is no full-screen tap target to migrate, because the game's
+    /// input is a *swipe* read directly by <see cref="SliceGame.ReadBlade"/>, not a button. The
+    /// swipe needs movement, so a plain tap on any of these buttons never cuts a fruit; the game
+    /// keeps reading its blade exactly as before and only the drawing moved.
     /// </summary>
     public class SliceHud : MonoBehaviour
     {
         private SliceGame _game;
-        private GUIStyle _title;
-        private GUIStyle _small;
-        private GUIStyle _big;
-        private GUIStyle _centred;
-        private Texture2D _white;
+        private RectTransform _root;
 
-        /// <summary>True while the pointer is over a panel, so taps there do not start a run.</summary>
-        public static bool PointerOverPanel { get; private set; }
+        private Text _score;
+        private Text _livesMode;
+        private Text _info;
+        private Text _popup;
 
-        private void Awake() => _game = GetComponent<SliceGame>();
+        private Button _back;
+        private Button _pause;
+        private Text _pauseLabel;
+        private Button _mode;
+        private Text _modeLabel;
 
-        private void EnsureStyles()
+        private GameObject _pausedPanel;
+        private Text _pausedInfo;
+        private Text _pausedRetryLabel;
+
+        private GameObject _readyPanel;
+        private Text _readyLine1;
+        private Text _readyLine2;
+        private Text _readyLine3;
+
+        private GameObject _levelDonePanel;
+        private Text _levelDoneTitle;
+        private Text _levelDoneLine1;
+        private Text _levelDoneLine2;
+        private GameObject _againButton;    // "下一关" / "从头再来" / "再试一次" — label swaps
+        private Text _againLabel;
+        private GameObject _endlessButton;
+
+        private GameObject _deadPanel;
+        private Text _deadLine1;
+        private Text _deadLine2;
+
+        private bool _built;
+
+        private static readonly Color Gold = new Color(1f, 0.97f, 0.82f);
+        private static readonly Color Cream = new Color(1f, 0.98f, 0.9f);
+        private static readonly Color Pale = new Color(0.96f, 0.97f, 1f);
+        private static readonly Color BackTint = new Color(0.30f, 0.40f, 0.58f);
+        private static readonly Color GreenTint = new Color(0.30f, 0.55f, 0.35f);
+        private static readonly Color PanelFill = new Color(0.10f, 0.08f, 0.13f, 0.95f);
+        private static readonly Color PanelBorder = new Color(1f, 1f, 1f, 0.16f);
+
+        private void Awake()
         {
-            if (_title != null) return;
-
-            _title = new GUIStyle(GUI.skin.label) { fontSize = 26, fontStyle = FontStyle.Bold };
-            _title.normal.textColor = new Color(1f, 0.98f, 0.9f);
-
-            _big = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 52,
-                fontStyle = FontStyle.Bold,
-                alignment = TextAnchor.MiddleCenter
-            };
-            _big.normal.textColor = new Color(1f, 0.97f, 0.82f);
-
-            _small = new GUIStyle(GUI.skin.label) { fontSize = 15 };
-            _small.normal.textColor = new Color(0.96f, 0.97f, 1f);
-
-            _centred = new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter };
-
-            _white = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-            _white.SetPixel(0, 0, Color.white);
-            _white.Apply();
-            _white.hideFlags = HideFlags.HideAndDontSave;
+            _game = GetComponent<SliceGame>();
+            Build();
         }
 
-        private void OnGUI()
+        private void OnDestroy()
         {
-            if (_game == null) return;
-            EnsureStyles();
-
-            var safe = DshMobile.MobileUi.SafeArea;
-            float scale = DshMobile.MobileUi.UseTouchControls ? DshMobile.MobileUi.UiScale : 1f;
-            float width = Mathf.Max(320f, safe.width / scale);
-            float height = Mathf.Max(240f, safe.height / scale);
-
-            var previous = GUI.matrix;
-            if (scale != 1f || safe.x != 0f || safe.y != 0f)
-            {
-                GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x, safe.y, 0f), Quaternion.identity,
-                    new Vector3(scale, scale, 1f));
-            }
-
-            PointerOverPanel = false;
-
-            // The blade is not drawn here any more. It is a world-space ribbon in the game now, because
-            // this interface's coordinate space is not the world's: a world point turned into screen
-            // pixels and then drawn through GUI.matrix comes out scaled twice and pushed by the notch,
-            // which is why the blade kept missing the finger on a phone (see SliceGame.BuildBlade).
-            DrawScore(width, height);
-            DrawButtons(width);
-
-            if (_game.Paused)
-            {
-                DrawPaused(width, height);
-            }
-            else if (_game.State == SliceGame.Phase.Ready) DrawReady(width, height);
-            else if (_game.State == SliceGame.Phase.LevelDone) DrawLevelDone(width, height);
-            else if (_game.State == SliceGame.Phase.Dead) DrawDead(width, height);
-
-            GUI.matrix = previous;
+            if (_root != null) Destroy(_root.gameObject);
         }
 
-        private void DrawScore(float width, float height)
+        private void Build()
         {
-            GUI.Label(new Rect(width * 0.5f - 140f, 14f, 280f, 60f), _game.Score.ToString(), _big);
+            _root = DshMobile.Ugui.Root("SliceHud");
+
+            _score = DshMobile.Ugui.Text("Score", _root, "0", 52, Gold, TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.Place(_score.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -14f), new Vector2(440f, 60f));
+
+            _livesMode = DshMobile.Ugui.Text("LivesMode", _root, "", 16, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.Place(_livesMode.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -76f), new Vector2(600f, 22f));
+
+            _info = DshMobile.Ugui.Text("Info", _root, "", 16, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.Place(_info.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -98f), new Vector2(600f, 22f));
+
+            _popup = DshMobile.Ugui.Text("Popup", _root, "", 26, new Color(1f, 0.92f, 0.6f),
+                TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.Place(_popup.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                new Vector2(0f, -60f), new Vector2(560f, 44f));
+
+            // Top-right: back, then pause below it.
+            _back = DshMobile.Ugui.Button("Back", _root, "回到宠物小屋", 17, BackTint);
+            DshMobile.Ugui.Place(_back.GetComponent<RectTransform>(), new Vector2(1f, 1f),
+                new Vector2(1f, 1f), new Vector2(-16f, -16f), new Vector2(168f, 44f));
+            _back.onClick.AddListener(OnBack);
+
+            _pause = DshMobile.Ugui.Button("Pause", _root, "暂停", 17, BackTint);
+            DshMobile.Ugui.Place(_pause.GetComponent<RectTransform>(), new Vector2(1f, 1f),
+                new Vector2(1f, 1f), new Vector2(-16f, -68f), new Vector2(168f, 44f));
+            _pauseLabel = _pause.GetComponentInChildren<Text>();
+            _pause.onClick.AddListener(OnPause);
+
+            // Top-left: mode toggle.
+            _mode = DshMobile.Ugui.Button("Mode", _root, "无尽模式", 17, BackTint);
+            DshMobile.Ugui.Place(_mode.GetComponent<RectTransform>(), new Vector2(0f, 1f),
+                new Vector2(0f, 1f), new Vector2(16f, -16f), new Vector2(150f, 44f));
+            _modeLabel = _mode.GetComponentInChildren<Text>();
+            _mode.onClick.AddListener(OnMode);
+
+            BuildPausedPanel();
+            BuildReadyPanel();
+            BuildLevelDonePanel();
+            BuildDeadPanel();
+
+            _built = true;
+        }
+
+        private GameObject PanelContainer(string name, float w, float h, out Image panelImage)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(_root, false);
+            DshMobile.Ugui.Center(go.GetComponent<RectTransform>(), w, h);
+            panelImage = DshMobile.Ugui.Panel("Bg", go.transform, 16f, PanelFill, PanelBorder, 1.5f);
+            DshMobile.Ugui.Stretch(panelImage.rectTransform);
+            return go;
+        }
+
+        private void BuildPausedPanel()
+        {
+            Image bg;
+            var go = PanelContainer("PausedPanel", 420f, 210f, out bg);
+
+            var title = DshMobile.Ugui.Text("Title", go.transform, "暂停", 26, Cream, TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 20f, 16f, 380f, 36f);
+
+            _pausedInfo = DshMobile.Ugui.Text("Info", go.transform, "", 15, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_pausedInfo.rectTransform, 20f, 58f, 380f, 24f);
+
+            var resume = DshMobile.Ugui.Button("Resume", go.transform, "继续", 17, GreenTint);
+            DshMobile.Ugui.SetRect(resume.GetComponent<RectTransform>(), 24f, 104f, 180f, 46f);
+            resume.onClick.AddListener(OnResume);
+
+            var retry = DshMobile.Ugui.Button("RetryPaused", go.transform, "重新开始", 17, BackTint);
+            DshMobile.Ugui.SetRect(retry.GetComponent<RectTransform>(), 216f, 104f, 180f, 46f);
+            _pausedRetryLabel = retry.GetComponentInChildren<Text>();
+            retry.onClick.AddListener(OnRetryPaused);
+
+            var home = DshMobile.Ugui.Button("HomePaused", go.transform, "回到宠物小屋", 17, BackTint);
+            DshMobile.Ugui.SetRect(home.GetComponent<RectTransform>(), 24f, 156f, 372f, 46f);
+            home.onClick.AddListener(OnBack);
+
+            _pausedPanel = go;
+        }
+
+        private void BuildReadyPanel()
+        {
+            Image bg;
+            var go = PanelContainer("ReadyPanel", 480f, 168f, out bg);
+
+            var title = DshMobile.Ugui.Text("Title", go.transform, "切水果", 26, Cream, TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 20f, 14f, 440f, 34f);
+
+            _readyLine1 = DshMobile.Ugui.Text("Line1", go.transform, "", 15, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_readyLine1.rectTransform, 20f, 54f, 440f, 24f);
+
+            _readyLine2 = DshMobile.Ugui.Text("Line2", go.transform, "", 15, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_readyLine2.rectTransform, 20f, 80f, 440f, 24f);
+
+            _readyLine3 = DshMobile.Ugui.Text("Line3", go.transform, "", 15, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_readyLine3.rectTransform, 20f, 106f, 440f, 24f);
+
+            _readyPanel = go;
+        }
+
+        private void BuildLevelDonePanel()
+        {
+            Image bg;
+            var go = PanelContainer("LevelDonePanel", 480f, 240f, out bg);
+
+            _levelDoneTitle = DshMobile.Ugui.Text("Title", go.transform, "", 26, Cream, TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.SetRect(_levelDoneTitle.rectTransform, 20f, 14f, 440f, 36f);
+
+            _levelDoneLine1 = DshMobile.Ugui.Text("Line1", go.transform, "", 15, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_levelDoneLine1.rectTransform, 20f, 56f, 440f, 24f);
+
+            _levelDoneLine2 = DshMobile.Ugui.Text("Line2", go.transform, "", 15, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_levelDoneLine2.rectTransform, 20f, 82f, 440f, 24f);
+
+            _againButton = DshMobile.Ugui.Button("Next", go.transform, "下一关", 17, GreenTint).gameObject;
+            DshMobile.Ugui.SetRect(_againButton.GetComponent<RectTransform>(), 24f, 132f, 200f, 48f);
+            _againLabel = _againButton.GetComponentInChildren<Text>();
+            _againButton.GetComponent<Button>().onClick.AddListener(OnNextOrRetry);
+
+            _endlessButton = DshMobile.Ugui.Button("Endless", go.transform, "无尽模式", 17, BackTint).gameObject;
+            DshMobile.Ugui.SetRect(_endlessButton.GetComponent<RectTransform>(), 256f, 132f, 200f, 48f);
+            _endlessButton.GetComponent<Button>().onClick.AddListener(OnEndless);
+
+            _levelDonePanel = go;
+        }
+
+        private void BuildDeadPanel()
+        {
+            Image bg;
+            var go = PanelContainer("DeadPanel", 480f, 250f, out bg);
+
+            var title = DshMobile.Ugui.Text("Title", go.transform, "切完了", 26, Cream, TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 20f, 14f, 440f, 36f);
+
+            _deadLine1 = DshMobile.Ugui.Text("Line1", go.transform, "", 15, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_deadLine1.rectTransform, 20f, 56f, 440f, 24f);
+
+            _deadLine2 = DshMobile.Ugui.Text("Line2", go.transform, "", 15, Pale, TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_deadLine2.rectTransform, 20f, 82f, 440f, 24f);
+
+            var retry = DshMobile.Ugui.Button("RetryDead", go.transform, "再来一次", 17, GreenTint);
+            DshMobile.Ugui.SetRect(retry.GetComponent<RectTransform>(), 24f, 136f, 200f, 48f);
+            retry.onClick.AddListener(OnRetryDead);
+
+            var home = DshMobile.Ugui.Button("HomeDead", go.transform, "回到宠物小屋", 17, BackTint);
+            DshMobile.Ugui.SetRect(home.GetComponent<RectTransform>(), 256f, 136f, 200f, 48f);
+            home.onClick.AddListener(OnBack);
+
+            _deadPanel = go;
+        }
+
+        private void Update()
+        {
+            if (_game == null || !_built) return;
+
+            _score.text = _game.Score.ToString();
 
             string lives = "";
             for (int i = 0; i < SliceRules.StartLives; i++) lives += i < _game.Lives ? "● " : "○ ";
@@ -97,210 +240,110 @@ namespace DshMiniGames
             string mode = _game.Mode == SliceMode.Endless
                 ? "无尽模式"
                 : _game.Plan.Name + "　第 " + Mathf.Min(_game.Wave, _game.Plan.Waves) + "/" + _game.Plan.Waves + " 波";
-
-            GUI.Label(new Rect(width * 0.5f - 210f, 74f, 420f, 22f),
-                lives + "　·　" + mode, _centred);
+            _livesMode.text = lives + "　·　" + mode;
 
             if (_game.Mode == SliceMode.Levels)
             {
-                GUI.Label(new Rect(width * 0.5f - 210f, 96f, 420f, 22f),
-                    "目标 " + _game.Plan.TargetScore + " 分　·　漏 " + _game.Missed + "/" + _game.Plan.MaxMisses +
-                    (_game.Plan.BombChance > 0f ? "　·　有炸弹" : ""), _centred);
+                _info.text = "目标 " + _game.Plan.TargetScore + " 分　·　漏 " + _game.Missed + "/" + _game.Plan.MaxMisses +
+                    (_game.Plan.BombChance > 0f ? "　·　有炸弹" : "");
             }
             else
             {
-                GUI.Label(new Rect(width * 0.5f - 210f, 96f, 420f, 22f),
-                    "最高 " + _game.Best + "　·　🐾 " + DshMobile.PetWallet.Coins.ToString("N0"), _centred);
+                _info.text = "最高 " + _game.Best + "　·　宠物币 " + DshMobile.PetWallet.Coins.ToString("N0");
             }
 
+            // Popup (+n / 炸弹!).
             if (_game.PopupVisible && !string.IsNullOrEmpty(_game.Popup))
             {
-                var style = new GUIStyle(_title) { alignment = TextAnchor.MiddleCenter };
-                style.normal.textColor = _game.Popup.StartsWith("炸弹") ? new Color(1f, 0.5f, 0.42f)
-                                                                      : new Color(1f, 0.92f, 0.6f);
-                GUI.Label(new Rect(width * 0.5f - 200f, height * 0.36f, 400f, 40f), _game.Popup, style);
+                _popup.text = _game.Popup;
+                _popup.color = _game.Popup.StartsWith("炸弹") ? new Color(1f, 0.5f, 0.42f) : new Color(1f, 0.92f, 0.6f);
+                _popup.gameObject.SetActive(true);
             }
-        }
-
-        private void DrawButtons(float width)
-        {
-            var back = new Rect(width - 178f, 16f, 158f, 38f);
-            if (GUI.Button(back, "回到宠物小屋", ButtonStyle()))
+            else
             {
-                _game.ReturnToRoom();
+                _popup.gameObject.SetActive(false);
             }
-            PointerOverPanel |= back.Contains(Event.current.mousePosition);
 
-            // Pause, wherever the player is in a run: the button that stops the fruit is the one thing
-            // a game with a three-second rhythm has to offer without a menu.
-            var pause = new Rect(width - 178f, 62f, 158f, 38f);
-            if (GUI.Button(pause, _game.Paused ? "继续" : "暂停", ButtonStyle()))
+            // Always-visible controls.
+            _pauseLabel.text = _game.Paused ? "继续" : "暂停";
+            _modeLabel.text = _game.Mode == SliceMode.Endless ? "无尽模式" : "闯关模式";
+            bool modeVisible = _game.State != SliceGame.Phase.Dead && _game.State != SliceGame.Phase.LevelDone;
+            _mode.gameObject.SetActive(modeVisible);
+
+            // Panels.
+            _pausedPanel.SetActive(_game.Paused);
+            _readyPanel.SetActive(_game.State == SliceGame.Phase.Ready);
+            _levelDonePanel.SetActive(_game.State == SliceGame.Phase.LevelDone);
+            _deadPanel.SetActive(_game.State == SliceGame.Phase.Dead);
+
+            if (_game.Paused)
             {
-                _game.SetPaused(!_game.Paused);
+                _pausedInfo.text = "得分 " + _game.Score + "　·　漏了 " + _game.Missed + " 个";
+                _pausedRetryLabel.text = _game.Mode == SliceMode.Levels ? "重玩这一关" : "重新开始";
             }
-            PointerOverPanel |= pause.Contains(Event.current.mousePosition);
 
-            if (_game.State != SliceGame.Phase.Dead && _game.State != SliceGame.Phase.LevelDone)
+            if (_game.State == SliceGame.Phase.Ready)
             {
-                var mode = new Rect(20f, 16f, 150f, 38f);
-                if (GUI.Button(mode, _game.Mode == SliceMode.Endless ? "无尽模式" : "闯关模式",
-                        ButtonStyle()))
+                if (_game.Mode == SliceMode.Endless)
                 {
-                    _game.SetMode(_game.Mode == SliceMode.Endless ? SliceMode.Levels : SliceMode.Endless);
-                }
-                PointerOverPanel |= mode.Contains(Event.current.mousePosition);
-            }
-        }
-
-        /// <summary>
-        /// The pause panel.
-        ///
-        /// Nothing in the world is frozen by a global clock: <see cref="SliceGame.SetPaused"/> stops the
-        /// game's own update, so pausing cannot leak into the next scene (which is exactly how the pet
-        /// room came back immobile in round 17).
-        /// </summary>
-        private void DrawPaused(float width, float height)
-        {
-            var panel = new Rect(width * 0.5f - 210f, height * 0.3f, 420f, 210f);
-            DshMobile.UiSkin.Panel(panel, 16f, new Color(0.10f, 0.08f, 0.13f, 0.95f),
-                new Color(1f, 1f, 1f, 0.16f), 1.5f);
-
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 16f, panel.width - 40f, 36f), "暂停", _title);
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 58f, panel.width - 40f, 24f),
-                "得分 " + _game.Score + "　·　漏了 " + _game.Missed + " 个", _small);
-
-            var button = ButtonStyle();
-            if (GUI.Button(new Rect(panel.x + 24f, panel.y + 104f, 180f, 46f), "继续", button))
-            {
-                _game.SetPaused(false);
-            }
-
-            if (GUI.Button(new Rect(panel.xMax - 204f, panel.y + 104f, 180f, 46f),
-                    _game.Mode == SliceMode.Levels ? "重玩这一关" : "重新开始", button))
-            {
-                _game.ResetRun(_game.Mode);
-            }
-
-            if (GUI.Button(new Rect(panel.x + 24f, panel.y + 156f, 180f, 46f), "回到宠物小屋", button))
-            {
-                _game.ReturnToRoom();
-            }
-
-            PointerOverPanel = true;
-        }
-
-        private void DrawReady(float width, float height)
-        {
-            var panel = new Rect(width * 0.5f - 240f, height * 0.3f, 480f, 168f);
-            DshMobile.UiSkin.Panel(panel, 16f, new Color(0.10f, 0.08f, 0.13f, 0.94f),
-                new Color(1f, 1f, 1f, 0.16f), 1.5f);
-
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 14f, panel.width - 40f, 34f), "切水果", _title);
-
-            if (_game.Mode == SliceMode.Endless)
-            {
-                GUI.Label(new Rect(panel.x + 20f, panel.y + 54f, panel.width - 40f, 24f),
-                    DshMobile.MobileUi.UseTouchControls
+                    _readyLine1.text = DshMobile.MobileUi.UseTouchControls
                         ? "在屏幕上滑动切水果，别切到炸弹"
-                        : "按住鼠标划过水果，别碰到炸弹", _small);
-                GUI.Label(new Rect(panel.x + 20f, panel.y + 80f, panel.width - 40f, 24f),
-                    "漏掉一个水果或切到炸弹，就少一条命（三条）。", _small);
-                GUI.Label(new Rect(panel.x + 20f, panel.y + 106f, panel.width - 40f, 24f),
-                    "水果越切越多、越来越快，看你能切到多少分。", _small);
+                        : "按住鼠标划过水果，别碰到炸弹";
+                    _readyLine2.text = "漏掉一个水果或切到炸弹，就少一条命（三条）。";
+                    _readyLine3.text = "水果越切越多、越来越快，看你能切到多少分。";
+                }
+                else
+                {
+                    _readyLine1.text = _game.Plan.Name + "：" + _game.Plan.Waves + " 波，每波 " + _game.Plan.FruitsPerWave + " 个";
+                    _readyLine2.text = "目标 " + _game.Plan.TargetScore + " 分　·　最多漏 " + _game.Plan.MaxMisses + " 个";
+                    _readyLine3.text = SliceRules.DifficultyFor(_game.Plan);
+                }
             }
-            else
+
+            if (_game.State == SliceGame.Phase.LevelDone)
             {
-                GUI.Label(new Rect(panel.x + 20f, panel.y + 54f, panel.width - 40f, 24f),
-                    _game.Plan.Name + "：" + _game.Plan.Waves + " 波，每波 " + _game.Plan.FruitsPerWave + " 个",
-                    _small);
-                GUI.Label(new Rect(panel.x + 20f, panel.y + 80f, panel.width - 40f, 24f),
-                    "目标 " + _game.Plan.TargetScore + " 分　·　最多漏 " + _game.Plan.MaxMisses + " 个", _small);
-                GUI.Label(new Rect(panel.x + 20f, panel.y + 106f, panel.width - 40f, 24f),
-                    SliceRules.DifficultyFor(_game.Plan), _small);
+                bool passed = _game.LevelPassed;
+                _levelDoneTitle.text = passed ? "过关！" : "没到目标分";
+                _levelDoneLine1.text = _game.Plan.Name + "　·　得分 " + _game.Score + " / 目标 " + _game.Plan.TargetScore;
+                _levelDoneLine2.text = "漏了 " + _game.Missed + " 个";
+
+                if (passed && _game.Level < SliceRules.LevelCount)
+                {
+                    _againLabel.text = "下一关";
+                    _againButton.SetActive(true);
+                }
+                else if (passed)
+                {
+                    _againLabel.text = "从头再来";
+                    _againButton.SetActive(true);
+                }
+                else
+                {
+                    _againLabel.text = "再试一次";
+                    _againButton.SetActive(true);
+                }
             }
 
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 134f, panel.width - 40f, 24f),
-                "滑动一下就开始。", _centred);
-
-            PointerOverPanel = true;
+            if (_game.State == SliceGame.Phase.Dead)
+            {
+                _deadLine1.text = "得分 " + _game.Score + "　·　漏了 " + _game.Missed + " 个";
+                _deadLine2.text = SliceRules.RankFor(_game.Score) + "　·　赚了 " + _game.RunCoins + " 个宠物币";
+            }
         }
 
-        private void DrawLevelDone(float width, float height)
+        private void OnBack() => _game?.ReturnToRoom();
+        private void OnPause() => _game?.SetPaused(!_game.Paused);
+        private void OnMode() => _game?.SetMode(_game.Mode == SliceMode.Endless ? SliceMode.Levels : SliceMode.Endless);
+        private void OnResume() => _game?.SetPaused(false);
+        private void OnRetryPaused() => _game?.ResetRun(_game.Mode);
+        private void OnNextOrRetry()
         {
-            var panel = new Rect(width * 0.5f - 240f, height * 0.28f, 480f, 240f);
-            DshMobile.UiSkin.Panel(panel, 16f, new Color(0.10f, 0.08f, 0.13f, 0.94f),
-                new Color(1f, 1f, 1f, 0.16f), 1.5f);
-
-            bool passed = _game.LevelPassed;
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 14f, panel.width - 40f, 36f),
-                passed ? "过关！" : "没到目标分", _title);
-
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 56f, panel.width - 40f, 24f),
-                _game.Plan.Name + "　·　得分 " + _game.Score + " / 目标 " + _game.Plan.TargetScore, _small);
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 82f, panel.width - 40f, 24f),
-                "漏了 " + _game.Missed + " 个", _small);
-
-            var button = ButtonStyle();
-
-            if (passed && _game.Level < SliceRules.LevelCount)
-            {
-                if (GUI.Button(new Rect(panel.x + 24f, panel.y + 132f, 200f, 48f), "下一关", button))
-                {
-                    _game.NextLevel();
-                }
-            }
-            else if (passed)
-            {
-                GUI.Label(new Rect(panel.x + 20f, panel.y + 112f, panel.width - 40f, 24f),
-                    "八关都过了，厉害。", _small);
-                if (GUI.Button(new Rect(panel.x + 24f, panel.y + 132f, 200f, 48f), "从头再来", button))
-                {
-                    _game.SetMode(SliceMode.Levels);
-                }
-            }
-            else
-            {
-                if (GUI.Button(new Rect(panel.x + 24f, panel.y + 132f, 200f, 48f), "再试一次", button))
-                {
-                    _game.ResetRun(SliceMode.Levels);
-                }
-            }
-
-            if (GUI.Button(new Rect(panel.xMax - 224f, panel.y + 132f, 200f, 48f), "无尽模式", button))
-            {
-                _game.SetMode(SliceMode.Endless);
-            }
-
-            PointerOverPanel = true;
+            if (_game == null) return;
+            if (_game.LevelPassed && _game.Level < SliceRules.LevelCount) _game.NextLevel();
+            else if (_game.LevelPassed) _game.SetMode(SliceMode.Levels);
+            else _game.ResetRun(SliceMode.Levels);
         }
-
-        private void DrawDead(float width, float height)
-        {
-            var panel = new Rect(width * 0.5f - 240f, height * 0.28f, 480f, 250f);
-            DshMobile.UiSkin.Panel(panel, 16f, new Color(0.10f, 0.08f, 0.13f, 0.94f),
-                new Color(1f, 1f, 1f, 0.16f), 1.5f);
-
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 14f, panel.width - 40f, 36f), "切完了", _title);
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 56f, panel.width - 40f, 24f),
-                "得分 " + _game.Score + "　·　漏了 " + _game.Missed + " 个", _small);
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 82f, panel.width - 40f, 24f),
-                SliceRules.RankFor(_game.Score) + "　·　赚了 " + _game.RunCoins + " 个宠物币", _small);
-
-            var button = ButtonStyle();
-            if (GUI.Button(new Rect(panel.x + 24f, panel.y + 136f, 200f, 48f), "再来一次", button))
-            {
-                _game.ResetRun(_game.Mode);
-            }
-
-            if (GUI.Button(new Rect(panel.xMax - 224f, panel.y + 136f, 200f, 48f), "回到宠物小屋", button))
-            {
-                _game.ReturnToRoom();
-            }
-
-            PointerOverPanel = true;
-        }
-
-        private static GUIStyle ButtonStyle()
-            => new GUIStyle(GUI.skin.button) { fontSize = 17, padding = new RectOffset(14, 14, 8, 8) };
+        private void OnEndless() => _game?.SetMode(SliceMode.Endless);
+        private void OnRetryDead() => _game?.ResetRun(_game.Mode);
     }
 }
