@@ -46,7 +46,19 @@
   不会误切水果；游戏的 `ReadBlade` 一行未改，只迁了"画"。
 - 验证：385/385 全绿；运行中探针 分数/命数/面板文本正确、`StartRun`→Playing、`SetPaused` 开关 ✅。
 
-⏳ **其余 HUD**（JumpQuest / CatchFruit / AngryBirds / Tunnel / Prism / 跑酷 / PetHud / StartMenuHud）
+**🦘 第三、四个 HUD 已迁（本轮续）：JumpQuest（跳一跳）+ CatchFruit（接果子）**
+
+- `JumpQuestHud` 迁到 uGUI：分数 / 最高分 / +2 弹字 / 蓄力条（随蓄力绿→红变宽）/ 结算面板 / 回到小屋按钮。
+  **按住蓄力**的输入从"共享触控层注册全屏 hold + 每帧读 Held/Released"换成 **`HoldArea`**（一个全屏透明
+  `Image` + `IPointerDown/Up` 处理器，按下推 `HoldInput`、抬起推 `ReleaseInput`）；游戏里旧的鼠标蓄力路径
+  与 `PointerOverPanel` 依赖删除，键盘蓄力保留。
+- `CatchFruitHud` 迁到 uGUI：分数 / 命数·最高分 / 开始·结算面板 / 左右滑动提示。
+  **左右滑动**的输入本就写在 HUD 的 `Update`（读 `MobileTouch.Gesture` + 鼠标，非 OnGUI），一行未动，
+  只迁了"画"；旧 `PointerOverPanel` 是死代码直接删。
+- 验证：385/385 全绿；运行中探针 JumpQuest `HoldArea.Pressed/Released` → `HoldInput/ReleaseInput` 正确、
+  CatchFruit `DragBy(0.5)` → Playing ✅。
+
+⏳ **其余 HUD**（AngryBirds / Tunnel / Prism / 跑酷 / PetHud / StartMenuHud）
 逐个迁到 uGUI，全部迁完才 merge 回 main 并发布。
 
 ### 第 40 轮：宠物身体替换——程序化方块换成 Kenney Cube Pets

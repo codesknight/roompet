@@ -237,7 +237,7 @@
 | [docs/BOARD.md](docs/BOARD.md) | **开发板**：需求 / 待办 / 已完成一张表，并区分"做了并验证"与"只写了计划" |
 | [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | **需求与实现对照**：每条需求 → 怎么实现的 → 验收证据；含被测试钉住的不变量（含第 23 轮新增的"画面不许撒谎"三条） |
 | [docs/BOARD.md](docs/BOARD.md) | **仓库里的开发板**：需求一行一条，状态 / 轮次 / 证据，明确区分"做了并验证"与"只写了计划" |
-| [docs/DEVLOG.md](docs/DEVLOG.md) | **开发日志与交接**：代码地图、环境事实、**153 条踩过的坑**、验证工作流 |
+| [docs/DEVLOG.md](docs/DEVLOG.md) | **开发日志与交接**：代码地图、环境事实、**154 条踩过的坑**、验证工作流 |
 | [docs/MCP_SETUP.md](docs/MCP_SETUP.md) | **AI 开发工具链**：用 MCP for Unity 让 AI 直接操作编辑器，以及别的工程怎么复用 |
 | [docs/MUSIC_SOURCES.md](docs/MUSIC_SOURCES.md) | **背景音乐的出处与许可**：11 首曲目的作者、来源页、许可与校验过程 |
 | [THIRD_PARTY.md](THIRD_PARTY.md) | **第三方资源与许可**：Kenney 素材、背景音乐、MCP for Unity、字体 |

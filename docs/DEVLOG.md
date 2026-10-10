@@ -1028,6 +1028,11 @@
      容器，`OnDestroy` 里 `Destroy` 它**——共享 Canvas 跨场景存活，不清理会把上一个游戏的 UI 漏进下一
      个场景（这也是"回到房间后画面上还挂着上一局按钮"的根源）。全屏按钮的 `onClick` 是"抬手"触发，
      不是按下触发；如果玩法要"按下就响应"，别用 Button 的 onClick，得自己接 `IPointerDownHandler`。
+154. **迁 HUD 先分清输入是"点按 / 按住 / 滑动"哪一档，再决定用哪种 uGUI 控件。** 点按（FlyBird）→ 全屏
+     Button 的 `onClick`；按住蓄力（JumpQuest）→ 全屏 `Image` + `IPointerDown/Up` 推 `HoldInput/ReleaseInput`
+     （onClick 只在抬手，蓄力会丢）；滑动/拖拽（Slice、CatchFruit）→ 输入本就在游戏或 HUD 的 `Update` 里
+     读 `MobileTouch.Gesture` + 鼠标，**别动它、只迁显示**——滑动要的是位移，硬套全屏按钮反而挡住手指。
+     分错档的代价很直观：蓄力游戏用 onClick 会变成"点一下才开始蓄力"，滑动游戏套全屏按钮会把拖拽吃掉。
 
 ---
 
