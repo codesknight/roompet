@@ -12,6 +12,7 @@
 - **`MiniAnimal`（跳一跳 + 房间预览）**：先尝试加载 Kenney 模型（猫/狗/兔/熊/狐/熊猫/猪 → animal-cat/dog/bunny/polar/fox/panda/pig），青蛙没有对应模型仍走程序化身体。
 - **`AnimalAvatar`（森林奔跑主角）**：换成 `animal-fox`，整只模型当「Rig」——`PlayerController` 的点头/下蹲/滑铲整体动画照常，腿/尾/耳的逐部位动画自然 no-op（骨头为空，已有空判）。
 - **`FlyBird`（小鸟飞行）**：换成 `animal-chick`（转 -90° 面向管道方向），整体随速度俯仰的动画保留，原来的扇翅膀单轴旋转去掉。
+- **`AngryBirds`（弹弓小鸟）**：弹弓上的鸟换成 `animal-parrot`（转 -90° 面向发射方向），飞行回放照常把整只鸟沿轨迹转向；猪保持绿色（Kenney 的猪是粉色，绿色是经典款标志色，不换）。
 - 回退：任一模型加载失败都自动回到原来的程序化身体；`MiniAnimal_BuildsARealAnimal` 测试放宽为「至少一个可见网格」（模型是合并网格，只有 6 个渲染器而非程序化的 15 个）。
 
 **测试**：388/388 通过。

@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -695,6 +695,19 @@ namespace DshMiniGames
             _bird = new GameObject("Bird").transform;
             _bird.SetParent(transform, false);
             _bird.position = SlingPosition;
+
+            // Prefer the Kenney parrot over the red sphere. -90° Y turns the model's -Z face
+            // toward +X, the launch direction the sphere bird's beak already pointed at; the
+            // flight replay keeps setting the bird's Z-rotation, which then tilts the model
+            // along the trajectory just like it did the sphere.
+            var model = DshMobile.KenneyModel.Load("animal-parrot", _bird,
+                _settings.BirdRadius * 2f, centerVertically: true);
+            if (model != null)
+            {
+                model.localRotation = Quaternion.Euler(0f, -90f, 0f);
+                UpdateBand();
+                return;
+            }
 
             AddPart(_bird, PrimitiveType.Sphere, Vector3.zero, Vector3.one * _settings.BirdRadius * 2f,
                 new Color(0.92f, 0.28f, 0.24f));
