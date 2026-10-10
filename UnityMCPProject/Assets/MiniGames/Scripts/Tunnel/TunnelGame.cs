@@ -56,6 +56,7 @@ namespace DshMiniGames
             public float DriftPhase;
             public float DriftRadius;
             public float DriftSpeed;
+            public bool Homing;        // mine: drifts toward the ship instead of in a circle
         }
 
         private void Awake()
@@ -266,11 +267,21 @@ namespace DshMiniGames
                 o.Root.localPosition = p;
 
                 // Floating mines drift in a small circle, so the obstacle is never sitting still.
+                // Homing mines instead ease toward the ship — still dodgeable (they move slowly), but
+                // they punish standing still twice over.
                 if (!o.IsGate && o.Visual != null)
                 {
-                    o.DriftPhase += dt * o.DriftSpeed;
-                    Vector2 drift = new Vector2(Mathf.Cos(o.DriftPhase), Mathf.Sin(o.DriftPhase)) * o.DriftRadius;
-                    o.Hole = TunnelRules.ClampToTunnel(o.BaseHole + drift);
+                    if (o.Homing)
+                    {
+                        o.Hole = Vector2.MoveTowards(o.Hole, _shipPos, 1.2f * dt);
+                        o.Hole = TunnelRules.ClampToTunnel(o.Hole);
+                    }
+                    else
+                    {
+                        o.DriftPhase += dt * o.DriftSpeed;
+                        Vector2 drift = new Vector2(Mathf.Cos(o.DriftPhase), Mathf.Sin(o.DriftPhase)) * o.DriftRadius;
+                        o.Hole = TunnelRules.ClampToTunnel(o.BaseHole + drift);
+                    }
                     o.Visual.localPosition = new Vector3(o.Hole.x, o.Hole.y, 0f);
                 }
 
@@ -327,38 +338,61 @@ namespace DshMiniGames
 
         private void SpawnObstacle(float z)
         {
-            // Survival mode adds mines on top of gates as the difficulty ramps; mine mode is all mines.
-            bool isMine = Mode == TunnelMode.Mine ||
-                (Mode == TunnelMode.Survival && Score >= 5 && Random.value < 0.30f);
-            var root = new GameObject(isMine ? "Mine" : "Gate").transform;
+            if (Mode == TunnelMode.Mine)
+            {
+                // 躲障碍模式：一次在前面预先生成一排炸弹（而不是单个蹦出来），难度才够。
+                SpawnMine(z);
+                SpawnMine(z + 2.6f);
+                SpawnMine(z + 5.2f);
+                return;
+            }
+
+            // Survival mode adds mines on top of gates as the difficulty ramps.
+            bool isMine = Mode == TunnelMode.Survival && Score >= 5 && Random.value < 0.30f;
+            if (isMine) { SpawnMine(z); return; }
+            SpawnGate(z);
+        }
+
+        private void SpawnMine(float z)
+        {
+            var root = new GameObject("Mine").transform;
             root.SetParent(transform, false);
             root.localPosition = new Vector3(0f, 0f, z);
 
-            var o = new Obstacle { Root = root, IsGate = !isMine };
-            if (o.IsGate)
-            {
-                // Chain each hole from the previous one, so two consecutive gates are never an
-                // impossible pair no matter how the ship wanders between them. The hole starts
-                // wide and shrinks as the score rises, and its shape widens from circles to
-                // squares / triangles / semicircles as the run goes on.
-                float r = TunnelRules.GateHoleRadiusFor(Score);
-                o.Shape = TunnelRules.GateShapeFor(Score, _gateIndex++);
-                o.Hole = TunnelRules.NextGateHole(_lastHole, Random.value, Random.value, r);
-                _lastHole = o.Hole;
-                o.Radius = r;
-                BuildGate(root, o.Hole, o.Shape, r);
-            }
-            else
-            {
-                float r = TunnelRules.MineRadiusFor(Score);
-                o.BaseHole = TunnelRules.NextMine(_shipPos, Random.value, Random.value);
-                o.Hole = o.BaseHole;
-                o.Radius = r;
-                o.DriftPhase = Random.value * Mathf.PI * 2f;
-                o.DriftRadius = 0.28f;
-                o.DriftSpeed = 1.2f + Random.value * 0.8f;
-                o.Visual = BuildMine(root, o.Hole, r);
-            }
+            float r = TunnelRules.MineRadiusFor(Score);
+            var o = new Obstacle { Root = root, IsGate = false, Radius = r };
+            o.BaseHole = TunnelRules.NextMine(_shipPos, Random.value, Random.value);
+            o.Hole = o.BaseHole;
+            o.DriftPhase = Random.value * Mathf.PI * 2f;
+            o.DriftRadius = 0.28f;
+            o.DriftSpeed = 1.2f + Random.value * 0.8f;
+
+            // 特殊炸弹：约三成会追踪，慢慢朝船身靠过去。
+            o.Homing = Random.value < 0.3f;
+            o.Visual = BuildMine(root, o.Hole, r, o.Homing);
+
+            _obstacles.Add(o);
+        }
+
+        private void SpawnGate(float z)
+        {
+            var root = new GameObject("Gate").transform;
+            root.SetParent(transform, false);
+            root.localPosition = new Vector3(0f, 0f, z);
+
+            var o = new Obstacle { Root = root, IsGate = true };
+
+            // Chain each hole from the previous one, so two consecutive gates are never an
+            // impossible pair no matter how the ship wanders between them. The hole starts
+            // wide and shrinks as the score rises, and its shape widens from circles to
+            // squares / triangles / semicircles as the run goes on.
+            float r = TunnelRules.GateHoleRadiusFor(Score);
+            o.Shape = TunnelRules.GateShapeFor(Score, _gateIndex++);
+            o.Hole = TunnelRules.NextGateHole(_lastHole, Random.value, Random.value, r);
+            _lastHole = o.Hole;
+            o.Radius = r;
+            BuildGate(root, o.Hole, o.Shape, r);
+
             _obstacles.Add(o);
         }
 
@@ -418,23 +452,27 @@ namespace DshMiniGames
             }
         }
 
-        private Transform BuildMine(Transform root, Vector2 at, float radius)
+        private Transform BuildMine(Transform root, Vector2 at, float radius, bool homing)
         {
             // A black bomb with a lit fuse, so it reads as "dodge me" instead of a generic red ball.
+            // A homing bomb is tinted red so the player can tell the tracker apart and move.
             // The whole bomb lives under one visual node so the drift moves body + fuse + spark together.
             var visual = new GameObject("MineVisual").transform;
             visual.SetParent(root, false);
             visual.localPosition = new Vector3(at.x, at.y, 0f);
 
+            Color body = homing ? new Color(0.34f, 0.10f, 0.14f) : new Color(0.13f, 0.12f, 0.15f);
+            Color spark = homing ? new Color(1f, 0.28f, 0.36f) : new Color(1f, 0.82f, 0.25f);
+
             Prim("MineBody", PrimitiveType.Sphere, visual,
                 Vector3.zero, Vector3.one * (radius * 2f),
-                Quaternion.identity, new Color(0.13f, 0.12f, 0.15f), 0.9f);
+                Quaternion.identity, body, 0.9f);
             Prim("Fuse", PrimitiveType.Cylinder, visual,
                 new Vector3(0f, radius * 1.15f, 0f), new Vector3(0.06f, radius * 0.7f, 0.06f),
                 Quaternion.identity, new Color(0.44f, 0.30f, 0.18f), 0.4f);
             Prim("Spark", PrimitiveType.Sphere, visual,
                 new Vector3(0f, radius * 1.6f, 0f), Vector3.one * (radius * 0.5f),
-                Quaternion.identity, new Color(1f, 0.82f, 0.25f), 1.5f);
+                Quaternion.identity, spark, 1.5f);
             return visual;
         }
 

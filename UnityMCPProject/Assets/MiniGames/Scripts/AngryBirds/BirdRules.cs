@@ -927,6 +927,7 @@ namespace DshMiniGames
             if (sim.Stopped) return;
 
             var settings = sim.S;
+            Vector2 prev = sim.BirdPosition;
             sim.BirdVelocity.y -= settings.Gravity * dt;
             sim.BirdPosition += sim.BirdVelocity * dt;
 
@@ -943,7 +944,7 @@ namespace DshMiniGames
                 if (Mathf.Abs(sim.BirdVelocity.x) < 0.8f && Mathf.Abs(sim.BirdVelocity.y) < 0.8f) Stop(sim);
             }
 
-            if (!sim.Stopped) BirdHit(sim);
+            if (!sim.Stopped) BirdHit(sim, prev);
         }
 
         private static void Stop(Sim sim)
@@ -965,28 +966,31 @@ namespace DshMiniGames
         /// what move. That asymmetry is deliberate — a bird that tumbled down the tower would make the
         /// shot hard to read, and the game is about where the blocks end up.
         /// </summary>
-        private static void BirdHit(Sim sim)
+        private static void BirdHit(Sim sim, Vector2 prev)
         {
             var settings = sim.S;
             float speed = sim.BirdVelocity.magnitude;
-            if (speed < settings.MinImpactSpeed) return;
+            bool hard = speed >= settings.MinImpactSpeed;
 
+            // Pigs: swept against the bird's path this step. A slow bird still bounces off a pig
+            // (it never tunnels through), but only a fast one kills it.
             for (int i = 0; i < sim.Pigs.Length; i++)
             {
                 var pig = sim.Pigs[i];
                 if (!pig.Alive) continue;
-                if (!CircleHitsCircle(sim.BirdPosition, settings.BirdRadius, pig.P, pig.R)) continue;
+                if (!SegmentHitsPoint(prev, sim.BirdPosition, settings.BirdRadius + pig.R, pig.P)) continue;
 
-                KillPig(sim, i, pig.P);
+                if (hard) KillPig(sim, i, pig.P);
                 Bounce(sim);
                 return;
             }
 
+            // Blocks: swept against the bird's path this step, for the same no-tunnel guarantee.
             for (int i = 0; i < sim.Blocks.Length; i++)
             {
                 var block = sim.Blocks[i];
                 if (!block.Alive) continue;
-                if (!CircleHitsBox(sim.BirdPosition, settings.BirdRadius, block)) continue;
+                if (!SegmentHitsBox(prev, sim.BirdPosition, settings.BirdRadius, block)) continue;
 
                 // The block gets pushed where the bird hit it, so a hit near a corner spins the block
                 // and a hit in the middle shoves it — which is what makes one tower fall differently
@@ -996,24 +1000,28 @@ namespace DshMiniGames
                 normal.Normalize();
 
                 var point = ClosestPointOnBox(sim.BirdPosition, block);
-                float birdMass = 0.6f;
-                var impulse = normal * (speed * birdMass * settings.BirdPush);
 
-                Wake(sim, block);
-                ApplyImpulse(sim, new BodyRef { Kind = KindBlock, Index = i }, impulse, point);
+                if (hard)
+                {
+                    float birdMass = 0.6f;
+                    var impulse = normal * (speed * birdMass * settings.BirdPush);
+                    Wake(sim, block);
+                    ApplyImpulse(sim, new BodyRef { Kind = KindBlock, Index = i }, impulse, point);
 
-                // The bird bounces back off the normal, keeping some of its tangent speed.
+                    int damage = DamageFor(speed, KindOf(sim.Level.Blocks[i]), settings);
+                    if (damage > 0)
+                    {
+                        var updated = sim.Level.Blocks[i];
+                        updated.Health -= damage;
+                        sim.Level.Blocks[i] = updated;
+                        if (updated.Health <= 0) BreakBlock(sim, i, point);
+                    }
+                }
+
+                // The bird bounces back off the normal, keeping some of its tangent speed. A soft hit
+                // still bounces — the bird never passes through an obstacle.
                 var tangential = sim.BirdVelocity - normal * Vector2.Dot(sim.BirdVelocity, normal);
                 sim.BirdVelocity = -normal * (speed * 0.22f) + tangential * 0.35f;
-
-                int damage = DamageFor(speed, KindOf(sim.Level.Blocks[i]), settings);
-                if (damage > 0)
-                {
-                    var updated = sim.Level.Blocks[i];
-                    updated.Health -= damage;
-                    sim.Level.Blocks[i] = updated;
-                    if (updated.Health <= 0) BreakBlock(sim, i, point);
-                }
 
                 sim.Impacts++;
                 if (sim.Impacts >= 2)
@@ -1869,6 +1877,35 @@ namespace DshMiniGames
 
         public static bool CircleHitsCircle(Vector2 centre, float radius, Vector2 other, float otherRadius)
             => (centre - other).sqrMagnitude <= (radius + otherRadius) * (radius + otherRadius);
+
+        /// <summary>
+        /// Swept circle-vs-point test: whether the segment a→b comes within <paramref name="radius"/>
+        /// of <paramref name="point"/>. This is the fix for the bird tunneling through a pig — a single
+        /// per-step point check can skip a body entirely when the bird moves fast.
+        /// </summary>
+        public static bool SegmentHitsPoint(Vector2 a, Vector2 b, float radius, Vector2 point)
+        {
+            Vector2 ab = b - a;
+            float lenSq = ab.sqrMagnitude;
+            float t = lenSq > 0.0001f ? Mathf.Clamp01(Vector2.Dot(point - a, ab) / lenSq) : 0f;
+            Vector2 closest = a + ab * t;
+            return (closest - point).sqrMagnitude <= radius * radius;
+        }
+
+        /// <summary>
+        /// Swept circle-vs-box test: samples the segment a→b at intervals no larger than the bird
+        /// radius, so the swept capsule is fully covered and a fast bird cannot skip a thin beam.
+        /// </summary>
+        private static bool SegmentHitsBox(Vector2 a, Vector2 b, float radius, SimBlock box)
+        {
+            float len = (b - a).magnitude;
+            int steps = Mathf.Max(1, Mathf.CeilToInt(len / Mathf.Max(0.04f, radius * 0.6f)));
+            for (int i = 0; i <= steps; i++)
+            {
+                if (CircleHitsBox(Vector2.Lerp(a, b, (float)i / steps), radius, box)) return true;
+            }
+            return false;
+        }
 
         /// <summary>Circle against a box, rotation included.</summary>
         public static bool CircleHitsBox(Vector2 centre, float radius, BirdBlock box)

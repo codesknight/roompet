@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **396/396 通过**（虚拟宠物 220 + 跑酷 15 + 手机端 56 + 小游戏 98，另有少量跨程序集计数），EditMode |
+| 测试 | **397/397 通过**（虚拟宠物 220 + 跑酷 15 + 手机端 56 + 小游戏 99，另有少量跨程序集计数），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -1149,6 +1149,11 @@
       例句/选项四个控件在 Build 时写了 `sizeDelta = (-36, h)`（作者把它当成"拉伸锚点下的 offset"），结果 anchor 是点锚，
       -36 就是负宽度，面板打开却"不显示单词"。修法：面板宽度是 Sync 时才算出来的，所以在 Sync 里按 `w - 36` 重设正宽度。
       **点锚（anchorMin==anchorMax）的 sizeDelta 是 size，不是 offset；负尺寸是 bug，不是"靠边留白"。**
+175. **离散的"当前点碰撞检测"会穿模，且"速度低于阈值就不判碰撞"是第二层穿模。** 弹弓小鸟原来每步只测小鸟当前落点是否压到
+      障碍：飞得快时本帧位移可能直接跳过薄板；又因为 `if (speed < MinImpactSpeed) return;` 这条早退，慢速小鸟（高抛到顶点、
+      落地反弹后滚动）干脆不判碰撞，视觉上就是"穿过障碍没破坏、穿过小猪没消灭"。修法两条：① **扫掠检测**——拿本帧起止点做
+      线段，对猪用"线段到圆心距离 ≤ 半径和"、对块用"沿线段按 ≤ 半径间距采样"；② **去掉早退**——慢速也要撞停/反弹，只是不
+      给伤害（`hard = speed >= MinImpactSpeed`）。**"检测碰撞"和"造成伤害"是两个门槛，前者永远要做，后者才看速度。**
 
 ## 八、一分钟速查
 

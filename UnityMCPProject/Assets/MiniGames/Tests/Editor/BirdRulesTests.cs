@@ -338,6 +338,24 @@ namespace DshMiniGames.Tests
         }
 
         [Test]
+        public void Geometry_SegmentSweepCatchesAFastBird()
+        {
+            // A fast bird whose start and end are BOTH clear of the pig must still hit it when its
+            // path sweeps through the pig — the whole point of the swept test over a point check.
+            var a = new Vector2(-1f, 0f);
+            var b = new Vector2(1f, 0f);
+            var pig = new Vector2(0f, 0.3f);
+            float combined = 0.26f + 0.3f;
+
+            Assert.IsFalse(BirdRules.CircleHitsCircle(a, 0.26f, pig, 0.3f), "start point is clear");
+            Assert.IsFalse(BirdRules.CircleHitsCircle(b, 0.26f, pig, 0.3f), "end point is clear");
+            Assert.IsTrue(BirdRules.SegmentHitsPoint(a, b, combined, pig), "the swept path grazes the pig");
+
+            // A path that really misses must not report a hit.
+            Assert.IsFalse(BirdRules.SegmentHitsPoint(a, b, combined, new Vector2(0f, 1.5f)));
+        }
+
+        [Test]
         public void Simulate_StopsOnTheGroundAndNeverRunsForever()
         {
             var level = BirdLevels.BuildFallback(1, Settings);

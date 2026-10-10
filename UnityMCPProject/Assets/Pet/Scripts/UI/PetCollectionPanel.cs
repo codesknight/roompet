@@ -65,6 +65,14 @@ namespace DshPet
             var record = PetCollection.Find(recordId);
             if (record == null) return new Result { Message = "找不到这只宠物", Error = true };
 
+            // The pet being cared for stays in the room, like the sell path: you can't put the
+            // primary away while it owns the brain and the journal.
+            var primary = PetCollection.Primary;
+            if (primary != null && primary.Id == recordId)
+            {
+                return new Result { Message = "它正在被你照顾，先换一只主要照顾的宠物再放回仓库", Error = true };
+            }
+
             if (PetCollection.Backpack.Count <= 1)
             {
                 return new Result { Message = "房间里至少要留一只宠物", Error = true };

@@ -2616,8 +2616,13 @@ namespace DshPet
                 new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.UpperLeft);
             DshMobile.Ugui.SetRect(voice.rectTransform, 30f, 46f, w - 340f, 20f);
 
-            var sell = DshMobile.Ugui.Button("Sell", row.transform, _armedSell == "sell:" + record.Id ? "真的卖掉？" : "卖掉", 14,
-                new Color(0.75f, 0.35f, 0.35f));
+            // The right-most button: in the backpack it is "放回仓库" (the pet leaves the room for
+            // the warehouse); in the warehouse it is "卖掉" (only here can a pet be sold). Selling
+            // keeps its two-tap confirmation; returning to the warehouse is reversible, so it is a
+            // single tap.
+            var sell = DshMobile.Ugui.Button("Sell", row.transform,
+                inBackpack ? "放回仓库" : (_armedSell == "sell:" + record.Id ? "真的卖掉？" : "卖掉"), 14,
+                inBackpack ? new Color(0.30f, 0.40f, 0.58f) : new Color(0.75f, 0.35f, 0.35f));
             sell.interactable = !isPrimary;
             sell.GetComponent<RectTransform>().anchorMin = sell.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 1f);
             sell.GetComponent<RectTransform>().pivot = new Vector2(1f, 1f);
@@ -2626,6 +2631,13 @@ namespace DshPet
             PetRecord captured = record;
             sell.onClick.AddListener(() =>
             {
+                if (inBackpack)
+                {
+                    var r = PetCollectionPanel.TakeOutOfBackpack(captured.Id);
+                    SetCollectionMessage(r.Message, r.Error);
+                    _builtCollectionTab = -1;
+                    return;
+                }
                 if (_armedSell == "sell:" + captured.Id)
                 {
                     _armedSell = null;
