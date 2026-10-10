@@ -142,6 +142,19 @@ namespace DshPet
         private UnityEngine.UI.Slider _musicSlider;
         private UnityEngine.UI.Text _musicVolumeLabel;
 
+        // uGUI journal (calendar) panel (fourth slice, fourth piece).
+        private UnityEngine.UI.Image _journalPanel;
+        private UnityEngine.UI.Text _journalMonthLabel;
+        private UnityEngine.UI.Text _journalStorageLabel;
+        private UnityEngine.UI.Text _journalStatusText;
+        private RectTransform _journalGrid;
+        private RectTransform _journalDayContent;
+        private UnityEngine.UI.Text _journalDayLabel;
+        private UnityEngine.UI.Button _deleteDayButton;
+        private UnityEngine.UI.Text _deleteDayLabel;
+        private DateTime _builtJournalMonth;
+        private DateTime _builtJournalDay;
+
         /// <summary>Set by hoverable world objects; shown near the cursor.</summary>
         public static void SetCursorHint(string hint) => _cursorHint = hint;
 
@@ -336,7 +349,7 @@ namespace DshPet
             if (_showMemory) DrawMemoryMatch(gm);
             // The settings panel is now uGUI — see SyncSettingsPanel.
             if (_showPromptPreview) DrawPromptPreview(gm);
-            if (_showJournal) DrawJournal(gm);
+            // The journal (calendar) is now uGUI — see SyncJournalPanel.
             if (_showCollection) DrawCollection(gm);
             if (_showFurnish) DrawFurnish(gm);
             // The placement bar is now uGUI — see SyncPlacementBar.
@@ -696,6 +709,7 @@ namespace DshPet
             BuildPlacementBar();
             BuildMapPanel();
             BuildSettingsPanel();
+            BuildJournalPanel();
         }
 
         private void Update()
@@ -724,6 +738,7 @@ namespace DshPet
             SyncPlacementBar();
             SyncMapPanel();
             SyncSettingsPanel();
+            SyncJournalPanel();
         }
 
         /// <summary>
@@ -1830,6 +1845,276 @@ namespace DshPet
             gm.RebuildBrain();
             FillEditConfig(gm);
             _testResult = "已从环境变量重新读取：" + resolved.Describe();
+        }
+
+        // ----------------------------------------------------------------- journal (uGUI)
+
+        private void BuildJournalPanel()
+        {
+            _journalPanel = DshMobile.Ugui.Panel("JournalPanel", _root, 18f,
+                new Color(0.11f, 0.10f, 0.14f, 1f), new Color(1f, 1f, 1f, 0.14f), 2f);
+            _journalPanel.gameObject.SetActive(false);
+            var p = _journalPanel.rectTransform;
+
+            var title = DshMobile.Ugui.Text("Title", p, "记事本", 24, new Color(1f, 0.94f, 0.82f), UnityEngine.TextAnchor.MiddleLeft, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 18f, 10f, 200f, 30f);
+
+            var prev = DshMobile.Ugui.Button("Prev", p, "◀", 14, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRect(prev.GetComponent<RectTransform>(), -300f, 14f, 34f, 26f);
+            prev.onClick.AddListener(() => { _journalMonth = _journalMonth.AddMonths(-1); });
+
+            _journalMonthLabel = DshMobile.Ugui.Text("Month", p, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_journalMonthLabel.rectTransform, -262f, 16f, 150f, 24f);
+
+            var next = DshMobile.Ugui.Button("Next", p, "▶", 14, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRect(next.GetComponent<RectTransform>(), -120f, 14f, 34f, 26f);
+            next.onClick.AddListener(() => { _journalMonth = _journalMonth.AddMonths(1); });
+
+            var close = DshMobile.Ugui.Button("Close", p, "关闭", 14, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRect(close.GetComponent<RectTransform>(), -76f, 14f, 58f, 26f);
+            close.onClick.AddListener(() => _showJournal = false);
+
+            _journalStorageLabel = DshMobile.Ugui.Text("Storage", p, "", 14,
+                new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleLeft);
+            DshMobile.Ugui.SetRect(_journalStorageLabel.rectTransform, 18f, 42f, 400f, 26f);
+
+            var clearAll = DshMobile.Ugui.Button("ClearAll", p, "清空全部", 14, new Color(0.75f, 0.35f, 0.35f));
+            DshMobile.Ugui.SetRect(clearAll.GetComponent<RectTransform>(), -104f, 42f, 96f, 26f);
+            clearAll.onClick.AddListener(OnClearAllJournal);
+
+            var clearMonth = DshMobile.Ugui.Button("ClearMonth", p, "清理本月", 14, new Color(0.75f, 0.35f, 0.35f));
+            DshMobile.Ugui.SetRect(clearMonth.GetComponent<RectTransform>(), -208f, 42f, 96f, 26f);
+            clearMonth.onClick.AddListener(OnClearMonthJournal);
+
+            _journalStatusText = DshMobile.Ugui.Text("Status", p, "", 14, new Color(1f, 0.9f, 0.6f), UnityEngine.TextAnchor.MiddleRight);
+            DshMobile.Ugui.SetRect(_journalStatusText.rectTransform, -250f, 68f, 250f, 20f);
+
+            _journalGrid = new GameObject("Grid", typeof(RectTransform)).GetComponent<RectTransform>();
+            _journalGrid.SetParent(p, false);
+            DshMobile.Ugui.SetRect(_journalGrid, 18f, 96f, 0f, 0f);
+
+            _journalDayLabel = DshMobile.Ugui.Text("DayLabel", p, "", 16, Color.white, UnityEngine.TextAnchor.MiddleLeft);
+            DshMobile.Ugui.SetRect(_journalDayLabel.rectTransform, 18f, 0f, 400f, 22f);
+
+            _deleteDayButton = DshMobile.Ugui.Button("DeleteDay", p, "删除这一天", 14, new Color(0.75f, 0.35f, 0.35f));
+            DshMobile.Ugui.SetRect(_deleteDayButton.GetComponent<RectTransform>(), -120f, 0f, 120f, 26f);
+            _deleteDayLabel = _deleteDayButton.GetComponentInChildren<UnityEngine.UI.Text>();
+            _deleteDayButton.onClick.AddListener(OnDeleteDay);
+
+            _journalDayContent = new GameObject("DayContent", typeof(RectTransform)).GetComponent<RectTransform>();
+            _journalDayContent.SetParent(p, false);
+        }
+
+        private void SyncJournalPanel()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            bool open = _showJournal;
+            _journalPanel.gameObject.SetActive(open);
+            _modalScrim.gameObject.SetActive(open || _showSettings || gm.DoorPromptOpen);
+            if (!open) return;
+
+            var w = Mathf.Min(720f, DesignWidth - 32f);
+            var h = Mathf.Min(560f, DesignHeight - 32f);
+            _journalPanel.rectTransform.anchorMin = _journalPanel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            _journalPanel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            _journalPanel.rectTransform.anchoredPosition = Vector2.zero;
+            _journalPanel.rectTransform.sizeDelta = new Vector2(w, h);
+
+            _journalMonthLabel.text = $"{_journalMonth:yyyy 年 M 月}";
+            var journal = gm.Journal;
+            _journalStorageLabel.text = $"{journal.Count} 条记忆（{journal.PinnedCount} 条钉住）　占用 {PetJournal.FormatBytes(journal.StorageBytes)}";
+            _journalStatusText.text = _journalStatus;
+
+            if (_builtJournalMonth != _journalMonth || _builtJournalDay != _selectedDay.Date)
+            {
+                RebuildJournalGrid(gm, w);
+                RebuildJournalDay(gm, w, h);
+                _builtJournalMonth = _journalMonth;
+                _builtJournalDay = _selectedDay.Date;
+            }
+        }
+
+        private void RebuildJournalGrid(PetGameManager gm, float w)
+        {
+            for (int i = _journalGrid.childCount - 1; i >= 0; i--) Destroy(_journalGrid.GetChild(i).gameObject);
+
+            string[] weekdays = { "一", "二", "三", "四", "五", "六", "日" };
+            float cellW = (w - 36f) / 7f;
+            float cellH = Mathf.Clamp((Mathf.Min(560f, DesignHeight - 32f) - 78f - 20f - 116f) / 6f, 24f, 46f);
+            for (int i = 0; i < 7; i++)
+            {
+                var wd = DshMobile.Ugui.Text("Wd", _journalGrid, weekdays[i], 14,
+                    new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleCenter);
+                DshMobile.Ugui.Place(wd.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f),
+                    new Vector2(i * cellW, -18f), new Vector2(cellW, 18f));
+            }
+
+            var first = new DateTime(_journalMonth.Year, _journalMonth.Month, 1);
+            int offset = ((int)first.DayOfWeek + 6) % 7;
+            int daysInMonth = DateTime.DaysInMonth(_journalMonth.Year, _journalMonth.Month);
+
+            for (int day = 1; day <= daysInMonth; day++)
+            {
+                var date = new DateTime(_journalMonth.Year, _journalMonth.Month, day);
+                int slot = offset + day - 1;
+                int col = slot % 7;
+                int row = slot / 7;
+
+                bool selected = date.Date == _selectedDay.Date;
+                bool today = date.Date == DateTime.Now.Date;
+
+                var cell = DshMobile.Ugui.Button("Cell", _journalGrid, day.ToString(), 12,
+                    selected ? new Color(1f, 0.92f, 0.7f, 0.95f) : (today ? new Color(0.75f, 0.85f, 1f, 0.85f) : new Color(1f, 1f, 1f, 0.16f)));
+                DshMobile.Ugui.Place(cell.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(0f, 1f),
+                    new Vector2(col * cellW + 2f, -(row * cellH + 2f)), new Vector2(cellW - 4f, cellH - 4f));
+                var dayLabel = cell.GetComponentInChildren<UnityEngine.UI.Text>();
+                dayLabel.alignment = UnityEngine.TextAnchor.UpperLeft;
+                DateTime captured = date;
+                cell.onClick.AddListener(() => _selectedDay = captured);
+
+                var kinds = gm.Journal.KindsOn(date);
+                for (int k = 0; k < kinds.Count && k < 4; k++)
+                {
+                    var dot = DshMobile.Ugui.Image("Dot", cell.transform, KindColor(kinds[k]));
+                    DshMobile.Ugui.Place(dot.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f),
+                        new Vector2(5f + k * 9f, 5f), new Vector2(7f, 7f));
+                }
+            }
+        }
+
+        private void RebuildJournalDay(PetGameManager gm, float w, float h)
+        {
+            for (int i = _journalDayContent.childCount - 1; i >= 0; i--) Destroy(_journalDayContent.GetChild(i).gameObject);
+
+            var journal = gm.Journal;
+            var entries = journal.ForDay(_selectedDay);
+            _journalDayLabel.text = $"{_selectedDay:yyyy-MM-dd}　{entries.Count} 条";
+            _journalDayLabel.rectTransform.anchorMin = _journalDayLabel.rectTransform.anchorMax = new Vector2(0f, 0f);
+            _journalDayLabel.rectTransform.pivot = new Vector2(0f, 0f);
+            _journalDayLabel.rectTransform.anchoredPosition = new Vector2(18f, 150f);
+            _journalDayLabel.rectTransform.sizeDelta = new Vector2(400f, 22f);
+
+            _deleteDayButton.gameObject.SetActive(entries.Count > 0);
+            if (entries.Count > 0)
+            {
+                bool armed = _journalConfirmDay == _selectedDay.Date;
+                _deleteDayLabel.text = armed ? $"真的删掉 {entries.Count} 条？" : "删除这一天";
+                _deleteDayButton.GetComponent<RectTransform>().anchorMin = _deleteDayButton.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 0f);
+                _deleteDayButton.GetComponent<RectTransform>().pivot = new Vector2(1f, 0f);
+                _deleteDayButton.GetComponent<RectTransform>().anchoredPosition = new Vector2(-18f, 148f);
+                _deleteDayButton.GetComponent<RectTransform>().sizeDelta = new Vector2(130f, 26f);
+            }
+
+            DshMobile.Ugui.SetRect(_journalDayContent, 18f, 180f, w - 36f, h - 200f);
+
+            float y = 4f;
+            if (entries.Count == 0)
+            {
+                var empty = DshMobile.Ugui.Text("Empty", _journalDayContent, "这一天什么也没发生。", 14,
+                    new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.UpperLeft);
+                empty.rectTransform.anchorMin = empty.rectTransform.anchorMax = new Vector2(0f, 1f);
+                empty.rectTransform.pivot = new Vector2(0f, 1f);
+                empty.rectTransform.anchoredPosition = new Vector2(2f, -y);
+                empty.rectTransform.sizeDelta = new Vector2(300f, 22f);
+                return;
+            }
+
+            foreach (var entry in entries)
+            {
+                var row = DshMobile.Ugui.Text("Entry", _journalDayContent,
+                    $"[{KindLabel(entry.Kind)}] {entry.When:HH:mm}  {entry.Title}" + (entry.Pinned ? " 📌" : ""), 16,
+                    Color.white, UnityEngine.TextAnchor.UpperLeft);
+                row.horizontalOverflow = HorizontalWrapMode.Wrap;
+                row.rectTransform.anchorMin = row.rectTransform.anchorMax = new Vector2(0f, 1f);
+                row.rectTransform.pivot = new Vector2(0f, 1f);
+                row.rectTransform.anchoredPosition = new Vector2(2f, -y);
+                row.rectTransform.sizeDelta = new Vector2(w - 76f, 24f);
+
+                var del = DshMobile.Ugui.Button("Del", _journalDayContent, "✕", 14, new Color(0.75f, 0.35f, 0.35f));
+                del.GetComponent<RectTransform>().anchorMin = del.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 1f);
+                del.GetComponent<RectTransform>().pivot = new Vector2(1f, 1f);
+                del.GetComponent<RectTransform>().anchoredPosition = new Vector2(-4f, -y);
+                del.GetComponent<RectTransform>().sizeDelta = new Vector2(34f, 24f);
+                JournalEntry capturedEntry = entry;
+                del.onClick.AddListener(() => { journal.Delete(capturedEntry); journal.Save(); _journalStatus = $"已删除 1 条（{PetJournal.FormatBytes(journal.StorageBytes)}）"; RebuildJournalDay(gm, w, h); });
+
+                y += 26f;
+
+                if (!string.IsNullOrEmpty(entry.Detail))
+                {
+                    var detail = DshMobile.Ugui.Text("Detail", _journalDayContent, "    " + entry.Detail, 14,
+                        new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.UpperLeft);
+                    detail.horizontalOverflow = HorizontalWrapMode.Wrap;
+                    detail.rectTransform.anchorMin = detail.rectTransform.anchorMax = new Vector2(0f, 1f);
+                    detail.rectTransform.pivot = new Vector2(0f, 1f);
+                    detail.rectTransform.anchoredPosition = new Vector2(2f, -y);
+                    detail.rectTransform.sizeDelta = new Vector2(w - 76f, 22f);
+                    y += 24f;
+                }
+            }
+        }
+
+        private void OnDeleteDay()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            var journal = gm.Journal;
+            var entries = journal.ForDay(_selectedDay);
+            bool armed = _journalConfirmDay == _selectedDay.Date;
+            if (armed)
+            {
+                int removed = journal.DeleteDay(_selectedDay);
+                journal.Save();
+                _journalConfirmDay = DateTime.MinValue;
+                _journalStatus = $"已删除 {removed} 条（{PetJournal.FormatBytes(journal.StorageBytes)}）";
+                _builtJournalDay = DateTime.MinValue;
+            }
+            else
+            {
+                _journalConfirmDay = _selectedDay.Date;
+                _journalStatus = "再点一次确认删除这一天的记录";
+            }
+        }
+
+        private void OnClearAllJournal()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            if (_journalConfirmAll)
+            {
+                gm.Journal.Clear();
+                gm.Journal.Save();
+                _journalConfirmAll = false;
+                _journalStatus = "记事本已清空";
+            }
+            else
+            {
+                _journalConfirmAll = true;
+                _journalConfirmMonth = false;
+                _journalStatus = "再点一次确认清空全部记忆";
+            }
+            _builtJournalDay = DateTime.MinValue;
+        }
+
+        private void OnClearMonthJournal()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            if (_journalConfirmMonth)
+            {
+                int removed = gm.Journal.DeleteMonth(_journalMonth.Year, _journalMonth.Month);
+                gm.Journal.Save();
+                _journalConfirmMonth = false;
+                _journalStatus = $"已清理 {removed} 条（{PetJournal.FormatBytes(gm.Journal.StorageBytes)}）";
+            }
+            else
+            {
+                _journalConfirmMonth = true;
+                _journalConfirmAll = false;
+                _journalStatus = $"再点一次确认清理 {_journalMonth:yyyy 年 M 月} 的记录";
+            }
+            _builtJournalDay = DateTime.MinValue;
         }
 
         /// <summary>
