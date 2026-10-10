@@ -224,6 +224,20 @@ namespace DshPet
         private float _stickHintBornAt = -1f;
         private bool _stickHintUsed;
 
+        // uGUI room overlays (view switcher / throw meter / aim guide / nearby prompt) — the last IMGUI.
+        private UnityEngine.UI.Image _viewCard;
+        private readonly List<UnityEngine.UI.Text> _viewLabels = new List<UnityEngine.UI.Text>();
+        private UnityEngine.UI.Text _viewHint;
+        private UnityEngine.UI.Image _throwPanel;
+        private UnityEngine.UI.Text _throwMeterLabel;
+        private RectTransform _throwFill;
+        private UnityEngine.UI.Image _throwFillImage;
+        private readonly List<UnityEngine.UI.Image> _aimDots = new List<UnityEngine.UI.Image>();
+        private UnityEngine.UI.Image _aimLanding;
+        private UnityEngine.UI.Text _aimLandingLabel;
+        private UnityEngine.UI.Text _nearbyPrompt;
+        private UnityEngine.UI.Text _moodLabel;
+
         /// <summary>Set by hoverable world objects; shown near the cursor.</summary>
         public static void SetCursorHint(string hint) => _cursorHint = hint;
 
@@ -390,10 +404,7 @@ namespace DshPet
             if (modal) GUI.enabled = false;
             // The pet card is now uGUI — see SyncPetCard.
             // The mobile chat bar + controls are now uGUI — see SyncMobileControls.
-            DrawViewSwitcher(gm, layout);
-            if (!Mobile) DrawThrowMeter(gm, layout);
-            else ShowMobileAimGuide(gm);
-            DrawOverlays(gm, layout);
+            // The view switcher / throw meter / aim guide / overlays are now uGUI — see SyncOverlayUi.
             GUI.enabled = true;
 
             // The map panel (door prompt) is now uGUI — see SyncMapPanel.
@@ -768,6 +779,7 @@ namespace DshPet
             BuildMemoryPanel();
             BuildPuzzlePanel();
             BuildMobileControls();
+            BuildOverlayUi();
         }
 
         private void Update()
@@ -803,6 +815,7 @@ namespace DshPet
             SyncMemoryPanel();
             SyncPuzzlePanel();
             SyncMobileControls();
+            SyncOverlayUi();
         }
 
         /// <summary>
@@ -3482,6 +3495,227 @@ namespace DshPet
         private void PositionFromDesign(RectTransform rt, Rect design)
         {
             ApplyDesignRect(rt, design);
+        }
+
+        private bool WorldToLocal(Vector3 world, out Vector2 local)
+        {
+            var cam = Camera.main;
+            if (cam == null) { local = Vector2.zero; return false; }
+            Vector3 screen = cam.WorldToScreenPoint(world);
+            if (screen.z <= 0f) { local = Vector2.zero; return false; }
+            return RectTransformUtility.ScreenPointToLocalPointInRectangle(_root, screen, null, out local);
+        }
+
+        // --------------------------------------------------------- room overlays (uGUI)
+
+        private void BuildOverlayUi()
+        {
+            _viewCard = DshMobile.Ugui.Panel("ViewCard", _root, 12f,
+                new Color(0.11f, 0.10f, 0.14f, 0.9f), new Color(1f, 1f, 1f, 0.1f), 1.5f);
+            _viewCard.gameObject.SetActive(false);
+            var title = DshMobile.Ugui.Text("ViewTitle", _viewCard.rectTransform, "视角", 16, Color.white, UnityEngine.TextAnchor.MiddleLeft);
+            DshMobile.Ugui.SetRect(title.rectTransform, 12f, 8f, 100f, 22f);
+            foreach (CameraViewMode mode in new[] { CameraViewMode.Panorama, CameraViewMode.Free, CameraViewMode.FollowPlayer })
+            {
+                var btn = DshMobile.Ugui.Button("ViewBtn", _viewCard.rectTransform, "", 14, new Color(0.30f, 0.40f, 0.58f));
+                var label = btn.GetComponentInChildren<UnityEngine.UI.Text>();
+                label.alignment = UnityEngine.TextAnchor.MiddleLeft;
+                _viewLabels.Add(label);
+                CameraViewMode captured = mode;
+                btn.onClick.AddListener(() => { var g = PetGameManager.Instance; if (g != null && g.CameraRig != null) g.CameraRig.SetView(captured); });
+            }
+            _viewHint = DshMobile.Ugui.Text("ViewHint", _root, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.UpperRight);
+
+            _throwPanel = DshMobile.Ugui.Panel("ThrowPanel", _root, 12f,
+                new Color(0.11f, 0.10f, 0.14f, 0.92f), new Color(1f, 1f, 1f, 0.14f), 1.5f);
+            _throwPanel.gameObject.SetActive(false);
+            _throwMeterLabel = DshMobile.Ugui.Text("ThrowLabel", _throwPanel.rectTransform, "按住鼠标左键蓄力，松开扔出去", 14,
+                new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleCenter);
+            DshMobile.Ugui.SetRect(_throwMeterLabel.rectTransform, 12f, 8f, 316f, 20f);
+            var throwBg = DshMobile.Ugui.Image("ThrowBg", _throwPanel.rectTransform, new Color(1f, 1f, 1f, 0.20f));
+            DshMobile.Ugui.SetRect(throwBg.rectTransform, 12f, 34f, 316f, 12f);
+            _throwFillImage = DshMobile.Ugui.Image("ThrowFill", _throwPanel.rectTransform, new Color(0.6f, 0.9f, 0.6f));
+            _throwFill = _throwFillImage.rectTransform;
+            _throwFill.anchorMin = _throwFill.anchorMax = new Vector2(0f, 1f);
+            _throwFill.pivot = new Vector2(0f, 1f);
+            _throwFill.anchoredPosition = new Vector2(12f, -34f);
+            _throwFill.sizeDelta = new Vector2(0f, 12f);
+
+            for (int i = 0; i < 30; i++)
+            {
+                var dot = DshMobile.Ugui.Image("AimDot", _root, new Color(1f, 0.92f, 0.62f, 0.55f));
+                dot.sprite = DshMobile.UguiRounded.Circle(5f, Color.white);
+                dot.rectTransform.anchorMin = dot.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+                dot.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+                dot.rectTransform.sizeDelta = new Vector2(9f, 9f);
+                dot.gameObject.SetActive(false);
+                _aimDots.Add(dot);
+            }
+
+            _aimLanding = DshMobile.Ugui.Image("AimLanding", _root, new Color(1f, 0.9f, 0.55f, 0.18f));
+            _aimLanding.sprite = DshMobile.UguiRounded.Circle(16f, Color.white);
+            _aimLanding.rectTransform.anchorMin = _aimLanding.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            _aimLanding.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            _aimLanding.gameObject.SetActive(false);
+            _aimLandingLabel = DshMobile.Ugui.Text("AimLandingLabel", _root, "", 14,
+                new Color(1f, 0.92f, 0.6f), UnityEngine.TextAnchor.MiddleCenter);
+            _aimLandingLabel.gameObject.SetActive(false);
+
+            _nearbyPrompt = DshMobile.Ugui.Text("Nearby", _root, "", 15, new Color(1f, 0.95f, 0.8f, 0.95f), UnityEngine.TextAnchor.MiddleCenter);
+            _nearbyPrompt.gameObject.SetActive(false);
+            _moodLabel = DshMobile.Ugui.Text("Mood", _root, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleCenter);
+            _moodLabel.gameObject.SetActive(false);
+        }
+
+        private void SyncOverlayUi()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            var layout = ComputeLayout(DesignWidth, DesignHeight, PetSpecies.Count, TranscriptVisible);
+
+            // View switcher.
+            var rig = gm.CameraRig;
+            bool viewOn = rig != null && !ModalOpen;
+            _viewCard.gameObject.SetActive(viewOn);
+            _viewHint.gameObject.SetActive(false);
+            if (viewOn)
+            {
+                var rect = new Rect(layout.Switcher.x, layout.Switcher.y, layout.Switcher.width, ViewCardHeight);
+                ApplyDesignRect(_viewCard.rectTransform, rect);
+                for (int i = 0; i < _viewLabels.Count; i++)
+                {
+                    var mode = new[] { CameraViewMode.Panorama, CameraViewMode.Free, CameraViewMode.FollowPlayer }[i];
+                    bool active = rig.View == mode;
+                    _viewLabels[i].text = (active ? "● " : "○ ") + RoomCameraRig.ViewLabel(mode);
+                    _viewLabels[i].color = active ? new Color(1f, 0.92f, 0.7f) : Color.white;
+                    var btnRt = _viewLabels[i].transform.parent.GetComponent<RectTransform>();
+                    btnRt.anchorMin = btnRt.anchorMax = new Vector2(0f, 1f);
+                    btnRt.pivot = new Vector2(0f, 1f);
+                    btnRt.anchoredPosition = new Vector2(12f, -(34f + i * 24f));
+                    btnRt.sizeDelta = new Vector2(rect.width - 24f, 22f);
+                }
+                if (rig.View == CameraViewMode.Free)
+                {
+                    _viewHint.gameObject.SetActive(true);
+                    _viewHint.text = "右键拖动转视角　滚轮缩放　中键平移";
+                    _viewHint.rectTransform.anchorMin = _viewHint.rectTransform.anchorMax = new Vector2(1f, 1f);
+                    _viewHint.rectTransform.pivot = new Vector2(1f, 1f);
+                    _viewHint.rectTransform.anchoredPosition = new Vector2(-layout.Switcher.x, -(layout.Switcher.yMax + 6f));
+                    _viewHint.rectTransform.sizeDelta = new Vector2(340f, 24f);
+                }
+            }
+
+            // Throw meter (desktop) + aim guide (both).
+            var player = gm.Player;
+            var ball = player != null ? player.Ball : (gm.Room != null ? gm.Room.Ball : null);
+            bool aiming = !Mobile && ball != null && ball.State == BallState.Held;
+            bool mobileAiming = Mobile && ball != null && ball.State == BallState.Held;
+
+            _throwPanel.gameObject.SetActive(aiming);
+            if (aiming)
+            {
+                ApplyDesignRect(_throwPanel.rectTransform, new Rect(DesignWidth * 0.5f - 170f, layout.ChatTop - 84f, 340f, 62f));
+                _throwFill.sizeDelta = new Vector2(316f * Mathf.Clamp01(ball.Charge), 12f);
+                _throwFillImage.color = Color.Lerp(new Color(0.6f, 0.9f, 0.6f), new Color(1f, 0.45f, 0.35f), ball.Charge);
+                DrawAimGuideUi(gm, ball);
+            }
+            else if (mobileAiming)
+            {
+                DrawAimGuideUi(gm, ball);
+            }
+            else
+            {
+                foreach (var d in _aimDots) d.gameObject.SetActive(false);
+                _aimLanding.gameObject.SetActive(false);
+                _aimLandingLabel.gameObject.SetActive(false);
+            }
+
+            // Nearby prompt + pet mood label.
+            bool nearby = gm.Player != null && gm.Player.Nearby != null && !gm.DoorPromptOpen && !ModalOpen;
+            _nearbyPrompt.gameObject.SetActive(nearby);
+            if (nearby)
+            {
+                string label = gm.Player.Nearby.Kind == InteractableKind.Door
+                    ? gm.Player.Nearby.Label + (Mobile ? "　点互动出去" : "　按 E 出去")
+                    : gm.Player.Nearby.Label + (Mobile ? "　点互动让宠物过来" : "　按 E 让宠物过来");
+                _nearbyPrompt.text = label;
+                float bottom = Mobile ? layout.Chat.yMax - MobileChatBarHeight - 26f : layout.ChatTop - 32f;
+                ApplyDesignRect(_nearbyPrompt.rectTransform, new Rect(DesignWidth * 0.5f - 200f, bottom, 400f, 24f));
+            }
+
+            var cam = Camera.main;
+            bool moodOn = cam != null && gm.Avatar != null && !ModalOpen;
+            _moodLabel.gameObject.SetActive(moodOn);
+            if (moodOn)
+            {
+                Vector2 local;
+                if (WorldToLocal(gm.Avatar.transform.position + Vector3.up * 1.1f, out local))
+                {
+                    _moodLabel.rectTransform.anchorMin = _moodLabel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+                    _moodLabel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+                    _moodLabel.rectTransform.anchoredPosition = local;
+                    _moodLabel.rectTransform.sizeDelta = new Vector2(120f, 22f);
+                    _moodLabel.text = PetUtil.MoodLabel(gm.Needs.Mood);
+                }
+            }
+        }
+
+        private void DrawAimGuideUi(PetGameManager gm, PetBall ball)
+        {
+            var player = gm.Player;
+            var camera = Camera.main;
+            if (player == null || ball == null || camera == null) return;
+
+            Vector3 origin = player.transform.position + Vector3.up * 0.55f;
+            Vector3 direction = player.AimPoint - player.transform.position;
+            direction.y = 0f;
+            if (direction.sqrMagnitude < 0.0001f) direction = player.transform.forward;
+            direction.Normalize();
+
+            float speed = Mathf.Lerp(ball.MinThrowSpeed, ball.MaxThrowSpeed, ball.Charge);
+            float elevation = ball.ThrowElevationDegrees * Mathf.Deg2Rad;
+            Vector3 velocity = direction * (speed * Mathf.Cos(elevation)) + Vector3.up * (speed * Mathf.Sin(elevation));
+
+            const float step = 0.05f;
+            Vector3 point = origin;
+            Vector3 stepVelocity = velocity;
+            float groundY = 0.26f;
+            int dotIndex = 0;
+            Vector2 local;
+
+            for (int i = 0; i < 80; i++)
+            {
+                stepVelocity += Vector3.down * (ball.Gravity * step);
+                point += stepVelocity * step;
+                if (point.y <= groundY) break;
+                if (i % 3 != 0) continue;
+
+                if (dotIndex < _aimDots.Count && WorldToLocal(point, out local))
+                {
+                    var dot = _aimDots[dotIndex];
+                    dot.gameObject.SetActive(true);
+                    dot.rectTransform.anchoredPosition = local;
+                    float size = Mathf.Lerp(5f, 9f, ball.Charge);
+                    dot.rectTransform.sizeDelta = new Vector2(size, size);
+                    dotIndex++;
+                }
+            }
+            for (int i = dotIndex; i < _aimDots.Count; i++) _aimDots[i].gameObject.SetActive(false);
+
+            Vector3 landing = new Vector3(point.x, 0.02f, point.z);
+            if (WorldToLocal(landing, out local))
+            {
+                float radius = Mathf.Lerp(34f, 16f, ball.Charge);
+                _aimLanding.gameObject.SetActive(true);
+                _aimLanding.rectTransform.anchoredPosition = local;
+                _aimLanding.rectTransform.sizeDelta = new Vector2(radius * 2f, radius * 0.9f);
+                _aimLandingLabel.gameObject.SetActive(true);
+                _aimLandingLabel.rectTransform.anchorMin = _aimLandingLabel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+                _aimLandingLabel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+                _aimLandingLabel.rectTransform.anchoredPosition = local + new Vector2(0f, -4f);
+                _aimLandingLabel.rectTransform.sizeDelta = new Vector2(120f, 20f);
+                _aimLandingLabel.text = ball.Charge > 0.85f ? "用力扔！" : "会落在这里";
+            }
         }
 
         /// <summary>
