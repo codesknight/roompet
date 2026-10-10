@@ -14,8 +14,9 @@
 
 | 用途 | 位置 |
 |---|---|
-| 自然装饰（树/灌木/花/蘑菇等 31 个 FBX） | `UnityMCPProject/Assets/Resources/Runner/Nature/` |
+| 自然装饰（树/灌木/花/蘑菇等 40 个 FBX） | `UnityMCPProject/Assets/Resources/Runner/Nature/` |
 | 道具物件（8 个 FBX） | `UnityMCPProject/Assets/Resources/Runner/Items/` |
+| 家具（Furniture Kit，140 个 FBX，露台沙发/茶几/盆栽/落地灯等） | `UnityMCPProject/Assets/Resources/Kenney/Furniture/` |
 | 原始下载留档 | `.assets/kenney/` |
 
 CC0 全文：<https://creativecommons.org/publicdomain/zero/1.0/>

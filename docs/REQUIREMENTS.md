@@ -408,6 +408,16 @@
 | R28.3 | 扭蛋机可发现 | 扭蛋机移到**「家具」面板「商城」页最顶部**（原来藏在宠物商城，玩家找不到），大字按钮 + 价格 + 概率 + 结果 | 编译 + `DrawGachaSection` ✅ |
 | R28.4 | 美术替换排期 | 路线图/`ASSETS_RESEARCH.md` 写清下一轮顺序：先 Kenney 花园/露台静态物件（低风险）→ 再宠物身体 → 再 IMGUI→uGUI，每步跑测试 | 文档已入库 |
 
+---
+
+## 阶段 29：开始上 Kenney 模型（花园/露台静态物件）
+
+| 编号 | 需求 | 实现 | 验收证据 |
+|---|---|---|---|
+| R29.1 | 露台换 Kenney 家具 | 下载 Kenney **Furniture Kit**（140 FBX，CC0 1.0）入库 `Resources/Kenney/Furniture/`；露台躺椅/矮桌/花箱换成 `loungeSofa`/`loungeSofaLong`/`tableCoffee`/`rugRound`/`pottedPlant`/`plantSmall2/3`/`lampRoundFloor`/`bench` | 运行中的游戏数出 10 个家具对象、零报错；FBX 自带材质色 ✅ 截图 `round29_terrace.png` |
+| R29.2 | 花园用满 Nature Kit + 修旧 bug | 栅栏外一圈 6 棵不同树 + 灌木/岩石/石笋/树桩/圆木/蘑菇/草丛；修掉写错的 `tree_pineRoundB`（该名不在包里，那棵树一直没出现） | 运行中的游戏数出 6 棵树/5 岩石/11 灌木树桩蘑菇草丛、零报错 ✅ 截图 `round29_garden.png` |
+| R29.3 | 每步跑测试 | 素材替换无新单测，但全套回归 358/358 通过 | 测试全绿 ✅ |
+
 
 ## 非功能需求 / 设计约束
 

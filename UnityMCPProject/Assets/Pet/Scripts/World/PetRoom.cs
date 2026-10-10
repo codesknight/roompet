@@ -642,12 +642,36 @@ namespace DshPet
             SpawnHidingSpot(new Vector3(half - 2.1f, 0f, -1.7f), 1.05f, "花丛");
             SpawnHidingSpot(new Vector3(half - 4.4f, 0f, half - 2.1f), 1.2f, "大树后");
 
-            // Outside the fence: the garden does not end at the pickets.
-            SpawnProp("Runner/Nature/tree_pineRoundA", new Vector3(-9.4f, 0f, 7.6f), 3.4f);
-            SpawnProp("Runner/Nature/tree_pineRoundB", new Vector3(9.8f, 0f, 8.4f), 3.0f);
-            SpawnProp("Runner/Nature/tree_pineRoundA", new Vector3(-11.2f, 0f, -4.2f), 2.8f);
-            SpawnProp("Runner/Nature/plant_bush", new Vector3(10.6f, 0f, -6.4f), 1.6f);
-            SpawnProp("Runner/Nature/plant_bush", new Vector3(-8.8f, 0f, -9.0f), 1.4f);
+            // Outside the fence: the garden does not end at the pickets. A ring of varied Kenney
+            // trees, rocks, stumps and mushrooms gives the garden depth instead of a flat grass
+            // skirt — the first pass had two of one tree and a missing one (tree_pineRoundB was
+            // never in the pack), which is exactly the "still too sparse" read.
+            SpawnProp("Runner/Nature/tree_oak", new Vector3(-9.6f, 0f, 7.8f), 3.6f);
+            SpawnProp("Runner/Nature/tree_pineTallA", new Vector3(10.2f, 0f, 8.2f), 3.4f);
+            SpawnProp("Runner/Nature/tree_pineRoundA", new Vector3(-11.4f, 0f, -4.6f), 3.0f);
+            SpawnProp("Runner/Nature/tree_default", new Vector3(11.8f, 0f, -5.4f), 2.9f);
+            SpawnProp("Runner/Nature/tree_simple", new Vector3(-12.8f, 0f, 3.2f), 2.6f);
+            SpawnProp("Runner/Nature/tree_fat", new Vector3(12.6f, 0f, 2.8f), 2.4f);
+
+            SpawnProp("Runner/Nature/plant_bush", new Vector3(9.0f, 0f, -7.0f), 1.5f);
+            SpawnProp("Runner/Nature/plant_bushLarge", new Vector3(-8.2f, 0f, -8.8f), 1.8f);
+            SpawnProp("Runner/Nature/plant_bush", new Vector3(-9.4f, 0f, 8.8f), 1.3f);
+
+            SpawnProp("Runner/Nature/rock_largeA", new Vector3(-7.4f, 0f, 6.6f), 1.0f);
+            SpawnProp("Runner/Nature/rock_smallA", new Vector3(7.6f, 0f, 7.0f), 0.6f);
+            SpawnProp("Runner/Nature/rock_tallA", new Vector3(8.8f, 0f, -6.6f), 0.9f);
+            SpawnProp("Runner/Nature/stone_tallA", new Vector3(-8.8f, 0f, -6.0f), 0.9f);
+
+            SpawnProp("Runner/Nature/stump_round", new Vector3(-7.8f, 0f, -7.8f), 0.8f);
+            SpawnProp("Runner/Nature/log", new Vector3(8.6f, 0f, 8.6f), 1.1f);
+            SpawnProp("Runner/Nature/mushroom_tan", new Vector3(6.6f, 0f, -7.8f), 0.5f);
+            SpawnProp("Runner/Nature/mushroom_red", new Vector3(-8.6f, 0f, 8.0f), 0.5f);
+
+            // A few accents inside the lawn, kept off the walk and the furniture.
+            SpawnProp("Runner/Nature/rock_smallD", new Vector3(-5.6f, 0f, 2.4f), 0.55f);
+            SpawnProp("Runner/Nature/stump_square", new Vector3(5.8f, 0f, 1.2f), 0.7f);
+            SpawnProp("Runner/Nature/grass_large", new Vector3(-5.4f, 0f, -2.2f), 0.9f);
+            SpawnProp("Runner/Nature/grass", new Vector3(5.6f, 0f, -2.6f), 0.7f);
             SpawnRock(new Vector3(-6.2f, 0f, -5.6f), 0.8f);
             SpawnRock(new Vector3(6.8f, 0f, 5.9f), 0.6f);
         }
@@ -774,19 +798,20 @@ namespace DshPet
             BuildStringLights(new Vector3(-half + 1.2f, 2.45f, z + 0.6f),
                 new Vector3(half - 1.2f, 2.45f, z + 0.6f), 13, 0.45f, warm);
 
-            // Two loungers and a low table, facing out over the railing.
-            Lounge(new Vector3(-2.6f, 0f, 2.1f), 12f, metal);
-            Lounge(new Vector3(2.6f, 0f, 2.1f), -12f, metal);
-            BoxUnder(_root, "TableTop", new Vector3(0f, 0.42f, 2.6f), new Vector3(1.5f, 0.10f, 1.0f),
-                metal * 1.5f, 0.5f);
-            BoxUnder(_root, "TableLeg", new Vector3(0f, 0.20f, 2.6f), new Vector3(0.5f, 0.42f, 0.5f),
-                metal * 1.2f, 0.4f);
+            // The lounge, now real Kenney furniture instead of box-built loungers. A sofa, a
+            // longer sofa, a coffee table, and a rug they sit on.
+            SpawnProp("Kenney/Furniture/loungeSofa", new Vector3(-2.8f, 0f, 1.9f), 2.4f);
+            SpawnProp("Kenney/Furniture/loungeSofaLong", new Vector3(2.9f, 0f, 1.9f), 2.6f);
+            SpawnProp("Kenney/Furniture/tableCoffee", new Vector3(0f, 0f, 2.4f), 1.2f);
+            SpawnProp("Kenney/Furniture/rugRound", new Vector3(0f, 0f, 2.0f), 2.6f);
 
-            // Planters with clipped topiary, along the railing either side of the view.
-            Planter(new Vector3(-half + 1.1f, 0f, -half + 1.6f), metal);
-            Planter(new Vector3(half - 1.1f, 0f, -half + 1.6f), metal);
-            Planter(new Vector3(-half + 1.1f, 0f, 0.4f), metal);
-            Planter(new Vector3(half - 1.1f, 0f, 0.4f), metal);
+            // Potted plants along the railing, and a floor lamp to warm the corner.
+            SpawnProp("Kenney/Furniture/pottedPlant", new Vector3(-half + 1.2f, 0f, -half + 1.7f), 1.0f);
+            SpawnProp("Kenney/Furniture/pottedPlant", new Vector3(half - 1.2f, 0f, -half + 1.7f), 1.0f);
+            SpawnProp("Kenney/Furniture/plantSmall2", new Vector3(-half + 1.2f, 0f, 0.5f), 0.8f);
+            SpawnProp("Kenney/Furniture/plantSmall3", new Vector3(half - 1.2f, 0f, 0.5f), 0.8f);
+            SpawnProp("Kenney/Furniture/lampRoundFloor", new Vector3(-half + 1.4f, 0f, 4.6f), 1.5f);
+            SpawnProp("Kenney/Furniture/bench", new Vector3(4.6f, 0f, -3.4f), 1.6f);
 
             // A brazier: the one warm thing in the middle of the deck.
             var fire = Prim(PrimitiveType.Cylinder, "Brazier", _root, new Vector3(0f, 0.34f, 4.3f),
