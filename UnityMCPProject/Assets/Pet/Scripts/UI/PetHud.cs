@@ -171,6 +171,12 @@ namespace DshPet
         private readonly List<UnityEngine.UI.Text> _furnishTabLabels = new List<UnityEngine.UI.Text>();
         private int _builtFurnishTab = -1;
 
+        // uGUI prompt preview panel (fourth slice, seventh piece).
+        private UnityEngine.UI.Image _promptPanel;
+        private UnityEngine.UI.Text _promptText;
+        private UnityEngine.UI.InputField _promptEdit;
+        private UnityEngine.UI.Text _promptSaveLabel;
+
         /// <summary>Set by hoverable world objects; shown near the cursor.</summary>
         public static void SetCursorHint(string hint) => _cursorHint = hint;
 
@@ -364,7 +370,7 @@ namespace DshPet
             if (_showPuzzle) DrawPuzzle(gm);
             if (_showMemory) DrawMemoryMatch(gm);
             // The settings panel is now uGUI — see SyncSettingsPanel.
-            if (_showPromptPreview) DrawPromptPreview(gm);
+            // The prompt preview is now uGUI — see SyncPromptPanel.
             // The journal (calendar) is now uGUI — see SyncJournalPanel.
             // The collection panel is now uGUI — see SyncCollectionPanel.
             // The furnish panel is now uGUI — see SyncFurnishPanel.
@@ -728,6 +734,7 @@ namespace DshPet
             BuildJournalPanel();
             BuildCollectionPanel();
             BuildFurnishPanel();
+            BuildPromptPanel();
         }
 
         private void Update()
@@ -759,6 +766,7 @@ namespace DshPet
             SyncJournalPanel();
             SyncCollectionPanel();
             SyncFurnishPanel();
+            SyncPromptPanel();
         }
 
         /// <summary>
@@ -2795,6 +2803,119 @@ namespace DshPet
             label.rectTransform.anchoredPosition = new Vector2(2f, -y);
             label.rectTransform.sizeDelta = new Vector2(-4f, 24f);
             return y + 26f;
+        }
+
+        // ------------------------------------------------------------ prompt preview (uGUI)
+
+        private void BuildPromptPanel()
+        {
+            _promptPanel = DshMobile.Ugui.Panel("PromptPanel", _root, 18f,
+                new Color(0.11f, 0.10f, 0.14f, 1f), new Color(1f, 1f, 1f, 0.14f), 2f);
+            _promptPanel.gameObject.SetActive(false);
+            var p = _promptPanel.rectTransform;
+
+            var title = DshMobile.Ugui.Text("Title", p, "发给模型的实际提示词", 24, new Color(1f, 0.94f, 0.82f), UnityEngine.TextAnchor.MiddleLeft, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 18f, 14f, 400f, 28f);
+
+            var viewport = new GameObject("Viewport", typeof(RectTransform));
+            viewport.transform.SetParent(p, false);
+            viewport.AddComponent<UnityEngine.UI.RectMask2D>();
+            var viewportImg = viewport.AddComponent<UnityEngine.UI.Image>();
+            viewportImg.color = new Color(0f, 0f, 0f, 0f);
+            viewportImg.raycastTarget = true;
+            var scroll = p.gameObject.AddComponent<UnityEngine.UI.ScrollRect>();
+            scroll.viewport = viewport.GetComponent<RectTransform>();
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = UnityEngine.UI.ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 30f;
+            scroll.viewport.anchorMin = new Vector2(0f, 0f);
+            scroll.viewport.anchorMax = new Vector2(1f, 1f);
+            scroll.viewport.offsetMin = new Vector2(16f, 150f);
+            scroll.viewport.offsetMax = new Vector2(-16f, -52f);
+
+            var content = new GameObject("Content", typeof(RectTransform));
+            content.transform.SetParent(viewport.transform, false);
+            var contentRt = content.GetComponent<RectTransform>();
+            contentRt.anchorMin = new Vector2(0f, 1f);
+            contentRt.anchorMax = new Vector2(1f, 1f);
+            contentRt.pivot = new Vector2(0.5f, 1f);
+            scroll.content = contentRt;
+
+            _promptText = DshMobile.Ugui.Text("Preview", content.transform, "", 12, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            _promptText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            _promptText.verticalOverflow = VerticalWrapMode.Overflow;
+            DshMobile.Ugui.Stretch(_promptText.rectTransform);
+            _promptText.rectTransform.offsetMin = new Vector2(2f, 0f);
+            _promptText.rectTransform.offsetMax = new Vector2(-2f, 0f);
+
+            var editLabel = DshMobile.Ugui.Text("EditLabel", p, "额外要求（追加在系统提示后面，会保存）", 15, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(editLabel.rectTransform, 16f, -120f, 500f, 22f);
+
+            _promptEdit = DshMobile.Ugui.InputField("Edit", p);
+            _promptEdit.lineType = UnityEngine.UI.InputField.LineType.MultiLineNewline;
+            _promptEdit.GetComponent<RectTransform>().anchorMin = _promptEdit.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 1f);
+            _promptEdit.GetComponent<RectTransform>().pivot = new Vector2(0f, 1f);
+            _promptEdit.GetComponent<RectTransform>().anchoredPosition = new Vector2(16f, -96f);
+            _promptEdit.GetComponent<RectTransform>().sizeDelta = new Vector2(-32f, 60f);
+
+            var save = DshMobile.Ugui.Button("Save", p, "保存额外要求", 16, new Color(0.30f, 0.55f, 0.35f));
+            DshMobile.Ugui.SetRect(save.GetComponent<RectTransform>(), 16f, -44f, 150f, 36f);
+            _promptSaveLabel = save.GetComponentInChildren<UnityEngine.UI.Text>();
+            save.onClick.AddListener(OnSavePrompt);
+
+            var copy = DshMobile.Ugui.Button("Copy", p, "复制全部提示词", 16, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRect(copy.GetComponent<RectTransform>(), 176f, -44f, 150f, 36f);
+            copy.onClick.AddListener(OnCopyPrompt);
+
+            var close = DshMobile.Ugui.Button("Close", p, "关闭", 16, new Color(0.75f, 0.35f, 0.35f));
+            DshMobile.Ugui.SetRect(close.GetComponent<RectTransform>(), -166f, -44f, 150f, 36f);
+            close.onClick.AddListener(() => _showPromptPreview = false);
+        }
+
+        private void SyncPromptPanel()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            bool open = _showPromptPreview;
+            _promptPanel.gameObject.SetActive(open);
+            _modalScrim.gameObject.SetActive(open || _showSettings || _showJournal || _showCollection || _showFurnish || gm.DoorPromptOpen);
+            if (!open) return;
+
+            var w = Mathf.Min(700f, DesignWidth - 32f);
+            var h = Mathf.Min(540f, DesignHeight - 32f);
+            _promptPanel.rectTransform.anchorMin = _promptPanel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            _promptPanel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            _promptPanel.rectTransform.anchoredPosition = Vector2.zero;
+            _promptPanel.rectTransform.sizeDelta = new Vector2(w, h);
+
+            _promptText.text = gm.PreviewSystemPrompt();
+            _promptText.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, Mathf.Max(200f, _promptText.preferredHeight + 12f));
+
+            if (!_promptEdit.isFocused) _promptEdit.text = _editExtraInstructions ?? "";
+            if (_promptEdit.isFocused) _editExtraInstructions = _promptEdit.text;
+
+            bool dirty = (gm.BrainConfig.ExtraInstructions ?? "") != (_editExtraInstructions ?? "");
+            _promptSaveLabel.text = dirty ? "保存额外要求 *" : "保存额外要求";
+            _promptSaveLabel.color = dirty ? new Color(1f, 0.9f, 0.6f) : Color.white;
+        }
+
+        private void OnSavePrompt()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            gm.BrainConfig.ExtraInstructions = _editExtraInstructions ?? "";
+            gm.BrainConfig.Save();
+            gm.RebuildBrain();
+        }
+
+        private void OnCopyPrompt()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            string preview = gm.PreviewSystemPrompt();
+            GUIUtility.systemCopyBuffer = preview +
+                (string.IsNullOrWhiteSpace(_editExtraInstructions) ? "" : "\n\n【主人的额外要求】\n" + _editExtraInstructions.Trim());
         }
 
         /// <summary>
