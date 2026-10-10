@@ -388,6 +388,11 @@ namespace DshPet
             DesignWidth = designWidth;
             DesignHeight = designHeight;
 
+            // The uGUI canvas must be laid out in the SAME design pixels as this HUD, otherwise
+            // every SetRect/sizeDelta in the panel is interpreted in the canvas's fixed 1280x720
+            // units and the whole UI skews on a phone (design space is ~654x1455 there).
+            DshMobile.Ugui.SetReferenceResolution(designWidth, designHeight);
+
             // The sidebar is worth its width only while the transcript is showing; with the
             // chat collapsed on a phone the room should get the whole screen back.
             TranscriptVisible = !Mobile || _chatExpanded;
@@ -737,6 +742,10 @@ namespace DshPet
         {
             if (_instance == this) _instance = null;
             if (_root != null) Destroy(_root.gameObject);
+            if (_mobileRoot != null) Destroy(_mobileRoot.gameObject);
+            // Leave the shared canvas at the default reference so mini games / the start menu /
+            // the runner (all authored against 1280x720) are not skewed by the pet-room layout.
+            DshMobile.Ugui.SetReferenceResolution(1280f, 720f);
         }
 
         /// <summary>
@@ -1064,24 +1073,29 @@ namespace DshPet
                 var tint = isUser ? new Color(0.30f, 0.52f, 0.78f, 0.95f) : new Color(0.98f, 0.93f, 0.84f, 0.96f);
                 var bubble = DshMobile.Ugui.Panel("Bubble", _chatContent, 12f, tint,
                     new Color(1f, 1f, 1f, 0.12f), 1.5f);
+                bubble.rectTransform.anchorMin = new Vector2(0f, 1f);
+                bubble.rectTransform.anchorMax = new Vector2(0f, 1f);
                 bubble.rectTransform.pivot = new Vector2(0f, 1f);
 
                 var label = DshMobile.Ugui.Text("Text", bubble.rectTransform, text, 16,
                     isUser ? Color.white : new Color(0.20f, 0.15f, 0.12f), UnityEngine.TextAnchor.UpperLeft);
                 label.horizontalOverflow = HorizontalWrapMode.Wrap;
-                DshMobile.Ugui.Stretch(label.rectTransform);
-                label.rectTransform.offsetMin = new Vector2(12f, 7f);
-                label.rectTransform.offsetMax = new Vector2(-12f, -7f);
+                // Top-left anchored inside the bubble; the 12px side / 7px vertical margins are
+                // applied as an explicit offset, not by stretching (a stretched rect + sizeDelta
+                // ended up ~2x the bubble and pushed the text out of it).
+                label.rectTransform.anchorMin = label.rectTransform.anchorMax = new Vector2(0f, 1f);
+                label.rectTransform.pivot = new Vector2(0f, 1f);
 
                 float maxW = width * 0.78f;
+                // Measure the wrapped height at the maximum width first.
                 label.rectTransform.sizeDelta = new Vector2(maxW - 24f, 0f);
                 float textH = Mathf.Max(24f, label.preferredHeight + 14f);
                 float textW = Mathf.Min(maxW, label.preferredWidth + 24f);
                 textW = Mathf.Max(textW, 62f);
+                // Final label rect: inside the bubble with the margins.
+                label.rectTransform.anchoredPosition = new Vector2(12f, -7f);
                 label.rectTransform.sizeDelta = new Vector2(textW - 24f, textH - 14f);
 
-                bubble.rectTransform.anchorMin = new Vector2(0f, 1f);
-                bubble.rectTransform.anchorMax = new Vector2(0f, 1f);
                 bubble.rectTransform.anchoredPosition = new Vector2(isUser ? width - 24f - textW : 12f, -y);
                 bubble.rectTransform.sizeDelta = new Vector2(textW, textH);
 
@@ -1392,8 +1406,23 @@ namespace DshPet
             }
         }
 
+        private string _footerSignature = "";
+
         private void RebuildFooter(PetGameManager gm, PetCardLayout plan, RectTransform p, float designWidth)
         {
+            // The footer labels only change when the plan changes. Rebuilding — and therefore
+            // destroying + re-creating — the buttons every frame means the pointer-press object is
+            // gone before pointer-up, so taps never fire. Guard on a cheap signature instead.
+            var sig = new System.Text.StringBuilder();
+            sig.Append(designWidth.ToString("F1")).Append('|');
+            if (plan.FooterRows != null)
+                foreach (var row in plan.FooterRows)
+                    if (row != null)
+                        foreach (var label in row) { sig.Append(label); sig.Append('|'); }
+            string signature = sig.ToString();
+            if (signature == _footerSignature) return;
+            _footerSignature = signature;
+
             foreach (var b in _footerButtons) if (b != null) Destroy(b.gameObject);
             _footerButtons.Clear();
 
@@ -1464,6 +1493,7 @@ namespace DshPet
         private void BuildMapPanel()
         {
             _modalScrim = DshMobile.Ugui.Image("ModalScrim", _root, new Color(0f, 0f, 0f, 0.55f));
+            _modalScrim.raycastTarget = true;   // block the pet card / mobile controls behind a modal
             DshMobile.Ugui.Stretch(_modalScrim.rectTransform);
             _modalScrim.gameObject.SetActive(false);
 
@@ -1476,10 +1506,10 @@ namespace DshPet
             DshMobile.Ugui.SetRect(title.rectTransform, 18f, 14f, 200f, 32f);
 
             _mapBalance = DshMobile.Ugui.Text("Balance", p, "", 20, new Color(1f, 0.94f, 0.82f), UnityEngine.TextAnchor.MiddleRight, true);
-            DshMobile.Ugui.SetRect(_mapBalance.rectTransform, -260f, 14f, 180f, 32f);
+            DshMobile.Ugui.SetRectRight(_mapBalance.rectTransform, 102f, 14f, 220f, 32f);
 
             var close = DshMobile.Ugui.Button("Close", p, "关闭", 16, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRect(close.GetComponent<RectTransform>(), -90f, 16f, 76f, 30f);
+            DshMobile.Ugui.SetRectRight(close.GetComponent<RectTransform>(), 18f, 16f, 76f, 30f);
             close.onClick.AddListener(OnCloseMap);
 
             _mapHere = DshMobile.Ugui.Text("Here", p, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleLeft);
@@ -1937,18 +1967,18 @@ namespace DshPet
             DshMobile.Ugui.SetRect(title.rectTransform, 18f, 10f, 200f, 30f);
 
             var prev = DshMobile.Ugui.Button("Prev", p, "◀", 14, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRect(prev.GetComponent<RectTransform>(), -300f, 14f, 34f, 26f);
+            DshMobile.Ugui.SetRectRight(prev.GetComponent<RectTransform>(), 266f, 14f, 34f, 26f);
             prev.onClick.AddListener(() => { _journalMonth = _journalMonth.AddMonths(-1); });
 
             _journalMonthLabel = DshMobile.Ugui.Text("Month", p, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleCenter);
-            DshMobile.Ugui.SetRect(_journalMonthLabel.rectTransform, -262f, 16f, 150f, 24f);
+            DshMobile.Ugui.SetRectRight(_journalMonthLabel.rectTransform, 112f, 16f, 150f, 24f);
 
             var next = DshMobile.Ugui.Button("Next", p, "▶", 14, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRect(next.GetComponent<RectTransform>(), -120f, 14f, 34f, 26f);
+            DshMobile.Ugui.SetRectRight(next.GetComponent<RectTransform>(), 86f, 14f, 34f, 26f);
             next.onClick.AddListener(() => { _journalMonth = _journalMonth.AddMonths(1); });
 
             var close = DshMobile.Ugui.Button("Close", p, "关闭", 14, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRect(close.GetComponent<RectTransform>(), -76f, 14f, 58f, 26f);
+            DshMobile.Ugui.SetRectRight(close.GetComponent<RectTransform>(), 18f, 14f, 58f, 26f);
             close.onClick.AddListener(() => _showJournal = false);
 
             _journalStorageLabel = DshMobile.Ugui.Text("Storage", p, "", 14,
@@ -1956,15 +1986,15 @@ namespace DshPet
             DshMobile.Ugui.SetRect(_journalStorageLabel.rectTransform, 18f, 42f, 400f, 26f);
 
             var clearAll = DshMobile.Ugui.Button("ClearAll", p, "清空全部", 14, new Color(0.75f, 0.35f, 0.35f));
-            DshMobile.Ugui.SetRect(clearAll.GetComponent<RectTransform>(), -104f, 42f, 96f, 26f);
+            DshMobile.Ugui.SetRectRight(clearAll.GetComponent<RectTransform>(), 18f, 42f, 96f, 26f);
             clearAll.onClick.AddListener(OnClearAllJournal);
 
             var clearMonth = DshMobile.Ugui.Button("ClearMonth", p, "清理本月", 14, new Color(0.75f, 0.35f, 0.35f));
-            DshMobile.Ugui.SetRect(clearMonth.GetComponent<RectTransform>(), -208f, 42f, 96f, 26f);
+            DshMobile.Ugui.SetRectRight(clearMonth.GetComponent<RectTransform>(), 122f, 42f, 96f, 26f);
             clearMonth.onClick.AddListener(OnClearMonthJournal);
 
             _journalStatusText = DshMobile.Ugui.Text("Status", p, "", 14, new Color(1f, 0.9f, 0.6f), UnityEngine.TextAnchor.MiddleRight);
-            DshMobile.Ugui.SetRect(_journalStatusText.rectTransform, -250f, 68f, 250f, 20f);
+            DshMobile.Ugui.SetRectRight(_journalStatusText.rectTransform, 18f, 72f, 400f, 20f);
 
             _journalGrid = new GameObject("Grid", typeof(RectTransform)).GetComponent<RectTransform>();
             _journalGrid.SetParent(p, false);
@@ -2207,7 +2237,7 @@ namespace DshPet
             DshMobile.Ugui.SetRect(title.rectTransform, 18f, 14f, 200f, 32f);
 
             _collectionBalance = DshMobile.Ugui.Text("Balance", p, "", 20, new Color(1f, 0.94f, 0.82f), UnityEngine.TextAnchor.MiddleRight, true);
-            DshMobile.Ugui.SetRect(_collectionBalance.rectTransform, -280f, 14f, 200f, 32f);
+            DshMobile.Ugui.SetRectRight(_collectionBalance.rectTransform, 18f, 14f, 220f, 32f);
 
             var tabs = new[] { CollectionTab.Shop, CollectionTab.Warehouse, CollectionTab.Backpack };
             for (int i = 0; i < tabs.Length; i++)
@@ -2220,7 +2250,7 @@ namespace DshPet
             }
 
             var close = DshMobile.Ugui.Button("Close", p, "关闭", 16, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRect(close.GetComponent<RectTransform>(), -94f, 48f, 76f, 34f);
+            DshMobile.Ugui.SetRectRight(close.GetComponent<RectTransform>(), 18f, 48f, 76f, 34f);
             close.onClick.AddListener(() => _showCollection = false);
 
             _collectionMessageText = DshMobile.Ugui.Text("Message", p, "", 14, new Color(0.7f, 0.95f, 0.75f), UnityEngine.TextAnchor.MiddleLeft);
@@ -2899,26 +2929,27 @@ namespace DshPet
             _promptText.rectTransform.offsetMax = new Vector2(-2f, 0f);
 
             var editLabel = DshMobile.Ugui.Text("EditLabel", p, "额外要求（追加在系统提示后面，会保存）", 15, Color.white, UnityEngine.TextAnchor.UpperLeft);
-            DshMobile.Ugui.SetRect(editLabel.rectTransform, 16f, -120f, 500f, 22f);
+            DshMobile.Ugui.SetRectBottomLeft(editLabel.rectTransform, 16f, 118f, 500f, 22f);
 
             _promptEdit = DshMobile.Ugui.InputField("Edit", p);
             _promptEdit.lineType = UnityEngine.UI.InputField.LineType.MultiLineNewline;
-            _promptEdit.GetComponent<RectTransform>().anchorMin = _promptEdit.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 1f);
-            _promptEdit.GetComponent<RectTransform>().pivot = new Vector2(0f, 1f);
-            _promptEdit.GetComponent<RectTransform>().anchoredPosition = new Vector2(16f, -96f);
-            _promptEdit.GetComponent<RectTransform>().sizeDelta = new Vector2(-32f, 60f);
+            _promptEdit.GetComponent<RectTransform>().anchorMin = new Vector2(0f, 0f);
+            _promptEdit.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 0f);
+            _promptEdit.GetComponent<RectTransform>().pivot = new Vector2(0.5f, 0f);
+            _promptEdit.GetComponent<RectTransform>().offsetMin = new Vector2(16f, 44f);
+            _promptEdit.GetComponent<RectTransform>().offsetMax = new Vector2(-16f, 104f);
 
             var save = DshMobile.Ugui.Button("Save", p, "保存额外要求", 16, new Color(0.30f, 0.55f, 0.35f));
-            DshMobile.Ugui.SetRect(save.GetComponent<RectTransform>(), 16f, -44f, 150f, 36f);
+            DshMobile.Ugui.SetRectBottomLeft(save.GetComponent<RectTransform>(), 16f, 8f, 150f, 36f);
             _promptSaveLabel = save.GetComponentInChildren<UnityEngine.UI.Text>();
             save.onClick.AddListener(OnSavePrompt);
 
             var copy = DshMobile.Ugui.Button("Copy", p, "复制全部提示词", 16, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRect(copy.GetComponent<RectTransform>(), 176f, -44f, 150f, 36f);
+            DshMobile.Ugui.SetRectBottomLeft(copy.GetComponent<RectTransform>(), 176f, 8f, 150f, 36f);
             copy.onClick.AddListener(OnCopyPrompt);
 
             var close = DshMobile.Ugui.Button("Close", p, "关闭", 16, new Color(0.75f, 0.35f, 0.35f));
-            DshMobile.Ugui.SetRect(close.GetComponent<RectTransform>(), -166f, -44f, 150f, 36f);
+            DshMobile.Ugui.SetRectBottomRight(close.GetComponent<RectTransform>(), 16f, 8f, 150f, 36f);
             close.onClick.AddListener(() => _showPromptPreview = false);
         }
 
@@ -3007,7 +3038,7 @@ namespace DshPet
             restart.onClick.AddListener(() => { DealMemoryBoard(PetGameManager.Instance, $"重新洗牌了。{PetMemoryMatch.Describe(_memoryLevel)}"); _builtMemoryBoardCount = -1; });
 
             _memoryFooter = DshMobile.Ugui.Text("Footer", p, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleRight);
-            DshMobile.Ugui.SetRect(_memoryFooter.rectTransform, -170f, -40f, 160f, 22f);
+            DshMobile.Ugui.SetRectBottomRight(_memoryFooter.rectTransform, 18f, 18f, 200f, 22f);
         }
 
         private void SyncMemoryPanel()
@@ -3210,7 +3241,7 @@ namespace DshPet
             toggle.onClick.AddListener(() => _puzzleShowFull = !_puzzleShowFull);
 
             _puzzleFooter = DshMobile.Ugui.Text("Footer", p, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleRight);
-            DshMobile.Ugui.SetRect(_puzzleFooter.rectTransform, -170f, -40f, 160f, 22f);
+            DshMobile.Ugui.SetRectBottomRight(_puzzleFooter.rectTransform, 18f, 18f, 200f, 22f);
         }
 
         private void SyncPuzzlePanel()

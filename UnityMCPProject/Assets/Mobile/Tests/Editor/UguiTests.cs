@@ -114,6 +114,64 @@ namespace DshMobile.Tests
             }
         }
 
+        [Test]
+        public void SetRectRight_LaysOutRightAlignedTopOrigin()
+        {
+            var canvas = NewCanvas();
+            try
+            {
+                RectTransform rt = Ugui.Rect("Box", canvas.transform);
+                Ugui.SetRectRight(rt, 18f, 14f, 76f, 30f);
+
+                Assert.AreEqual(new Vector2(1f, 1f), rt.anchorMin, "anchored to the top-right");
+                Assert.AreEqual(new Vector2(1f, 1f), rt.pivot, "pivot at the top-right corner");
+                Assert.AreEqual(new Vector2(-18f, -14f), rt.anchoredPosition, "right edge 18 in, top 14 down");
+                Assert.AreEqual(new Vector2(76f, 30f), rt.sizeDelta, "size is set directly");
+            }
+            finally
+            {
+                Object.DestroyImmediate(canvas.gameObject);
+            }
+        }
+
+        [Test]
+        public void SetRectBottomRight_LaysOutBottomRight()
+        {
+            var canvas = NewCanvas();
+            try
+            {
+                RectTransform rt = Ugui.Rect("Box", canvas.transform);
+                Ugui.SetRectBottomRight(rt, 18f, 18f, 200f, 22f);
+
+                Assert.AreEqual(new Vector2(1f, 0f), rt.anchorMin, "anchored to the bottom-right");
+                Assert.AreEqual(new Vector2(-18f, 18f), rt.anchoredPosition, "right 18 in, bottom 18 up");
+                Assert.AreEqual(new Vector2(200f, 22f), rt.sizeDelta, "size is set directly");
+            }
+            finally
+            {
+                Object.DestroyImmediate(canvas.gameObject);
+            }
+        }
+
+        [Test]
+        public void SetRectBottomLeft_LaysOutBottomLeft()
+        {
+            var canvas = NewCanvas();
+            try
+            {
+                RectTransform rt = Ugui.Rect("Box", canvas.transform);
+                Ugui.SetRectBottomLeft(rt, 16f, 8f, 150f, 36f);
+
+                Assert.AreEqual(new Vector2(0f, 0f), rt.anchorMin, "anchored to the bottom-left");
+                Assert.AreEqual(new Vector2(16f, 8f), rt.anchoredPosition, "left 16 in, bottom 8 up");
+                Assert.AreEqual(new Vector2(150f, 36f), rt.sizeDelta, "size is set directly");
+            }
+            finally
+            {
+                Object.DestroyImmediate(canvas.gameObject);
+            }
+        }
+
         private static Canvas NewCanvas()
         {
             var go = new GameObject("UguiTestCanvas");

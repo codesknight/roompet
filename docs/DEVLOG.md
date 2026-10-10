@@ -1060,8 +1060,28 @@
      想真做"双手同按"的多点 uGUI，得换新输入系统（`InputSystemUIInputModule`），那不是"迁移"是"换输入栈"。
      另外 uGUI 画世界锚定的东西（瞄准落点/心情标签）用 `RectTransformUtility.ScreenPointToLocalPointInRectangle`
      把 `Camera.WorldToScreenPoint` 的屏幕点转成 Canvas 局部坐标，别再用设计像素换算。
-
----
+159. **共享 Canvas 的参考分辨率必须等于 HUD 的"设计像素"空间，否则整屏 UI 全部歪掉。** PetHud 的动态设计空间
+     是 `safeArea / UiScale`（手机约 654×1455 竖屏），而共享 Canvas 写死 `1280×720`（横屏）——`ApplyDesignRect`
+     用"视口分数"把面板摆对，但面板**内部**的 `SetRect/sizeDelta/anchoredPosition` 全拿设计像素当 Canvas 单位，
+     而 `matchWidthOrHeight=0.5` 在竖屏上会把横屏 Canvas 拉成"比屏幕宽、比屏幕矮"，于是文字跑出气泡、按钮挤在
+     左上角、面板里的字和框对不齐。修法就一行：PetHud 每帧把 `CanvasScaler.referenceResolution` 设成
+     `(designWidth, designHeight)`（`Ugui.SetReferenceResolution`，值不变就 no-op），`OnDestroy` 再重置回
+     `1280×720` 让迷你游戏/开始界面/跑酷（这些是按 1280×720 写的）不受影响。**凡是"自绘设计像素 + 共享
+     uGUI 画布"的 HUD，先把参考分辨率对齐设计空间；面板用分数摆位救不了面板内部的像素坐标。**
+160. **`SetRect` 是"左上角原点"，把右/下对齐的元素用负数 x/y 塞进去会直接画到屏幕外。** 迁移时想当然地写
+     `SetRect(rt, -90, 16, 76, 30)`（以为"离右边 90"），但 `SetRect` 的锚点在左上角，负 x 是"往父节点左边
+     伸出 90"，结果「关闭」按钮整个在面板外、点不到——这就是"打开地图后关不掉"的真因（按钮在，只是看不见）。
+     修法：给 `Ugui` 加三个右/下对齐助手 `SetRectRight / SetRectBottomLeft / SetRectBottomRight`，把 IMGUI 的
+     `rect.xMax - N`（左缘离右边 N）换算成右锚点 `anchoredPosition.x = w - N`（或直接"右缘离右边 inset"）。
+     **迁移任何"靠右/靠下"的元素前，先确认用的是哪个原点；负坐标 = 屏外，不是"离右边多少"。**
+161. **uGUI 按钮"每帧 Destroy + 重建"会把点击吃光；`Root()` 建的每个容器都要在 `OnDestroy` 里销毁；模态遮罩要
+     挡住背后的按钮。** PetHud 的宠物卡页脚原来每帧 `RebuildFooter`（先 `Destroy` 掉上一批、再建一批），
+     EventSystem 按下时记的按钮对象在抬手前就被销毁，于是「地图/设置/记事本」这些页脚按钮**怎么点都没反应**。
+     修法：给重建加一个"内容签名"守卫，只有标签/宽度真的变了才重建。同轮另外两个收尾坑：① PetHud 有两个
+     `Root()` 容器（`PetHudOverlays` 和 `PetMobileControls`），只销毁第一个，移动端的聊天/互动/扔球圆键就
+     **漏进小游戏场景**——凡是 `Ugui.Root()` 建出的容器，`OnDestroy` 里都要 Destroy；② 模态遮罩
+     （`ModalScrim`）默认 `raycastTarget=false`，等于没遮住，点遮罩会**穿透**点到背后的宠物卡按钮——
+     遮罩要显式 `raycastTarget=true`（它在模态面板之下、宠物卡之上，正好挡住背景、放行面板自己的按钮）。
 
 ## 八、一分钟速查
 

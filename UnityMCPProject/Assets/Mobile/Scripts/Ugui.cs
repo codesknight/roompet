@@ -60,7 +60,21 @@ namespace DshMobile
         }
 
         /// <summary>
-        /// Returns the shared EventSystem, creating it (with a StandaloneInputModule) when the
+        /// Changes the shared canvas's reference resolution. The PetHud lays itself out in a
+        /// dynamic "design pixel" space (screen size / <see cref="DshMobile.MobileUi.UiScale"/>),
+        /// so it must set the canvas to that space or every design-pixel coordinate is drawn in
+        /// the wrong units. Other HUDs (mini games, the start menu, the runner) are authored
+        /// against 1280x720 and rely on the default; they reset it back on entry.
+        /// </summary>
+        public static void SetReferenceResolution(float width, float height)
+        {
+            if (width < 1f || height < 1f) return;
+            var scaler = EnsureCanvas().GetComponent<CanvasScaler>();
+            if (scaler == null) return;
+            var target = new Vector2(width, height);
+            if (scaler.referenceResolution == target) return;
+            scaler.referenceResolution = target;
+        }
         /// first uGUI Button needs input. Text and images do not call this, so a static HUD
         /// adds no input machinery.
         /// </summary>
@@ -309,6 +323,44 @@ namespace DshMobile
         {
             Place(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero,
                 new Vector2(w, h));
+        }
+
+        /// <summary>
+        /// Right-aligned, top-origin layout: the element's RIGHT edge sits <paramref name="rightInset"/>
+        /// pixels from the parent's right edge, and its top edge <paramref name="y"/> from the top.
+        /// Mirrors IMGUI's <c>rect.xMax - (N + w)</c> convention so right-aligned elements migrate 1:1.
+        /// </summary>
+        public static void SetRectRight(RectTransform rt, float rightInset, float y, float w, float h)
+        {
+            rt.anchorMin = rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(1f, 1f);
+            rt.anchoredPosition = new Vector2(-rightInset, -y);
+            rt.sizeDelta = new Vector2(w, h);
+        }
+
+        /// <summary>
+        /// Left-aligned, bottom-origin layout: the element's LEFT edge sits <paramref name="x"/> from
+        /// the parent's left edge and its BOTTOM edge <paramref name="fromBottom"/> from the parent's
+        /// bottom edge.
+        /// </summary>
+        public static void SetRectBottomLeft(RectTransform rt, float x, float fromBottom, float w, float h)
+        {
+            rt.anchorMin = rt.anchorMax = new Vector2(0f, 0f);
+            rt.pivot = new Vector2(0f, 0f);
+            rt.anchoredPosition = new Vector2(x, fromBottom);
+            rt.sizeDelta = new Vector2(w, h);
+        }
+
+        /// <summary>
+        /// Right-aligned, bottom-origin layout: RIGHT edge <paramref name="rightInset"/> from the
+        /// parent's right edge, BOTTOM edge <paramref name="fromBottom"/> from the parent's bottom edge.
+        /// </summary>
+        public static void SetRectBottomRight(RectTransform rt, float rightInset, float fromBottom, float w, float h)
+        {
+            rt.anchorMin = rt.anchorMax = new Vector2(1f, 0f);
+            rt.pivot = new Vector2(1f, 0f);
+            rt.anchoredPosition = new Vector2(-rightInset, fromBottom);
+            rt.sizeDelta = new Vector2(w, h);
         }
 
         /// <summary>

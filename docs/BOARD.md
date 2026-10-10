@@ -87,6 +87,18 @@
 - [x] **PetHud（4490 行）全部迁到 uGUI**：toast/光标提示、聊天、宠物卡、摆放条、地图、设置、记事本/日历、收集/背包、商城家具页、提示词预览、记忆配对、拼图、移动端控制（输入留 `MobileTouch` 多指触控）+ 房间浮层（视角/蓄力/瞄准/就近提示/心情）。全项目运行时 UI 已无 IMGUI 绘制。385/385 全绿
 - [ ] ⏳ **真机确认**：uGUI 中文字体渲染、按钮可点、缩放/安全区正确（FlyBird 已可在真机看全屏点按 + 面板遮挡）
 
+## 这一轮（第 42 轮）的验收清单
+
+- [x] **共享 Canvas 参考分辨率对齐设计空间**：`Ugui.SetReferenceResolution` 每帧把 `CanvasScaler.referenceResolution` 设成 PetHud 的 `(designWidth, designHeight)`，`OnDestroy` 重置回 1280×720 —— 修掉"面板内部设计像素当 Canvas 单位"导致的整屏错位（文字出气泡 / 按钮挤左上角）
+- [x] **右/下对齐助手**：`SetRectRight / SetRectBottomLeft / SetRectBottomRight`，修掉地图、记事本、图鉴、提示词预览、记忆配对、拼图 18 处"负数塞进左上角原点 `SetRect` 画到屏外"（「关闭」按钮此前在屏外 → 地图关不掉）
+- [x] **聊天气泡文字**：弃用 `Stretch`+`sizeDelta` 混摆，改显式左上锚点 + 12/7 边距，气泡按 `preferredWidth/Height` 包住文字
+- [x] **宠物卡页脚按钮失灵**：`RebuildFooter` 加内容签名守卫，不再每帧 Destroy+重建（此前抬手前按钮对象已被销毁，点击被吃光）
+- [x] **小游戏残留主页 UI**：`OnDestroy` 补销毁 `_mobileRoot`（聊天/互动/扔球圆键容器）
+- [x] **模态遮罩穿透**：`_modalScrim.raycastTarget = true`，挡住背后宠物卡按钮
+- [x] **验证**：388/388 全绿（+3 条右/下对齐助手测试）
+- [x] 文档：本文件 + CHANGELOG 第 42 轮 + DEVLOG 坑 159–161 + README 计数
+- [ ] ⏳ **真机确认**：① 各面板文字对齐、聊天文字在气泡内；② 摇杆/圆键在手指下方；③ 地图能正常关闭；④ 进小游戏无主页 UI 残留；⑤ 左上角宠物卡页脚按钮能点
+
 ## 明确推迟或不做
 
 | 项 | 状态 | 原因 |
