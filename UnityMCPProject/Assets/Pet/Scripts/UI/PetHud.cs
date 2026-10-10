@@ -78,6 +78,28 @@ namespace DshPet
         private UnityEngine.UI.Text _cursorHintText;
         private bool _overlaysBuilt;
 
+        // uGUI chat (second slice).
+        private UnityEngine.UI.Image _chatPanel;
+        private UnityEngine.UI.Image _chatAvatar;
+        private UnityEngine.UI.Text _chatName;
+        private UnityEngine.UI.Text _chatMood;
+        private UnityEngine.UI.Text _chatThinking;
+        private UnityEngine.UI.ScrollRect _chatScroll;
+        private RectTransform _chatContent;
+        private UnityEngine.UI.Button _closeButton;
+        private UnityEngine.UI.InputField _chatInput;
+        private UnityEngine.UI.Button _chatSend;
+        private UnityEngine.UI.Text _chatSendLabel;
+        private UnityEngine.UI.Button _micButton;
+        private UnityEngine.UI.Text _micLabel;
+        private UnityEngine.UI.Button _ttsButton;
+        private UnityEngine.UI.Text _ttsLabel;
+        private UnityEngine.UI.Button _soundButton;
+        private UnityEngine.UI.Text _soundLabel;
+        private UnityEngine.UI.Text _voiceStatus;
+        private readonly List<GameObject> _bubbles = new List<GameObject>();
+        private int _builtMessageCount = -1;
+
         /// <summary>Set by hoverable world objects; shown near the cursor.</summary>
         public static void SetCursorHint(string hint) => _cursorHint = hint;
 
@@ -257,7 +279,7 @@ namespace DshPet
             if (modal) GUI.enabled = false;
             DrawPetCards(gm, layout);
             if (Mobile) DrawMobileChat(gm, layout);
-            else DrawChat(gm, layout);
+            // The expanded chat (and the whole desktop chat) is now uGUI — see SyncChat.
             DrawViewSwitcher(gm, layout);
             if (!Mobile) DrawThrowMeter(gm, layout);
             else ShowMobileAimGuide(gm);
@@ -626,6 +648,8 @@ namespace DshPet
             DshMobile.Ugui.Place(_cursorHintText.rectTransform, new Vector2(0.5f, 0.5f),
                 new Vector2(0f, 0f), Vector2.zero, new Vector2(320f, 24f));
             _cursorHintText.gameObject.SetActive(false);
+
+            BuildChat();
         }
 
         private void Update()
@@ -648,6 +672,311 @@ namespace DshPet
                 }
                 _cursorHintText.text = _cursorHint;
             }
+
+            SyncChat();
+        }
+
+        /// <summary>
+        /// Positions a uGUI rect from a PetHud design-space <see cref="Rect"/>, as fractions of the
+        /// viewport. This is how the chat panel — laid out by <see cref="ComputeLayout"/> in the
+        /// HUD's dynamic design pixels — lands on the shared canvas, whose reference resolution is
+        /// fixed: anchors are fractions, so the mapping is resolution-independent.
+        /// </summary>
+        private void ApplyDesignRect(RectTransform rt, Rect design)
+        {
+            float w = DesignWidth > 0f ? DesignWidth : 1f;
+            float h = DesignHeight > 0f ? DesignHeight : 1f;
+            rt.anchorMin = new Vector2(design.xMin / w, 1f - design.yMax / h);
+            rt.anchorMax = new Vector2(design.xMax / w, 1f - design.yMin / h);
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+        }
+
+        private void BuildChat()
+        {
+            _chatPanel = DshMobile.Ugui.Panel("ChatPanel", _root, 16f,
+                new Color(0.10f, 0.09f, 0.13f, 0.94f), new Color(1f, 1f, 1f, 0.10f), 2f);
+            _chatPanel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            _chatPanel.gameObject.SetActive(false);
+            var p = _chatPanel.rectTransform;
+
+            // Header: avatar disc, name, mood, thinking indicator.
+            _chatAvatar = DshMobile.Ugui.Image("Avatar", p, Color.white);
+            _chatAvatar.sprite = DshMobile.UguiRounded.Circle(18f, Color.white);
+            _chatName = DshMobile.Ugui.Text("Name", p, "", 20, new Color(1f, 0.94f, 0.82f), UnityEngine.TextAnchor.MiddleLeft, true);
+            _chatMood = DshMobile.Ugui.Text("Mood", p, "", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleLeft);
+            _chatThinking = DshMobile.Ugui.Text("Thinking", p, "正在想…", 15, new Color(1f, 0.85f, 0.4f), UnityEngine.TextAnchor.MiddleRight);
+
+            _closeButton = DshMobile.Ugui.Button("Close", p, "收起", 16, new Color(0.75f, 0.35f, 0.35f));
+            _closeButton.onClick.AddListener(OnCloseChat);
+
+            // Transcript scroll.
+            var viewport = new GameObject("Viewport", typeof(RectTransform));
+            viewport.transform.SetParent(p, false);
+            viewport.AddComponent<UnityEngine.UI.RectMask2D>();
+            var viewportImg = viewport.AddComponent<UnityEngine.UI.Image>();
+            viewportImg.color = new Color(0f, 0f, 0f, 0f);
+            viewportImg.raycastTarget = true;
+            _chatScroll = p.gameObject.AddComponent<UnityEngine.UI.ScrollRect>();
+            _chatScroll.viewport = viewport.GetComponent<RectTransform>();
+            _chatScroll.horizontal = false;
+            _chatScroll.vertical = true;
+            _chatScroll.movementType = UnityEngine.UI.ScrollRect.MovementType.Clamped;
+            _chatScroll.scrollSensitivity = 40f;
+
+            var content = new GameObject("Content", typeof(RectTransform));
+            content.transform.SetParent(viewport.transform, false);
+            _chatContent = content.GetComponent<RectTransform>();
+            _chatContent.anchorMin = new Vector2(0f, 1f);
+            _chatContent.anchorMax = new Vector2(1f, 1f);
+            _chatContent.pivot = new Vector2(0.5f, 1f);
+            _chatScroll.content = _chatContent;
+
+            // Footer: input + send + mic + TTS + sound (all in one row for desktop; the mobile
+            // footer is a taller version of the same row, positioned by SyncChat).
+            _chatInput = DshMobile.Ugui.InputField("Input", p);
+            _chatSend = DshMobile.Ugui.Button("Send", p, "发送", 17, new Color(0.30f, 0.55f, 0.35f));
+            _chatSendLabel = _chatSend.GetComponentInChildren<UnityEngine.UI.Text>();
+            _chatSend.onClick.AddListener(OnSendChat);
+
+            _micButton = DshMobile.Ugui.Button("Mic", p, "说", 16, new Color(0.34f, 0.60f, 0.86f));
+            _micLabel = _micButton.GetComponentInChildren<UnityEngine.UI.Text>();
+            _micButton.onClick.AddListener(OnMic);
+
+            _ttsButton = DshMobile.Ugui.Button("Tts", p, "朗读：开", 14, new Color(0.30f, 0.40f, 0.58f));
+            _ttsLabel = _ttsButton.GetComponentInChildren<UnityEngine.UI.Text>();
+            _ttsButton.onClick.AddListener(OnTts);
+
+            _soundButton = DshMobile.Ugui.Button("Sound", p, "音效：开", 14, new Color(0.30f, 0.40f, 0.58f));
+            _soundLabel = _soundButton.GetComponentInChildren<UnityEngine.UI.Text>();
+            _soundButton.onClick.AddListener(OnSound);
+
+            _voiceStatus = DshMobile.Ugui.Text("VoiceStatus", p, "", 14,
+                new Color(0.72f, 0.82f, 0.95f), UnityEngine.TextAnchor.MiddleLeft);
+        }
+
+        private void SyncChat()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+
+            var layout = ComputeLayout(DesignWidth, DesignHeight, PetSpecies.Count, TranscriptVisible);
+            bool show = !Mobile || _chatExpanded;
+
+            // The collapsed mobile bar stays IMGUI for now; the expanded panel is uGUI.
+            _chatPanel.gameObject.SetActive(show);
+
+            if (!show)
+            {
+                IsTextInputFocused = false;
+                return;
+            }
+
+            var rect = layout.Chat;
+            if (Mobile) rect = new Rect(rect.x, rect.yMax - Mathf.Max(rect.height, 200f), rect.width, rect.height);
+            ApplyDesignRect(_chatPanel.rectTransform, rect);
+
+            // Header.
+            _chatAvatar.color = gm.Species != null ? gm.Species.Fur : Color.white;
+            _chatAvatar.gameObject.SetActive(true);
+            _chatAvatar.rectTransform.anchorMin = _chatAvatar.rectTransform.anchorMax = new Vector2(0f, 1f);
+            _chatAvatar.rectTransform.pivot = new Vector2(0f, 1f);
+            _chatAvatar.rectTransform.anchoredPosition = new Vector2(12f, -12f);
+            _chatAvatar.rectTransform.sizeDelta = new Vector2(36f, 36f);
+
+            _chatName.text = gm.PetName;
+            _chatName.rectTransform.anchorMin = _chatName.rectTransform.anchorMax = new Vector2(0f, 1f);
+            _chatName.rectTransform.pivot = new Vector2(0f, 1f);
+            _chatName.rectTransform.anchoredPosition = new Vector2(58f, -12f);
+            _chatName.rectTransform.sizeDelta = new Vector2(rect.width * 0.5f, 24f);
+
+            _chatMood.text = PetUtil.MoodLabel(gm.Needs.Mood) + "　·　" + (gm.Personality != null ? gm.Personality.Archetype : "");
+            _chatMood.rectTransform.anchorMin = _chatMood.rectTransform.anchorMax = new Vector2(0f, 1f);
+            _chatMood.rectTransform.pivot = new Vector2(0f, 1f);
+            _chatMood.rectTransform.anchoredPosition = new Vector2(58f, -36f);
+            _chatMood.rectTransform.sizeDelta = new Vector2(rect.width * 0.6f, 18f);
+
+            _chatThinking.gameObject.SetActive(gm.IsThinking);
+            _chatThinking.rectTransform.anchorMin = _chatThinking.rectTransform.anchorMax = new Vector2(1f, 1f);
+            _chatThinking.rectTransform.pivot = new Vector2(1f, 1f);
+            _chatThinking.rectTransform.anchoredPosition = new Vector2(-12f, -12f);
+            _chatThinking.rectTransform.sizeDelta = new Vector2(90f, 22f);
+
+            _closeButton.gameObject.SetActive(Mobile);
+            _closeButton.GetComponent<RectTransform>().anchorMin = _closeButton.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 1f);
+            _closeButton.GetComponent<RectTransform>().pivot = new Vector2(1f, 1f);
+            _closeButton.GetComponent<RectTransform>().anchoredPosition = new Vector2(-12f, -12f);
+            _closeButton.GetComponent<RectTransform>().sizeDelta = new Vector2(88f, 34f);
+
+            // Transcript.
+            float footerH = Mobile ? 150f : 100f;
+            var viewportRt = _chatScroll.viewport;
+            viewportRt.anchorMin = new Vector2(0f, 0f);
+            viewportRt.anchorMax = new Vector2(1f, 1f);
+            viewportRt.offsetMin = new Vector2(8f, footerH);
+            viewportRt.offsetMax = new Vector2(-8f, -56f);
+
+            RebuildTranscript(gm, rect.width - 16f);
+
+            // Footer.
+            float fy = footerH - 8f;
+            _chatInput.GetComponent<RectTransform>().anchorMin = _chatInput.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 0f);
+            _chatInput.GetComponent<RectTransform>().pivot = new Vector2(0f, 0f);
+            _chatInput.GetComponent<RectTransform>().anchoredPosition = new Vector2(16f, fy - 40f);
+            _chatInput.GetComponent<RectTransform>().sizeDelta = new Vector2(rect.width - 200f, 38f);
+
+            _chatSend.GetComponent<RectTransform>().anchorMin = _chatSend.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 0f);
+            _chatSend.GetComponent<RectTransform>().pivot = new Vector2(0f, 0f);
+            _chatSend.GetComponent<RectTransform>().anchoredPosition = new Vector2(rect.width - 176f, fy - 40f);
+            _chatSend.GetComponent<RectTransform>().sizeDelta = new Vector2(76f, 38f);
+            _chatSendLabel.text = gm.IsThinking ? "…" : "发送";
+
+            // Mic + TTS + sound (mobile footer row).
+            bool micHere = DshMobile.MobileStt.Offered;
+            _micButton.gameObject.SetActive(micHere);
+            if (micHere)
+            {
+                _micButton.GetComponent<RectTransform>().anchorMin = _micButton.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 0f);
+                _micButton.GetComponent<RectTransform>().pivot = new Vector2(0f, 0f);
+                _micButton.GetComponent<RectTransform>().anchoredPosition = new Vector2(16f, fy - 86f);
+                _micButton.GetComponent<RectTransform>().sizeDelta = new Vector2(64f, 40f);
+                bool listening = DshMobile.MobileStt.Listening;
+                _micLabel.text = listening ? "停" : (DshMobile.MobileStt.PendingPermission ? "等" : "说");
+            }
+
+            _ttsButton.gameObject.SetActive(DshMobile.MobileTts.Available);
+            if (DshMobile.MobileTts.Available)
+            {
+                _ttsButton.GetComponent<RectTransform>().anchorMin = _ttsButton.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 0f);
+                _ttsButton.GetComponent<RectTransform>().pivot = new Vector2(0f, 0f);
+                _ttsButton.GetComponent<RectTransform>().anchoredPosition = new Vector2(rect.width - 300f, fy - 86f);
+                _ttsButton.GetComponent<RectTransform>().sizeDelta = new Vector2(96f, 40f);
+                _ttsLabel.text = DshMobile.MobileTts.Enabled ? "朗读：开" : "朗读：关";
+            }
+
+            var audio = PetAudioDirector.Instance;
+            _soundButton.gameObject.SetActive(audio != null);
+            if (audio != null)
+            {
+                _soundButton.GetComponent<RectTransform>().anchorMin = _soundButton.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 0f);
+                _soundButton.GetComponent<RectTransform>().pivot = new Vector2(0f, 0f);
+                _soundButton.GetComponent<RectTransform>().anchoredPosition = new Vector2(rect.width - 200f, fy - 86f);
+                _soundButton.GetComponent<RectTransform>().sizeDelta = new Vector2(96f, 40f);
+                _soundLabel.text = audio.Muted ? "音效：关" : "音效：开";
+            }
+
+            string status = VoiceStatusLine();
+            _voiceStatus.gameObject.SetActive(!string.IsNullOrEmpty(status));
+            if (!string.IsNullOrEmpty(status))
+            {
+                _voiceStatus.text = status;
+                _voiceStatus.color = VoiceStatusIsProblem() ? new Color(1f, 0.68f, 0.58f) : new Color(0.72f, 0.82f, 0.95f);
+                _voiceStatus.rectTransform.anchorMin = _voiceStatus.rectTransform.anchorMax = new Vector2(0f, 0f);
+                _voiceStatus.rectTransform.pivot = new Vector2(0f, 0f);
+                _voiceStatus.rectTransform.anchoredPosition = new Vector2(18f, 4f);
+                _voiceStatus.rectTransform.sizeDelta = new Vector2(rect.width - 36f, 20f);
+            }
+
+            // Keep the input's text in sync with the IMGUI-era field.
+            if (!_chatInput.isFocused && _chatInput.text != _input) _chatInput.text = _input;
+            if (_chatInput.isFocused) _input = _chatInput.text;
+            IsTextInputFocused = _chatInput.isFocused;
+        }
+
+        private void RebuildTranscript(PetGameManager gm, float width)
+        {
+            var recent = gm.Memory.Recent;
+            int start = Mathf.Max(0, recent.Count - MaxLogLines);
+            int count = recent.Count - start;
+
+            if (count == _builtMessageCount) return;
+            _builtMessageCount = count;
+
+            foreach (var b in _bubbles) if (b != null) Destroy(b);
+            _bubbles.Clear();
+
+            _chatContent.sizeDelta = new Vector2(-20f, Mathf.Max(100f, count * 62f + 12f));
+            float y = 6f;
+
+            for (int i = start; i < recent.Count; i++)
+            {
+                var line = recent[i];
+                string text = line.Text ?? "";
+                if (line.IsSystem)
+                {
+                    var t = DshMobile.Ugui.Text("System", _chatContent, text, 14,
+                        new Color(0.78f, 0.80f, 0.88f, 0.9f), UnityEngine.TextAnchor.MiddleCenter);
+                    t.fontStyle = FontStyle.Italic;
+                    t.horizontalOverflow = HorizontalWrapMode.Wrap;
+                    t.rectTransform.anchorMin = new Vector2(0f, 1f);
+                    t.rectTransform.anchorMax = new Vector2(1f, 1f);
+                    t.rectTransform.pivot = new Vector2(0.5f, 1f);
+                    t.rectTransform.anchoredPosition = new Vector2(0f, -y);
+                    t.rectTransform.sizeDelta = new Vector2(0f, 34f);
+                    _bubbles.Add(t.gameObject);
+                    y += 44f;
+                    continue;
+                }
+
+                bool isUser = line.IsUser;
+                var tint = isUser ? new Color(0.30f, 0.52f, 0.78f, 0.95f) : new Color(0.98f, 0.93f, 0.84f, 0.96f);
+                var bubble = DshMobile.Ugui.Panel("Bubble", _chatContent, 12f, tint,
+                    new Color(1f, 1f, 1f, 0.12f), 1.5f);
+                bubble.rectTransform.pivot = new Vector2(0f, 1f);
+
+                var label = DshMobile.Ugui.Text("Text", bubble.rectTransform, text, 16,
+                    isUser ? Color.white : new Color(0.20f, 0.15f, 0.12f), UnityEngine.TextAnchor.UpperLeft);
+                label.horizontalOverflow = HorizontalWrapMode.Wrap;
+                DshMobile.Ugui.Stretch(label.rectTransform);
+                label.rectTransform.offsetMin = new Vector2(12f, 7f);
+                label.rectTransform.offsetMax = new Vector2(-12f, -7f);
+
+                float maxW = width * 0.78f;
+                label.rectTransform.sizeDelta = new Vector2(maxW - 24f, 0f);
+                float textH = Mathf.Max(24f, label.preferredHeight + 14f);
+                float textW = Mathf.Min(maxW, label.preferredWidth + 24f);
+                textW = Mathf.Max(textW, 62f);
+                label.rectTransform.sizeDelta = new Vector2(textW - 24f, textH - 14f);
+
+                bubble.rectTransform.anchorMin = new Vector2(0f, 1f);
+                bubble.rectTransform.anchorMax = new Vector2(0f, 1f);
+                bubble.rectTransform.anchoredPosition = new Vector2(isUser ? width - 24f - textW : 12f, -y);
+                bubble.rectTransform.sizeDelta = new Vector2(textW, textH);
+
+                _bubbles.Add(bubble.gameObject);
+                y += textH + 8f;
+            }
+
+            _chatContent.sizeDelta = new Vector2(-20f, y + 12f);
+            _chatScroll.normalizedPosition = new Vector2(0f, 0f);
+        }
+
+        private void OnCloseChat() { _chatExpanded = false; }
+        private void OnSendChat()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null || gm.IsThinking) return;
+            gm.Talk(_input);
+            _input = "";
+            _chatInput.text = "";
+        }
+        private void OnMic()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            if (DshMobile.MobileStt.Listening) DshMobile.MobileStt.StopListening();
+            else StartListeningAndSay(gm);
+        }
+        private void OnTts()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            SetSpeechEnabled(gm, !DshMobile.MobileTts.Enabled);
+        }
+        private void OnSound()
+        {
+            var audio = PetAudioDirector.Instance;
+            if (audio != null) audio.ToggleMute();
         }
 
         /// <summary>
@@ -1623,9 +1952,8 @@ namespace DshPet
                 return;
             }
 
-            // Expanded: the real transcript. The 收起 button is drawn by DrawChat, which also
-            // reserves its width out of the header — see the comment there.
-            DrawChat(gm, layout);
+            // Expanded: the real transcript is now uGUI (see SyncChat). Just mark the unread
+            // messages as read so the collapsed bar's dot clears.
             _unreadMark = gm.Memory.Recent.Count;
         }
 

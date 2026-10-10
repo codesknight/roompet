@@ -208,6 +208,49 @@ namespace DshMobile
             return slider;
         }
 
+        /// <summary>
+        /// Creates a text InputField (a track, a text component and a placeholder), wired through
+        /// the shared EventSystem. Used by the pet-room chat box.
+        /// </summary>
+        public static InputField InputField(string name, Transform parent)
+        {
+            EnsureEventSystem();
+
+            var rt = Rect(name, parent);
+            var bg = Image(name + "Bg", rt, new Color(1f, 1f, 1f, 0.10f));
+            Stretch(bg.rectTransform);
+
+            var textGo = new GameObject("Text", typeof(RectTransform));
+            textGo.transform.SetParent(rt, false);
+            var text = textGo.AddComponent<Text>();
+            text.font = UguiFont.Resolve(17);
+            text.fontSize = 17;
+            text.color = Color.white;
+            text.alignment = TextAnchor.MiddleLeft;
+            text.supportRichText = false;
+            Stretch(text.rectTransform);
+            text.rectTransform.offsetMin = new Vector2(10f, 0f);
+            text.rectTransform.offsetMax = new Vector2(-10f, 0f);
+
+            var placeholderGo = new GameObject("Placeholder", typeof(RectTransform));
+            placeholderGo.transform.SetParent(rt, false);
+            var placeholder = placeholderGo.AddComponent<Text>();
+            placeholder.font = UguiFont.Resolve(17);
+            placeholder.fontSize = 17;
+            placeholder.color = new Color(0.6f, 0.6f, 0.65f, 0.6f);
+            placeholder.alignment = TextAnchor.MiddleLeft;
+            placeholder.text = "说点什么…";
+            Stretch(placeholder.rectTransform);
+            placeholder.rectTransform.offsetMin = new Vector2(10f, 0f);
+            placeholder.rectTransform.offsetMax = new Vector2(-10f, 0f);
+
+            var input = rt.gameObject.AddComponent<InputField>();
+            input.textComponent = text;
+            input.placeholder = placeholder;
+            input.characterLimit = 400;
+            return input;
+        }
+
         // --------------------------------------------------------------- layout
 
         /// <summary>Stretches a RectTransform to fill its parent.</summary>
