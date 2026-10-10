@@ -825,15 +825,34 @@ namespace DshPet
                     }
                     break;
                 case InteractableKind.Pond:
-                    // The pond is a water source: the pet drinks from it, and the owner fishes.
-                    bool thirsty = Needs.Hunger < 0.9f;
-                    Needs.GiveWater();
-                    Avatar.PlayAction(PetAction.Drink, 2.4f);
-                    if (thirsty) DshMobile.PetWallet.Add(DshPet.GardenRules.DrinkCoinReward);
+                    // The pond has three pet uses: bathe when dirty, swim when bored, and
+                    // otherwise drink. The owner's own fishing / drawing water is a separate
+                    // path (PetGameManager.UsePond), so the pet never competes for the line.
+                    if (Needs.Cleanliness < 0.55f)
+                    {
+                        Needs.Clean(0.9f);
+                        Avatar.PlayAction(PetAction.Jump, 3f);
+                        PetAudioDirector.Instance?.Play(SfxId.Splash);
+                        StartBubbles(target.transform.position);
+                    }
+                    else if (Needs.Joy < 0.55f)
+                    {
+                        Needs.Play(0.45f, true);
+                        Avatar.PlayAction(PetAction.Play, 3.2f);
+                        PetAudioDirector.Instance?.Play(SfxId.Splash);
+                    }
+                    else
+                    {
+                        bool thirsty = Needs.Hunger < 0.9f;
+                        Needs.GiveWater();
+                        Avatar.PlayAction(PetAction.Drink, 2.4f);
+                        if (thirsty) DshMobile.PetWallet.Add(DshPet.GardenRules.DrinkCoinReward);
+                    }
                     break;
                 case InteractableKind.GrassHeap:
                 case InteractableKind.RockingChair:
-                    // A nap, whether in the garden's straw or the terrace's rocker.
+                case InteractableKind.Sofa:
+                    // A nap, whether in the garden's straw, the terrace's rocker, or on the sofa.
                     CurrentMode = Mode.Sleep;
                     _sleepTimer = 0f;
                     Avatar.PlayAction(PetAction.Sleep, 900f);

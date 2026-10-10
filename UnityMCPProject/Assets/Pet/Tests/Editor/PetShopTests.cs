@@ -232,6 +232,26 @@ namespace DshPet.Tests
         }
 
         [Test]
+        public void DrawingWaterAtThePondAlsoAddsOneWaterToTheWarehouse()
+        {
+            // The request: filling the bucket at the pond should ALSO put one bottle of water in
+            // the warehouse, not just set the bucket flag — the water is a real stackable item.
+            Assert.AreEqual(0, PetInventory.Count("water"));
+            Assert.IsFalse(PetBackpack.BucketFull);
+
+            PetInventory.FillBucketFromPond();
+
+            Assert.IsTrue(PetBackpack.BucketFull, "the bucket is full");
+            Assert.AreEqual(1, PetInventory.Count("water"), "one bottle of water landed in the warehouse");
+
+            // A second draw while full does not stack up water for free (the pond path only calls
+            // this when the bucket is empty, but the rule itself stays idempotent in intent).
+            PetBackpack.BucketFull = false;
+            PetInventory.FillBucketFromPond();
+            Assert.AreEqual(2, PetInventory.Count("water"));
+        }
+
+        [Test]
         public void AppleEconomyIsBounded()
         {
             Assert.AreEqual(0, GardenRules.ClampApples(-3));

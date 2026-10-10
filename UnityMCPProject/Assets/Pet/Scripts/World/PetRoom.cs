@@ -58,7 +58,6 @@ namespace DshPet
             ApplyTheme();
             BuildShell();
             BuildRug();
-            BuildFurniture();
 
             BuildBowls();
             BuildPurchasedProps();
@@ -553,15 +552,6 @@ namespace DshPet
                 Color.Lerp(RugColor, Color.white, 0.35f), 0.6f);
         }
 
-        private void BuildFurniture()
-        {
-            // Low shelf along the back wall.
-            Box("Shelf", new Vector3(-3.6f, 0.9f, 6.2f), new Vector3(3.6f, 1.8f, 0.7f),
-                new Color(0.55f, 0.38f, 0.26f), 0.45f);
-            Box("ShelfTop", new Vector3(-3.6f, 1.84f, 6.2f), new Vector3(3.9f, 0.12f, 0.9f),
-                new Color(0.66f, 0.47f, 0.32f), 0.45f);
-        }
-
         /// <summary>Decor that only makes sense in one place.</summary>
         private void BuildThemeDecor()
         {
@@ -577,7 +567,9 @@ namespace DshPet
                     return;
             }
 
-            // The cabin's own touches: a couple of pot plants and a mushroom by the skirting.
+            // The cabin's own touches: the warehouse by the back wall (click to open the
+            // warehouse page), plus a couple of pot plants and a mushroom by the skirting.
+            BuildWarehouse(new Vector3(-3.4f, 0f, 6.0f));
             SpawnProp("Runner/Nature/plant_bush", new Vector3(6.1f, 0f, 6.1f), 0.9f);
             SpawnProp("Runner/Nature/flower_yellowA", new Vector3(5.6f, 0f, -5.4f), 0.45f);
             SpawnProp("Runner/Nature/mushroom_red", new Vector3(-5.6f, 0f, -5.8f), 0.5f);
@@ -647,12 +639,12 @@ namespace DshPet
             // trees, rocks, stumps and mushrooms gives the garden depth instead of a flat grass
             // skirt — the first pass had two of one tree and a missing one (tree_pineRoundB was
             // never in the pack), which is exactly the "still too sparse" read.
-            SpawnProp("Runner/Nature/tree_oak", new Vector3(-9.6f, 0f, 7.8f), 3.6f);
-            SpawnProp("Runner/Nature/tree_pineTallA", new Vector3(10.2f, 0f, 8.2f), 3.4f);
-            SpawnProp("Runner/Nature/tree_pineRoundA", new Vector3(-11.4f, 0f, -4.6f), 3.0f);
-            SpawnProp("Runner/Nature/tree_default", new Vector3(11.8f, 0f, -5.4f), 2.9f);
-            SpawnProp("Runner/Nature/tree_simple", new Vector3(-12.8f, 0f, 3.2f), 2.6f);
-            SpawnProp("Runner/Nature/tree_fat", new Vector3(12.6f, 0f, 2.8f), 2.4f);
+            SpawnProp("Runner/Nature/tree_oak", new Vector3(-9.6f, 0f, 7.8f), 3.6f, solid: true);
+            SpawnProp("Runner/Nature/tree_pineTallA", new Vector3(10.2f, 0f, 8.2f), 3.4f, solid: true);
+            SpawnProp("Runner/Nature/tree_pineRoundA", new Vector3(-11.4f, 0f, -4.6f), 3.0f, solid: true);
+            SpawnProp("Runner/Nature/tree_default", new Vector3(11.8f, 0f, -5.4f), 2.9f, solid: true);
+            SpawnProp("Runner/Nature/tree_simple", new Vector3(-12.8f, 0f, 3.2f), 2.6f, solid: true);
+            SpawnProp("Runner/Nature/tree_fat", new Vector3(12.6f, 0f, 2.8f), 2.4f, solid: true);
 
             SpawnProp("Runner/Nature/plant_bush", new Vector3(9.0f, 0f, -7.0f), 1.5f);
             SpawnProp("Runner/Nature/plant_bushLarge", new Vector3(-8.2f, 0f, -8.8f), 1.8f);
@@ -801,8 +793,10 @@ namespace DshPet
 
             // The lounge, now real Kenney furniture instead of box-built loungers. A sofa, a
             // longer sofa, a coffee table, and a rug they sit on.
-            SpawnProp("Kenney/Furniture/loungeSofa", new Vector3(-2.8f, 0f, 1.9f), 2.4f);
-            SpawnProp("Kenney/Furniture/loungeSofaLong", new Vector3(2.9f, 0f, 1.9f), 2.6f);
+            SpawnInteractableProp("Kenney/Furniture/loungeSofa", new Vector3(-2.8f, 0f, 1.9f), 2.4f,
+                InteractableKind.Sofa, "沙发（坐上去休息）", new Vector3(0f, -1.3f));
+            SpawnInteractableProp("Kenney/Furniture/loungeSofaLong", new Vector3(2.9f, 0f, 1.9f), 2.6f,
+                InteractableKind.Sofa, "沙发（坐上去休息）", new Vector3(0f, -1.3f));
             SpawnProp("Kenney/Furniture/tableCoffee", new Vector3(0f, 0f, 2.4f), 1.2f);
             SpawnProp("Kenney/Furniture/rugRound", new Vector3(0f, 0f, 2.0f), 2.6f);
 
@@ -811,7 +805,7 @@ namespace DshPet
             SpawnProp("Kenney/Furniture/pottedPlant", new Vector3(half - 1.2f, 0f, -half + 1.7f), 1.0f);
             SpawnProp("Kenney/Furniture/plantSmall2", new Vector3(-half + 1.2f, 0f, 0.5f), 0.8f);
             SpawnProp("Kenney/Furniture/plantSmall3", new Vector3(half - 1.2f, 0f, 0.5f), 0.8f);
-            SpawnProp("Kenney/Furniture/lampRoundFloor", new Vector3(-half + 1.4f, 0f, 4.6f), 1.5f);
+            SpawnLamp(new Vector3(-half + 1.4f, 0f, 4.6f));
             SpawnProp("Kenney/Furniture/bench", new Vector3(4.6f, 0f, -3.4f), 1.6f);
 
             // A brazier: the one warm thing in the middle of the deck.
@@ -969,10 +963,15 @@ namespace DshPet
             BuildThemeDecor();
         }
 
-        private void SpawnProp(string resourcePath, Vector3 position, float size)
+        /// <summary>
+        /// Spawns a Resources prefab, scales it to <paramref name="size"/> and rests it on the
+        /// floor. Returns the instance, or null when the prefab is missing — the silent miss that
+        /// <see cref="SpawnProp"/>'s callers must not mistake for success.
+        /// </summary>
+        private GameObject InstantiateProp(string resourcePath, Vector3 position, float size)
         {
             var prefab = Resources.Load<GameObject>(resourcePath);
-            if (prefab == null) return;
+            if (prefab == null) return null;
 
             var instance = Instantiate(prefab, _root);
             instance.name = System.IO.Path.GetFileName(resourcePath);
@@ -988,13 +987,127 @@ namespace DshPet
             instance.transform.position = new Vector3(position.x, 0f, position.z);
             var placed = MeasureBounds(instance);
             instance.transform.position = new Vector3(position.x, position.y - placed.min.y, position.z);
+            return instance;
+        }
 
+        /// <summary>Removes every collider on a spawned prop (decor should not block the walk).</summary>
+        private void StripAllColliders(GameObject instance)
+        {
             foreach (var collider in instance.GetComponentsInChildren<Collider>())
             {
                 if (Application.isPlaying) Destroy(collider); else DestroyImmediate(collider);
             }
+        }
 
+        /// <summary>Adds one box collider covering the prop's whole bounds, so it cannot be walked through.</summary>
+        private void AddBoundsCollider(GameObject instance)
+        {
+            var hit = instance.GetComponent<BoxCollider>();
+            if (hit == null) hit = instance.AddComponent<BoxCollider>();
+
+            var bounds = MeasureBounds(instance);
+            Vector3 scale = instance.transform.lossyScale;
+            hit.size = new Vector3(
+                bounds.size.x / Mathf.Max(0.0001f, Mathf.Abs(scale.x)),
+                bounds.size.y / Mathf.Max(0.0001f, Mathf.Abs(scale.y)),
+                bounds.size.z / Mathf.Max(0.0001f, Mathf.Abs(scale.z)));
+            hit.center = instance.transform.InverseTransformPoint(bounds.center);
+        }
+
+        /// <summary>
+        /// A decorative prop. <paramref name="solid"/> props keep a collider so the pet and the
+        /// player cannot walk through them (the big trees); the rest are scenery the walk passes.
+        /// </summary>
+        private void SpawnProp(string resourcePath, Vector3 position, float size, bool solid = false)
+        {
+            var instance = InstantiateProp(resourcePath, position, size);
+            if (instance == null) return;
+
+            StripAllColliders(instance);
+            if (solid) AddBoundsCollider(instance);
             TintProp(instance);
+        }
+
+        /// <summary>
+        /// A prop that is also something to use: the same spawn-and-rest as <see cref="SpawnProp"/>,
+        /// but with a solid collider and an <see cref="Interactable"/> so it can be clicked.
+        /// </summary>
+        private Interactable SpawnInteractableProp(string resourcePath, Vector3 position, float size,
+            InteractableKind kind, string label, Vector3 approachOffset)
+        {
+            var instance = InstantiateProp(resourcePath, position, size);
+            if (instance == null) return null;
+
+            StripAllColliders(instance);
+            AddBoundsCollider(instance);
+            TintProp(instance);
+
+            var interactable = instance.GetComponent<Interactable>();
+            if (interactable == null) interactable = instance.AddComponent<Interactable>();
+            interactable.Kind = kind;
+            interactable.Label = label;
+            interactable.ApproachPoint = new Vector3(position.x + approachOffset.x, 0f, position.z + approachOffset.y);
+            return interactable;
+        }
+
+        /// <summary>
+        /// A floor lamp with a real light, toggleable by the owner. Built from the Kenney model
+        /// with a child <see cref="Light"/> so <see cref="DshPet.PetGameManager"/> can switch it.
+        /// </summary>
+        private Interactable SpawnLamp(Vector3 position)
+        {
+            var interactable = SpawnInteractableProp("Kenney/Furniture/lampRoundFloor", position, 1.5f,
+                InteractableKind.Lamp, "落地灯（点击开关）", new Vector3(0f, -0.6f));
+            if (interactable == null) return null;
+
+            var lightGo = new GameObject("LampLight");
+            lightGo.transform.SetParent(interactable.transform, false);
+            var bounds = MeasureBounds(interactable.gameObject);
+            Vector3 lightWorld = new Vector3(bounds.center.x, bounds.max.y - 0.12f, bounds.center.z);
+            lightGo.transform.localPosition = interactable.transform.InverseTransformPoint(lightWorld);
+
+            var light = lightGo.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(1f, 0.82f, 0.55f);
+            light.range = 6.5f;
+            light.intensity = 1.3f;
+            light.shadows = LightShadows.None;
+            return interactable;
+        }
+
+        /// <summary>
+        /// The cabin's warehouse: a two-door cabinet clicked to open the warehouse page. It lives
+        /// in the cabin only — the other places do not need a second door into the same screen.
+        /// </summary>
+        private Interactable BuildWarehouse(Vector3 at)
+        {
+            var go = new GameObject("Warehouse");
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(at.x, 0f, at.z);
+
+            BoxUnder(go.transform, "Body", new Vector3(0f, 1.0f, 0f), new Vector3(1.6f, 2.0f, 0.9f),
+                new Color(0.52f, 0.36f, 0.22f), 0.5f);
+            BoxUnder(go.transform, "Top", new Vector3(0f, 2.06f, 0f), new Vector3(1.8f, 0.14f, 1.05f),
+                new Color(0.62f, 0.44f, 0.28f), 0.5f);
+            // Two doors on the front (the side facing the player, -Z).
+            BoxUnder(go.transform, "DoorL", new Vector3(-0.42f, 1.0f, -0.47f), new Vector3(0.72f, 1.8f, 0.06f),
+                new Color(0.44f, 0.30f, 0.19f), 0.45f);
+            BoxUnder(go.transform, "DoorR", new Vector3(0.42f, 1.0f, -0.47f), new Vector3(0.72f, 1.8f, 0.06f),
+                new Color(0.44f, 0.30f, 0.19f), 0.45f);
+            BoxUnder(go.transform, "HandleL", new Vector3(-0.42f, 1.0f, -0.52f), new Vector3(0.06f, 0.16f, 0.06f),
+                new Color(0.90f, 0.80f, 0.40f), 0.8f);
+            BoxUnder(go.transform, "HandleR", new Vector3(0.42f, 1.0f, -0.52f), new Vector3(0.06f, 0.16f, 0.06f),
+                new Color(0.90f, 0.80f, 0.40f), 0.8f);
+
+            var hit = go.AddComponent<BoxCollider>();
+            hit.size = new Vector3(1.8f, 2.2f, 1.1f);
+            hit.center = new Vector3(0f, 1.1f, 0f);
+
+            var interactable = go.AddComponent<Interactable>();
+            interactable.Kind = InteractableKind.Warehouse;
+            interactable.Label = "仓库（点击打开仓库页面）";
+            interactable.ApproachPoint = new Vector3(at.x, 0f, at.z - 1.7f);
+            return interactable;
         }
 
         /// <summary>

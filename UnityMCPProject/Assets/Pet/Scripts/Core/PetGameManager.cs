@@ -1743,7 +1743,34 @@ namespace DshPet
                 return;
             }
 
+            // The floor lamp is a switch: click it and the light flips. No pet involved.
+            if (target.Kind == InteractableKind.Lamp)
+            {
+                ToggleLamp(target);
+                return;
+            }
+
+            // The warehouse cabinet's whole job is to open the warehouse page.
+            if (target.Kind == InteractableKind.Warehouse)
+            {
+                PetHud.OpenFurnishWarehouse();
+                return;
+            }
+
             if (Controller != null) Controller.GoTo(target);
+        }
+
+        /// <summary>Flips a floor lamp's light on or off.</summary>
+        private void ToggleLamp(Interactable target)
+        {
+            if (target == null) return;
+
+            var light = target.GetComponentInChildren<Light>(true);
+            if (light == null) return;
+
+            light.enabled = !light.enabled;
+            PetHud.SetToast(light.enabled ? "落地灯亮了。" : "落地灯关了。");
+            DshMobile.MobileHaptics.Light();
         }
 
         /// <summary>
@@ -1784,8 +1811,8 @@ namespace DshPet
 
             if (PetBackpack.HasBucket && !PetBackpack.BucketFull)
             {
-                PetBackpack.BucketFull = true;
-                PetHud.SetToast("用水桶从池塘打了水，去浇苹果树吧。");
+                PetInventory.FillBucketFromPond();
+                PetHud.SetToast("用水桶从池塘打了水（仓库多了 1 瓶水），去浇苹果树吧。");
                 DshMobile.MobileHaptics.Light();
                 return;
             }

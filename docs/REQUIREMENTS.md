@@ -428,6 +428,19 @@
 | R30.3 | 全套回归 | 修 bug 无新单测，358/358 全绿 | 测试全绿 ✅ |
 
 
+## 阶段 31：场景道具能互动 + 水桶打水进仓库
+
+| 编号 | 需求 | 实现 | 验收证据 |
+|---|---|---|---|
+| R31.1 | 删掉每场景门左边没用的大柜子 | 删掉 `PetRoom.BuildFurniture`（每场景共享的 Shelf/ShelfTop 书架） | 运行中：`Room/Shelf` 不存在 ✅ |
+| R31.2 | 露台沙发能坐、台灯能开关，且不穿模 | 新 `InteractableKind.Sofa`/`Lamp`；拆出 `InstantiateProp`，`SpawnInteractableProp`（上碰撞体 + `Interactable`）给沙发、`SpawnLamp` 给台灯额外挂可开关 `Light` | 运行中：2 个沙发（`OrderTo(Sofa)`=true、有 BoxCollider）、台灯点击亮→灭→亮 ✅ |
+| R31.3 | 小屋仓库柜点击进仓库页 | 新 `InteractableKind.Warehouse`，小屋 `BuildWarehouse` 建两门柜；点击调 `PetHud.OpenFurnishWarehouse()`（直接开「商城·仓库·背包」的仓库页签） | 运行中：点仓库柜 → `PetHud.ModalOpen` true ✅ |
+| R31.4 | 花园水池能游泳和洗澡 | `PetController.UsePending` 的 Pond 分支按需求分流：脏 → `Clean(0.9)`+水花、无聊 → `Play(0.45)`+水花、否则喝水；主人的钓鱼/打水不变 | 运行中：脏 Cleanliness 0.3→0.96、无聊 Joy 0.30→0.69 ✅ |
+| R31.5 | 大树不穿模 | `SpawnProp` 加 `solid` 参数，6 棵大树 `solid:true` 补 `AddBoundsCollider` | 运行中：6 棵树都有 BoxCollider ✅ |
+| R31.6 | 水桶打完水仓库有水 ×1 | `PetInventory.FillBucketFromPond()` = `BucketFull=true` + `Add("water",1)`；`UsePond` 改走它 | 运行中：打水后 `Count("water")` 0→1；单测 `DrawingWaterAtThePondAlsoAddsOneWaterToTheWarehouse` ✅ |
+| R31.7 | 全套回归 | 新增 1 条单测，359/359 全绿 | 测试全绿 ✅ |
+
+
 ## 非功能需求 / 设计约束
 
 

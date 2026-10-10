@@ -86,6 +86,20 @@ namespace DshPet
             hud._toastUntil = Time.realtimeSinceStartup + 3.2f;
         }
 
+        /// <summary>
+        /// Opens the furniture panel straight onto the warehouse tab. Used by the cabin's
+        /// warehouse cabinet — clicking a piece of furniture that IS the warehouse should take
+        /// you to the warehouse, not make the pet walk over to it.
+        /// </summary>
+        public static void OpenFurnishWarehouse()
+        {
+            var hud = _instance;
+            if (hud == null) return;
+            hud._showFurnish = true;
+            hud._furnishTab = 2;
+            hud._furnishMessage = "";
+        }
+
         /// <summary>True while the chat box has keyboard focus, so WASD can be typed instead
         /// of walking the character around.</summary>
         public static bool IsTextInputFocused { get; private set; }

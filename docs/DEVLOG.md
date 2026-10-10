@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **358/358 通过**（虚拟宠物 213 + 跑酷 15 + 手机端 49 + 小游戏 81），EditMode |
+| 测试 | **359/359 通过**（虚拟宠物 214 + 跑酷 15 + 手机端 49 + 小游戏 81），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -930,6 +930,17 @@
     小坑：状态卡折叠态的「展开」按钮，路由 `HandleFooterButton` 只写了 `Contains("收起")` 没写
     `Contains("展开")`——**成对出现的"开/关、收起/展开"按钮，路由要两条都写，否则其中一个就是
     纯装饰。**
+142. **"摆放的道具"和"能互动的道具"是两回事——装饰被 `SpawnProp` 剥掉碰撞体、也没挂 `Interactable`，**
+    所以露台沙发点不动、树和柜子能被穿过。上 Kenney 模型那轮把沙发/台灯当纯装饰 `SpawnProp`，
+    `SpawnProp` 里有一段"删掉所有 Collider"（为了装饰不挡路），于是它们既没碰撞体也没交互——
+    玩家看到的"没互动 + 穿模"其实是同一个根因。修法是拆出 `InstantiateProp`（只做生成/缩放/落地），
+    再按需三条路：`SpawnProp(solid:true)` 给大树补碰撞体、`SpawnInteractableProp` 给沙发/台灯补
+    `Interactable + Collider`、`SpawnLamp` 额外挂一个可开关的 `Light`。**凡是"看起来能碰"的东西，
+    要么给碰撞体、要么给交互、要么两者都给；"装饰"和"家具"要分开写，不能共用一条剥碰撞体的路。**
+    同轮还有两个小教训：① 水桶打水的产物要落成**真实库存**（`PetInventory.FillBucketFromPond()` →
+    `Add("water",1)`），而不是一个 `BucketFull` 布尔——布尔在仓库里显示不出来；② 新加的
+    `InteractableKind`（Sofa/Lamp/Warehouse）要同时补 `PetPerception.NameOf`，否则感知和指令里
+    全是「东西」。
 
 ---
 

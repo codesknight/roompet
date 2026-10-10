@@ -68,7 +68,16 @@ namespace DshPet
         Telescope,
 
         /// <summary>Terrace furniture: a chair the pet dozes off in.</summary>
-        RockingChair
+        RockingChair,
+
+        /// <summary>Terrace furniture: a sofa the pet sits on to rest.</summary>
+        Sofa,
+
+        /// <summary>Terrace furniture: a floor lamp the owner toggles on and off.</summary>
+        Lamp,
+
+        /// <summary>Cabin furniture: the warehouse, clicked to open the warehouse page.</summary>
+        Warehouse
     }
 
     /// <summary>One turn of the conversation.</summary>

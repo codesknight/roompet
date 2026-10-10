@@ -62,13 +62,17 @@
 
 ---
 
-## 这一轮（第 30 轮）的验收清单
+## 这一轮（第 31 轮）的验收清单
 
-- [x] **修「排泄物擦不掉」**：`SpawnMess` 加进 `Interactables` + `MessSpawned` 事件接上点击；`RemoveMess` 对称移除。运行中验证：生成污渍 → 装备铲子 → `Interact()` → 污渍清除、金币 +5
-- [x] **修「收起后『展开』没反应」**：`HandleFooterButton` 给「展开」补上和「收起」同一条折叠/展开路由。反射验证：收起→折叠、展开→重新展开
-- [x] **测试**：358/358 全绿
-- [x] 文档：本文件 + REQUIREMENTS 阶段 30 + CHANGELOG 第 30 轮 + DEVLOG 坑 141 + README 坑计数
-- [ ] ⏳ **真机确认**：① 装备铲子点污渍能清掉并 +5 币；② 「收起」折叠后「展开」能重新展开
+- [x] **删掉每场景门左边没用的大柜子**：删 `BuildFurniture`（Shelf/ShelfTop）。运行中验证：Shelf 不存在
+- [x] **露台沙发能坐 + 台灯能开关**：新 `InteractableKind.Sofa` / `Lamp`，`SpawnInteractableProp` / `SpawnLamp` 给它们上碰撞体与交互。运行中验证：2 个沙发（可 `OrderTo(Sofa)`）、台灯点击亮→灭→亮
+- [x] **小屋仓库柜进仓库页**：新 `InteractableKind.Warehouse`，点击调 `PetHud.OpenFurnishWarehouse()`。运行中验证：点仓库 → `ModalOpen` 变 true
+- [x] **花园水池游泳+洗澡**：`UsePending` 的 Pond 分支按需求走洗澡/游泳/喝水。运行中验证：脏了 Cleanliness 0.3→0.96、无聊 Joy 0.30→0.69
+- [x] **大树不穿模**：`SpawnProp(solid:true)` 给 6 棵大树补碰撞体。运行中验证：6 棵树都有 BoxCollider
+- [x] **水桶打水进仓库**：`PetInventory.FillBucketFromPond()` = 装满桶 + `Add("water",1)`。运行中验证：打水后 water 0→1；单测 1 条
+- [x] **测试**：358 → **359** 全绿
+- [x] 文档：本文件 + REQUIREMENTS 阶段 31 + CHANGELOG 第 31 轮 + DEVLOG 坑 142 + README 计数/特性
+- [ ] ⏳ **真机确认**：① 露台沙发可坐、台灯可开关；② 小屋仓库柜进仓库页；③ 花园宠物洗澡/游泳；④ 打水后仓库有「饮用水 ×1」
 
 ## 明确推迟或不做
 

@@ -77,6 +77,9 @@ namespace DshPet
                 case InteractableKind.Swing: return "秋千";
                 case InteractableKind.Telescope: return "望远镜";
                 case InteractableKind.RockingChair: return "摇椅";
+                case InteractableKind.Sofa: return "沙发";
+                case InteractableKind.Lamp: return "落地灯";
+                case InteractableKind.Warehouse: return "仓库";
                 default: return "东西";
             }
         }

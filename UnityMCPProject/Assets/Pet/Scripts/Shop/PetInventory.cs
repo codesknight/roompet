@@ -58,6 +58,17 @@ namespace DshPet
             SetCount(id, Count(id) + amount);
         }
 
+        /// <summary>
+        /// Filling the bucket at the pond fills the bucket AND puts one bottle of water in the
+        /// warehouse. The water is a real stackable item, not just a flag on the bucket, so it
+        /// shows up in the warehouse and can be fed or sold like anything else.
+        /// </summary>
+        public static void FillBucketFromPond()
+        {
+            PetBackpack.BucketFull = true;
+            Add("water", 1);
+        }
+
         private static Dictionary<string, int> AllCounts()
         {
             var counts = new Dictionary<string, int>();
