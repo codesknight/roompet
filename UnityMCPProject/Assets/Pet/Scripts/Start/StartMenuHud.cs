@@ -29,6 +29,9 @@ namespace DshPet
 
         private GameObject _howToPanel;
 
+        private GameObject _starterPanel;
+        private Text _starterStatus;
+
         private GameObject _quitPanel;
 
         private Image _fade;
@@ -63,6 +66,7 @@ namespace DshPet
             _fade.gameObject.SetActive(false);
 
             BuildMenu();
+            BuildStarter();
             BuildSettings();
             BuildHowTo();
             BuildQuit();
@@ -132,6 +136,61 @@ namespace DshPet
                 new Vector2(0f, 20f), new Vector2(520f, 24f));
 
             _menuPanel = go;
+        }
+
+        private void BuildStarter()
+        {
+            var go = Panel("Starter", 620f, 560f);
+            Transform m = go.transform;
+
+            var title = DshMobile.Ugui.Text("Title", m, "选择你的宠物", 40, TitleColor, TextAnchor.MiddleCenter, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 22f, 20f, 576f, 46f);
+
+            var hint = DshMobile.Ugui.Text("Hint", m,
+                "三只里先带一只回家。它会是主要照顾的那只；另外两只以后能用宠物币领回家。", 15,
+                SmallColor, TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(hint.rectTransform, 22f, 74f, 576f, 44f);
+
+            float y = 128f;
+            foreach (string id in PetOnboarding.StarterChoices)
+            {
+                var species = PetSpecies.Get(id);
+                y = BuildStarterRow(m, y, species);
+            }
+
+            _starterStatus = DshMobile.Ugui.Text("Status", m, "选好后点「进入房间」，它会一直在房间里陪你。", 14, SmallColor, TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(_starterStatus.rectTransform, 22f, y + 4f, 576f, 30f);
+
+            _starterPanel = go;
+        }
+
+        private float BuildStarterRow(Transform m, float y, PetSpecies species)
+        {
+            var row = new GameObject("StarterRow", typeof(RectTransform));
+            row.transform.SetParent(m, false);
+            DshMobile.Ugui.SetRect(row.GetComponent<RectTransform>(), 18f, y, 584f, 76f);
+
+            var dot = DshMobile.Ugui.Image("Dot", row.transform, species.Fur);
+            DshMobile.Ugui.Place(dot.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f),
+                new Vector2(2f, -2f), new Vector2(24f, 24f));
+
+            var name = DshMobile.Ugui.Text("Name", row.transform,
+                species.DisplayName + "　" + species.Blurb, 16, BodyColor, TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(name.rectTransform, 34f, 2f, 430f, 44f);
+
+            var pick = DshMobile.Ugui.Button("Pick", row.transform, "带它回家", 18, PrimaryTint);
+            DshMobile.Ugui.SetRect(pick.GetComponent<RectTransform>(), 476f, 8f, 104f, 44f);
+
+            string captured = species.Id;
+            pick.onClick.AddListener(() =>
+            {
+                if (PetOnboarding.ChooseStarter(captured))
+                {
+                    DshMobile.MobileHaptics.Medium();
+                }
+            });
+
+            return y + 82f;
         }
 
         private void BuildSettings()
@@ -306,7 +365,12 @@ namespace DshPet
             bool quit = _menu.Phase == StartPhase.Quit;
             bool fading = _menu.Phase == StartPhase.Opening || _menu.Phase == StartPhase.Leaving;
 
-            _menuPanel.SetActive(menu);
+            // The front door asks the starter question exactly once: a new player picks one of
+            // three before the menu (and the room behind it) is reachable.
+            bool starter = menu && !PetOnboarding.HasChosenStarter;
+
+            _menuPanel.SetActive(menu && !starter);
+            _starterPanel.SetActive(starter);
             _settingsPanel.SetActive(settings);
             _howToPanel.SetActive(howTo);
             _quitPanel.SetActive(quit);

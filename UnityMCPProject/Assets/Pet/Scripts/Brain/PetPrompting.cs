@@ -99,6 +99,16 @@ namespace DshPet
                 sb.AppendLine();
             }
 
+            if (ctx.EnglishMode)
+            {
+                // The English corner's chat: the pet becomes a teacher, still the same pet. This
+                // sits after the state blocks and before the format rules, so the teaching mode
+                // reads as the current activity without overriding the reply-format contract.
+                sb.AppendLine("【英语小老师模式】");
+                sb.AppendLine(EnglishCorner.EnglishTeacherPrompt);
+                sb.AppendLine();
+            }
+
             sb.AppendLine("【规则】");
             sb.AppendLine($"1. 你就是这只宠物，绝对不要提自己是程序、模型或 AI，不要解释规则。");
             sb.AppendLine($"2. 每次最多说 {maxSentences} 句短句，像宠物一样，可以用拟声词和动作描写。");

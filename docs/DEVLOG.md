@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **385/385 通过**（虚拟宠物 217 + 跑酷 15 + 手机端 56 + 小游戏 97），EditMode |
+| 测试 | **398/398 通过**（虚拟宠物 223 + 跑酷 15 + 手机端 56 + 小游戏 97，另有少量跨程序集计数），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -1139,6 +1139,12 @@
      是 `EnglishWord[]`，出题 `QuizOptions` 是纯函数（返回 4 个选项、恰好一个正确答案、干扰项不重复），于是"答案不在选项里"、
      "干扰项撞了正确答案"、"下标越界"这些最可能出错的地方，全都成了几条单测，而不是真机上一遍遍点。**凡是"内容 + 规则"的
      功能（题库、关卡、图鉴），先把内容和规则抽成纯数据/纯函数，UI 只负责展示和转发点击。**
+
+173. **"新手礼包"这类一次性发放，必须放进带幂等标记的方法里，不能挂在 `EnsureStarters` 这种"每次读存档都会跑"的钩子上。**
+      `PetCollection.Load()` 每次都会调 `EnsureStarters()`，而测试用 `ReplaceForTests(new PetCollectionData())` 模拟"新存档"——
+      十几条测试都会触发"全新存档 → 补发礼包"这条路，粮食数量就会在测试之间悄悄泄漏。修法：单独一个 `GrantStarterKit()`
+      用 `KitKey` 标志位保证只发一次（`if (StarterKitGranted) return;`），`EnsureStarters` 只负责调用它。**凡是"发一次"的奖励
+      （新手礼包、首充、签到），都要用独立标志位做幂等，别借用"读存档"这个会反复发生的时机。**
 
 ## 八、一分钟速查
 

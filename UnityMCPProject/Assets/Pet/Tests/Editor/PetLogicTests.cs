@@ -646,6 +646,24 @@ namespace DshPet.Tests
             Assert.IsTrue(prompt.Contains("<action>"), "the format contract must survive the override");
         }
 
+        [Test]
+        public void Prompt_EnglishModeMountsTheTeacherInstruction()
+        {
+            var context = new PetContext
+            {
+                PetName = "豆豆",
+                SpeciesName = "狐狸",
+                Mood = PetMood.Content,
+                EnglishMode = true
+            };
+
+            string prompt = PetPrompting.BuildSystemPrompt(context);
+
+            Assert.IsTrue(prompt.Contains("英语小老师"), "the English-teacher block must be mounted");
+            Assert.IsTrue(prompt.Contains("全程用英语回答"), "the pet must be told to answer in English");
+            Assert.IsTrue(prompt.Contains("<action>"), "the reply-format contract must survive the mode");
+        }
+
         // ------------------------------------------------------------------- pet name
 
         [Test]
@@ -2478,6 +2496,121 @@ namespace DshPet.Tests
             }
             finally
             {
+                PetCollection.ReplaceForTests(JsonUtility.FromJson<PetCollectionData>(previous));
+            }
+        }
+
+        [Test]
+        public void Collection_MakingPrimaryMovesItToTheFrontOfTheBackpack()
+        {
+            var previous = JsonUtility.ToJson(PetCollection.Data);
+            int original = DshMobile.PetWallet.Coins;
+            try
+            {
+                PetCollection.ReplaceForTests(new PetCollectionData());
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(100000);
+
+                string message;
+                var first = PetCollection.Buy("cat", out message);
+                var second = PetCollection.Buy("dog", out message);
+                Assert.IsNotNull(first);
+                Assert.IsNotNull(second);
+
+                // The starter is the primary and leads the list; hand over to the dog.
+                PetCollection.SetPrimary(second.Id);
+
+                Assert.AreEqual(second.Id, PetCollection.Primary.Id);
+                Assert.AreEqual(second.Id, PetCollection.Backpack[0],
+                    "the primary pet is always the first slot in the backpack");
+                Assert.AreEqual(second.Id, PetCollection.Companions()[0].Id,
+                    "the room reads the primary pet first");
+            }
+            finally
+            {
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(original);
+                PetCollection.ReplaceForTests(JsonUtility.FromJson<PetCollectionData>(previous));
+            }
+        }
+
+        // ---------------------------------------------------------------- onboarding
+
+        [Test]
+        public void Onboarding_StarterChoicesAreAllRealSpecies()
+        {
+            foreach (string id in PetOnboarding.StarterChoices)
+            {
+                Assert.IsFalse(string.IsNullOrEmpty(PetSpecies.Get(id).DisplayName),
+                    $"starter {id} is a real species");
+                Assert.IsTrue(PetOnboarding.IsStarterChoice(id));
+            }
+            Assert.IsFalse(PetOnboarding.IsStarterChoice("bear"), "the bear is not a free starter");
+            Assert.IsFalse(PetOnboarding.IsStarterChoice(""), "an empty choice is not valid");
+        }
+
+        [Test]
+        public void Onboarding_ChooseStarterPersistsAndFirstFeedIsOneShot()
+        {
+            string prevStarter = PlayerPrefs.GetString(PetOnboarding.StarterKey, "");
+            string prevSpecies = PlayerPrefs.GetString("dshpet.species", "");
+            int prevFeed = PlayerPrefs.GetInt(PetOnboarding.FirstFeedKey, 0);
+            try
+            {
+                PetOnboarding.ResetAll();
+                Assert.IsFalse(PetOnboarding.HasChosenStarter);
+
+                Assert.IsTrue(PetOnboarding.ChooseStarter("cat"));
+                Assert.IsTrue(PetOnboarding.HasChosenStarter);
+                Assert.AreEqual("cat", PetOnboarding.StarterChoice);
+                Assert.AreEqual("cat", PlayerPrefs.GetString("dshpet.species", ""),
+                    "the shared species key follows the choice");
+
+                Assert.IsFalse(PetOnboarding.ChooseStarter("bear"), "only the three starters are free");
+
+                Assert.IsFalse(PetOnboarding.FirstFeedDone);
+                Assert.IsTrue(PetOnboarding.CompleteFirstFeed().Contains("首次喂食完成"));
+                Assert.IsTrue(PetOnboarding.FirstFeedDone);
+                Assert.IsTrue(PetOnboarding.CompleteFirstFeed().Contains("已经"),
+                    "a second completion is a no-op");
+            }
+            finally
+            {
+                PetOnboarding.ResetAll();
+                if (!string.IsNullOrEmpty(prevStarter)) PlayerPrefs.SetString(PetOnboarding.StarterKey, prevStarter);
+                if (!string.IsNullOrEmpty(prevSpecies)) PlayerPrefs.SetString("dshpet.species", prevSpecies);
+                if (prevFeed == 1) PlayerPrefs.SetInt(PetOnboarding.FirstFeedKey, 1);
+            }
+        }
+
+        [Test]
+        public void Onboarding_FreshSaveSeedsTheChosenStarterAndKibble()
+        {
+            var previous = JsonUtility.ToJson(PetCollection.Data);
+            string prevStarter = PlayerPrefs.GetString(PetOnboarding.StarterKey, "");
+            string prevSpecies = PlayerPrefs.GetString("dshpet.species", "");
+            int prevFeed = PlayerPrefs.GetInt(PetOnboarding.FirstFeedKey, 0);
+            int prevKit = PlayerPrefs.GetInt(PetOnboarding.KitKey, 0);
+            int prevFood = PetInventory.Count("food");
+            try
+            {
+                PetOnboarding.ResetAll();
+                PetInventory.SetCount("food", 0);
+                PetOnboarding.ChooseStarter("rabbit");
+                PetCollection.ReplaceForTests(new PetCollectionData());
+
+                Assert.AreEqual("rabbit", PetCollection.Primary.SpeciesId, "the chosen starter is seeded");
+                Assert.AreEqual(PetOnboarding.StartingFood, PetInventory.Count("food"),
+                    "one bag of kibble is granted for the first feed");
+            }
+            finally
+            {
+                PetOnboarding.ResetAll();
+                if (!string.IsNullOrEmpty(prevStarter)) PlayerPrefs.SetString(PetOnboarding.StarterKey, prevStarter);
+                if (!string.IsNullOrEmpty(prevSpecies)) PlayerPrefs.SetString("dshpet.species", prevSpecies);
+                if (prevFeed == 1) PlayerPrefs.SetInt(PetOnboarding.FirstFeedKey, 1);
+                if (prevKit == 1) PlayerPrefs.SetInt(PetOnboarding.KitKey, 1);
+                PetInventory.SetCount("food", prevFood);
                 PetCollection.ReplaceForTests(JsonUtility.FromJson<PetCollectionData>(previous));
             }
         }

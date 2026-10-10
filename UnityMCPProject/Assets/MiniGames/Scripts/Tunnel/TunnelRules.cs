@@ -85,17 +85,24 @@ namespace DshMiniGames
             return ClampToTunnel(target);
         }
 
-        /// <summary>A mine obstacle position, also reachable (dodgeable) from the ship's spot.</summary>
+        /// <summary>
+        /// A mine obstacle position. Most mines aim near the ship — holding still must get you
+        /// hit — while the rest scatter for variety. The ship has SpawnAhead / ForwardSpeed
+        /// seconds to move, so even a close mine is fair to dodge.
+        /// </summary>
         public static Vector2 NextMine(Vector2 from, float roll1, float roll2)
         {
             float angle = roll1 * Mathf.PI * 2f;
-            float radius = Mathf.Lerp(0.1f, TunnelRadius - MineRadius - 0.1f, roll2);
-            var at = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
-            // A mine too close to the ship would be undodgeable; push it to the far half.
-            if (Vector2.Distance(at, from) < TunnelRadius * 0.8f)
+            if (roll2 < 0.6f)
             {
-                at = -from.normalized * radius;
+                // Aim near the ship: standing still is a hit, moving dodges it.
+                float offset = Mathf.Lerp(0.05f, 0.35f, roll2 / 0.6f);
+                var aim = from + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * offset;
+                return ClampToTunnel(aim);
             }
+            // The rest scatter anywhere in the tunnel for variety.
+            float radius = Mathf.Lerp(0.1f, TunnelRadius - MineRadius - 0.1f, (roll2 - 0.6f) / 0.4f);
+            var at = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
             return ClampToTunnel(at);
         }
 

@@ -36,6 +36,21 @@ namespace DshPet.Tests
         }
 
         [Test]
+        public void EnglishTeacherPrompt_IsMountedAsACompleteInstruction()
+        {
+            Assert.IsFalse(string.IsNullOrEmpty(EnglishCorner.EnglishTeacherPrompt),
+                "the teacher prompt must exist");
+            Assert.IsTrue(EnglishCorner.EnglishTeacherPrompt.Contains("英语"),
+                "the instruction says the pet is an English teacher");
+            Assert.IsTrue(EnglishCorner.EnglishTeacherPrompt.Contains("单词"),
+                "the pet teaches words");
+            Assert.IsTrue(EnglishCorner.EnglishTeacherPrompt.Contains("例句"),
+                "the pet teaches example sentences");
+            Assert.IsTrue(EnglishCorner.EnglishTeacherPrompt.Contains("对话"),
+                "the pet teaches dialogues");
+        }
+
+        [Test]
         public void Quiz_ContainsTheAnswerOnceAndDistinctDistractors()
         {
             var rng = new System.Random(1234);

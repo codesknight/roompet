@@ -58,6 +58,26 @@ namespace DshPet
         public string LastBehaviorLabel { get; private set; } = "";
         public bool UsingNetworkThisTurn { get; private set; }
 
+        /// <summary>Whether the pet is in English-teacher mode (mounted as an English system prompt).</summary>
+        public bool EnglishChatMode { get; private set; }
+
+        /// <summary>Turns English-teacher mode on or off. On is the English corner's chat.</summary>
+        public void SetEnglishMode(bool on)
+        {
+            if (EnglishChatMode == on) return;
+            EnglishChatMode = on;
+
+            if (on && Controller != null)
+            {
+                // Face-to-face lesson: settle the pet in the middle and turn it toward the camera,
+                // so the chat reads as a sit-down lesson rather than a shout across the room.
+                Controller.SnapTo(Vector3.zero);
+                Controller.LookAt(CameraPosition());
+            }
+
+            ChatChanged?.Invoke();
+        }
+
         public event Action ChatChanged;
 
         private IPetBrain _brain;
@@ -118,6 +138,14 @@ namespace DshPet
             if (Memory.Recent.Count == 0)
             {
                 Memory.AddPet(Greeting());
+            }
+
+            // Onboarding: a brand-new room has no bowl yet — the first feed puts one in. The
+            // hint points at the only action that can do it without a bowl: hand-feeding.
+            if (!PetOnboarding.FirstFeedDone)
+            {
+                Memory.AddSystem("（先喂它吃一顿：商城 / 背包里点「投喂」，首次喂食后食物碗和水盆就会出现）");
+                PetHud.SetToast("先喂它吃一顿，食物碗和水盆就会出现。");
             }
 
             // Only once a day: the room scene is reloaded every time the player comes back
@@ -1519,6 +1547,7 @@ namespace DshPet
                 LastInteraction = lastInteraction,
                 ExtraInstructions = BrainConfig != null ? BrainConfig.ExtraInstructions : "",
                 SystemPrompt = BrainConfig != null ? BrainConfig.SystemPrompt : "",
+                EnglishMode = EnglishChatMode,
                 Perception = DescribePerception()
             };
         }
@@ -1908,6 +1937,16 @@ namespace DshPet
             Journal.Add(MemoryKind.Care, "主人喂我吃了" + item.Name, "", 0.35f);
             ChatChanged?.Invoke();
             PetHud.SetToast("喂了" + item.Name + "，宠物很开心。");
+
+            // The tutorial's finish line: the first feed puts the bowl and water basin in the room.
+            if (!PetOnboarding.FirstFeedDone)
+            {
+                string milestone = PetOnboarding.CompleteFirstFeed();
+                Memory.AddSystem("（" + milestone + "）");
+                Journal.Add(MemoryKind.Milestone, "第一次喂食", "食物碗和水盆摆好了。", 0.4f);
+                PetHud.SetToast(milestone);
+                RebuildRoom();
+            }
         }
 
         // -------------------------------------------------------------- throw & fetch

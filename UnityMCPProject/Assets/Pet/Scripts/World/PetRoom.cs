@@ -1096,34 +1096,9 @@ namespace DshPet
         /// </summary>
         private Interactable BuildWarehouse(Vector2 at)
         {
-            var go = new GameObject("Warehouse");
-            go.transform.SetParent(_root, false);
-            go.transform.position = new Vector3(at.x, 0f, at.y);
-
-            BoxUnder(go.transform, "Body", new Vector3(0f, 1.0f, 0f), new Vector3(1.6f, 2.0f, 0.9f),
-                new Color(0.52f, 0.36f, 0.22f), 0.5f);
-            BoxUnder(go.transform, "Top", new Vector3(0f, 2.06f, 0f), new Vector3(1.8f, 0.14f, 1.05f),
-                new Color(0.62f, 0.44f, 0.28f), 0.5f);
-            // Two doors on the front (the side facing the player, -Z).
-            BoxUnder(go.transform, "DoorL", new Vector3(-0.42f, 1.0f, -0.47f), new Vector3(0.72f, 1.8f, 0.06f),
-                new Color(0.44f, 0.30f, 0.19f), 0.45f);
-            BoxUnder(go.transform, "DoorR", new Vector3(0.42f, 1.0f, -0.47f), new Vector3(0.72f, 1.8f, 0.06f),
-                new Color(0.44f, 0.30f, 0.19f), 0.45f);
-            BoxUnder(go.transform, "HandleL", new Vector3(-0.42f, 1.0f, -0.52f), new Vector3(0.06f, 0.16f, 0.06f),
-                new Color(0.90f, 0.80f, 0.40f), 0.8f);
-            BoxUnder(go.transform, "HandleR", new Vector3(0.42f, 1.0f, -0.52f), new Vector3(0.06f, 0.16f, 0.06f),
-                new Color(0.90f, 0.80f, 0.40f), 0.8f);
-
-            var hit = go.AddComponent<BoxCollider>();
-            hit.size = new Vector3(1.8f, 2.2f, 1.1f);
-            hit.center = new Vector3(0f, 1.1f, 0f);
-
-            var interactable = go.AddComponent<Interactable>();
-            interactable.Kind = InteractableKind.Warehouse;
-            interactable.Label = "仓库（点击打开仓库页面）";
-            interactable.ItemId = "warehouse_cabinet";
-            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y - 1.7f);
-            return interactable;
+            // Kenney's kitchen cabinet replaces the hand-built two-door cupboard.
+            return SpawnInteractableProp("Kenney/Furniture/kitchenCabinet", new Vector3(at.x, 0f, at.y), 2.4f,
+                InteractableKind.Warehouse, "仓库（点击打开仓库页面）", new Vector3(0f, -1.7f), "warehouse_cabinet");
         }
 
         /// <summary>
@@ -1232,6 +1207,11 @@ namespace DshPet
 
         private Interactable[] BuildBowls()
         {
+            // The bowl and the water basin are the tutorial's reward: they only appear once the
+            // first feeding has happened, so a brand-new room starts with just the pet and the
+            // kibble, and "feed it" is the one obvious thing to do.
+            if (!PetOnboarding.FirstFeedDone) return new Interactable[0];
+
             Vector2 foodAt = PetInventory.PositionOf(PetShop.FoodBowl, Theme);
             Vector2 waterAt = PetInventory.PositionOf(PetShop.WaterBowl, Theme);
 
@@ -1302,27 +1282,9 @@ namespace DshPet
 
         private Interactable BuildBed(Vector2 at)
         {
-            var go = new GameObject("Bed");
-            go.transform.SetParent(_root, false);
-            go.transform.position = new Vector3(at.x, 0f, at.y);
-
-            BoxUnder(go.transform, "Base", new Vector3(0f, 0.14f, 0f), new Vector3(2.2f, 0.28f, 1.8f),
-                new Color(0.50f, 0.34f, 0.24f), 0.4f);
-            BoxUnder(go.transform, "Cushion", new Vector3(0f, 0.34f, 0f), new Vector3(2.0f, 0.24f, 1.6f),
-                new Color(0.85f, 0.55f, 0.62f), 0.6f);
-            BoxUnder(go.transform, "Pillow", new Vector3(0f, 0.48f, -0.62f), new Vector3(0.9f, 0.16f, 0.42f),
-                new Color(0.96f, 0.93f, 0.88f), 0.6f);
-
-            var hit = go.AddComponent<BoxCollider>();
-            hit.size = new Vector3(2.2f, 0.8f, 1.8f);
-            hit.center = new Vector3(0f, 0.4f, 0f);
-
-            var interactable = go.AddComponent<Interactable>();
-            interactable.Kind = InteractableKind.Bed;
-            interactable.Label = "小床";
-            interactable.ItemId = "bed";
-            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y + 1.5f);
-            return interactable;
+            // Kenney Furniture's single bed replaces the old three-box bed.
+            return SpawnInteractableProp("Kenney/Furniture/bedSingle", new Vector3(at.x, 0f, at.y), 2.2f,
+                InteractableKind.Bed, "小床", new Vector3(0f, 1.5f), "bed");
         }
 
         private Interactable BuildBall(Vector2 at)
@@ -1419,27 +1381,9 @@ namespace DshPet
         /// <summary>A wash basin with a raised lip, plus a soap bar so it reads as a bath.</summary>
         private Interactable BuildBath(Vector2 at)
         {
-            var go = new GameObject("Bath");
-            go.transform.SetParent(_root, false);
-            go.transform.position = new Vector3(at.x, 0f, at.y);
-
-            BoxUnder(go.transform, "Tub", new Vector3(0f, 0.26f, 0f), new Vector3(1.9f, 0.52f, 1.5f),
-                new Color(0.80f, 0.86f, 0.90f), 0.35f);
-            BoxUnder(go.transform, "Water", new Vector3(0f, 0.50f, 0f), new Vector3(1.7f, 0.10f, 1.3f),
-                new Color(0.45f, 0.72f, 0.86f), 0.9f);
-            BoxUnder(go.transform, "Soap", new Vector3(0.62f, 0.58f, 0.42f), new Vector3(0.34f, 0.14f, 0.22f),
-                new Color(0.98f, 0.80f, 0.86f), 0.7f);
-
-            var hit = go.AddComponent<BoxCollider>();
-            hit.size = new Vector3(1.9f, 0.8f, 1.5f);
-            hit.center = new Vector3(0f, 0.4f, 0f);
-
-            var interactable = go.AddComponent<Interactable>();
-            interactable.Kind = InteractableKind.Bath;
-            interactable.Label = "澡盆";
-            interactable.ItemId = "bath";
-            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y - 1.2f);
-            return interactable;
+            // Kenney Furniture's bathtub replaces the three-box basin.
+            return SpawnInteractableProp("Kenney/Furniture/bathtub", new Vector3(at.x, 0f, at.y), 1.9f,
+                InteractableKind.Bath, "澡盆", new Vector3(0f, -1.2f), "bath");
         }
 
         /// <summary>A small squeaky toy: a yarn ball on the floor, for the pet to pounce on.</summary>
@@ -1642,27 +1586,10 @@ namespace DshPet
         /// <summary>A rocking chair on curved runners, for the terrace.</summary>
         private Interactable BuildRockingChair(Vector2 at)
         {
-            var go = new GameObject("RockingChair");
-            go.transform.SetParent(_root, false);
-            go.transform.position = new Vector3(at.x, 0f, at.y);
-
-            BoxUnder(go.transform, "Seat", new Vector3(0f, 0.45f, 0f), new Vector3(0.8f, 0.10f, 0.7f),
-                new Color(0.52f, 0.34f, 0.22f), 0.45f);
-            BoxUnder(go.transform, "Back", new Vector3(0f, 0.95f, -0.32f), new Vector3(0.8f, 0.95f, 0.10f),
-                new Color(0.52f, 0.34f, 0.22f), 0.45f);
-            BoxUnder(go.transform, "Runner", new Vector3(0f, 0.18f, 0f), new Vector3(0.9f, 0.10f, 0.16f),
-                new Color(0.40f, 0.26f, 0.16f), 0.4f);
-
-            var hit = go.AddComponent<BoxCollider>();
-            hit.size = new Vector3(0.9f, 1.2f, 0.8f);
-            hit.center = new Vector3(0f, 0.6f, 0f);
-
-            var interactable = go.AddComponent<Interactable>();
-            interactable.Kind = InteractableKind.RockingChair;
-            interactable.Label = "摇椅";
-            interactable.ItemId = "rocking_chair";
-            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y + 1.4f);
-            return interactable;
+            // Kenney's relaxing lounge chair stands in for the rocking chair (no rocking-chair
+            // model ships with the furniture pack, and the lounge chair reads as "sit and doze").
+            return SpawnInteractableProp("Kenney/Furniture/loungeChairRelax", new Vector3(at.x, 0f, at.y), 1.4f,
+                InteractableKind.RockingChair, "摇椅", new Vector3(0f, 1.4f), "rocking_chair");
         }
 
         // ---------------------------------------------------------------------- messes

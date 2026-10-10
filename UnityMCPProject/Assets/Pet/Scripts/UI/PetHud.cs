@@ -97,6 +97,8 @@ namespace DshPet
         private UnityEngine.UI.Text _ttsLabel;
         private UnityEngine.UI.Button _soundButton;
         private UnityEngine.UI.Text _soundLabel;
+        private UnityEngine.UI.Button _englishModeBtn;
+        private UnityEngine.UI.Text _englishModeLabel;
         private UnityEngine.UI.Text _voiceStatus;
         private readonly List<GameObject> _bubbles = new List<GameObject>();
         private int _builtMessageCount = -1;
@@ -485,7 +487,6 @@ namespace DshPet
 
         /// <summary>Chat is collapsed by default on a phone: the thumbs live down there.</summary>
         private bool _chatExpanded;
-        private bool _englishChat;
 
         /// <summary>Whether the status panel shows the tuning lines (phone layout).</summary>
         private bool _statusDetail;
@@ -860,7 +861,7 @@ namespace DshPet
 
         private void BuildChat()
         {
-            _chatPanel = DshMobile.Ugui.Panel("ChatPanel", _root, 16f,
+            _chatPanel = DshMobile.Ugui.Panel("ChatPanel", _root, 26f,
                 new Color(0.10f, 0.09f, 0.13f, 0.94f), new Color(1f, 1f, 1f, 0.10f), 2f);
             _chatPanel.raycastTarget = true;   // the expanded chat must block clicks to the room behind it
             _chatPanel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
@@ -917,6 +918,10 @@ namespace DshPet
             _soundButton = DshMobile.Ugui.Button("Sound", p, "音效：开", 14, new Color(0.30f, 0.40f, 0.58f));
             _soundLabel = _soundButton.GetComponentInChildren<UnityEngine.UI.Text>();
             _soundButton.onClick.AddListener(OnSound);
+
+            _englishModeBtn = DshMobile.Ugui.Button("English", p, "英语老师：关", 14, new Color(0.55f, 0.40f, 0.78f));
+            _englishModeLabel = _englishModeBtn.GetComponentInChildren<UnityEngine.UI.Text>();
+            _englishModeBtn.onClick.AddListener(OnToggleEnglishMode);
 
             _voiceStatus = DshMobile.Ugui.Text("VoiceStatus", p, "", 14,
                 new Color(0.72f, 0.82f, 0.95f), UnityEngine.TextAnchor.MiddleLeft);
@@ -1032,6 +1037,15 @@ namespace DshPet
                 _soundLabel.text = audio.Muted ? "音效：关" : "音效：开";
             }
 
+            // English-teacher mode toggle (English corner chat). The label carries the state so a
+            // one-tap "on" is as obvious to undo as it was to start.
+            _englishModeBtn.gameObject.SetActive(true);
+            _englishModeBtn.GetComponent<RectTransform>().anchorMin = _englishModeBtn.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 0f);
+            _englishModeBtn.GetComponent<RectTransform>().pivot = new Vector2(0f, 0f);
+            _englishModeBtn.GetComponent<RectTransform>().anchoredPosition = new Vector2(88f, fy - 86f);
+            _englishModeBtn.GetComponent<RectTransform>().sizeDelta = new Vector2(130f, 40f);
+            _englishModeLabel.text = gm.EnglishChatMode ? "英语老师：开" : "英语老师：关";
+
             string status = VoiceStatusLine();
             _voiceStatus.gameObject.SetActive(!string.IsNullOrEmpty(status));
             if (!string.IsNullOrEmpty(status))
@@ -1094,7 +1108,7 @@ namespace DshPet
 
                 bool isUser = line.IsUser;
                 var tint = isUser ? new Color(0.30f, 0.52f, 0.78f, 0.95f) : new Color(0.98f, 0.93f, 0.84f, 0.96f);
-                var bubble = DshMobile.Ugui.Panel("Bubble", _chatContent, 12f, tint,
+                var bubble = DshMobile.Ugui.Panel("Bubble", _chatContent, 18f, tint,
                     new Color(1f, 1f, 1f, 0.12f), 1.5f);
                 bubble.rectTransform.anchorMin = new Vector2(0f, 1f);
                 bubble.rectTransform.anchorMax = new Vector2(0f, 1f);
@@ -1131,9 +1145,8 @@ namespace DshPet
             if (gm.IsThinking && !string.IsNullOrEmpty(gm.PendingUserMessage))
             {
                 string pending = gm.PendingUserMessage;
-                bool isUser = true;
                 var tint = new Color(0.30f, 0.52f, 0.78f, 0.95f);
-                var bubble = DshMobile.Ugui.Panel("BubblePending", _chatContent, 12f, tint,
+                var bubble = DshMobile.Ugui.Panel("BubblePending", _chatContent, 18f, tint,
                     new Color(1f, 1f, 1f, 0.12f), 1.5f);
                 bubble.rectTransform.anchorMin = new Vector2(0f, 1f);
                 bubble.rectTransform.anchorMax = new Vector2(0f, 1f);
@@ -1167,18 +1180,17 @@ namespace DshPet
         }
 
         private void OnCloseChat() { _chatExpanded = false; }
+        private void OnToggleEnglishMode()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            gm.SetEnglishMode(!gm.EnglishChatMode);
+        }
         private void OnSendChat()
         {
             var gm = PetGameManager.Instance;
             if (gm == null || gm.IsThinking) return;
             string text = _input;
-            if (_englishChat)
-            {
-                // The English corner's chat mode asks the pet to answer in English — once, then the
-                // flag drops so normal chat is unchanged.
-                text = "(用英语回答，简短一点) " + text;
-                _englishChat = false;
-            }
             gm.Talk(text);
             _input = "";
             _chatInput.text = "";
@@ -3631,7 +3643,9 @@ namespace DshPet
             if (gm == null) return;
             _showEnglish = false;
             _chatExpanded = true;
-            _englishChat = true;
+            // English-teacher mode is a persistent system prompt, not a one-shot message prefix:
+            // the pet stays the teacher until the player turns it off in the chat footer.
+            gm.SetEnglishMode(true);
             FillEditConfig(gm);
         }
 
@@ -3725,6 +3739,12 @@ namespace DshPet
             _chatBarLine.horizontalOverflow = HorizontalWrapMode.Wrap;
 
             _chatBarDot = Circle("ChatBarDot", new Color(1f, 0.55f, 0.35f, 0.6f), 6f);
+
+            // The "和它说话" bar was removed (round 46), but these children stay active by default
+            // and the mic circle floated at the screen centre — on top of the pet. Hide them all.
+            _chatBar.gameObject.SetActive(false);
+            _chatBarMic.gameObject.SetActive(false);
+            _chatBarDot.gameObject.SetActive(false);
 
             _mobileRoot.SetActive(false);
         }

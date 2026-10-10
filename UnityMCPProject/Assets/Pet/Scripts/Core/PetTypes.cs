@@ -174,6 +174,10 @@ namespace DshPet
         /// one". Editing this is advanced: the generated prompt carries the reply-format contract.</summary>
         public string SystemPrompt;
 
+        /// <summary>Whether the pet is in English-teacher mode (the English corner's chat). The
+        /// prompt builder mounts <see cref="EnglishCorner.EnglishTeacherPrompt"/> when true.</summary>
+        public bool EnglishMode;
+
         /// <summary>
         /// What the pet can see right now: where it is in the room, where its things are, and where the
         /// owner is (see <see cref="PetPerception"/>).

@@ -32,15 +32,18 @@ namespace DshMiniGames.Tests
         }
 
         [Test]
-        public void AGeneratedMineIsNotOnTopOfTheShip()
+        public void AMineAimsNearTheShipButNeverExactlyOnIt()
         {
             var ship = new Vector2(0.5f, 0.2f);
-            for (int i = 0; i < 100; i++)
+            int near = 0;
+            for (int i = 0; i < 200; i++)
             {
                 var mine = TunnelRules.NextMine(ship, Random.value, Random.value);
-                Assert.Greater(Vector2.Distance(ship, mine), TunnelRules.MineRadius + TunnelRules.ShipRadius,
-                    "a mine never spawns already touching the ship");
+                float dist = Vector2.Distance(ship, mine);
+                Assert.Greater(dist, 0.01f, "a mine never spawns exactly on the ship");
+                if (dist < TunnelRules.MineRadius + TunnelRules.ShipRadius) near++;
             }
+            Assert.Greater(near, 0, "mines often aim close enough to hit a ship that stands still");
         }
 
         [Test]

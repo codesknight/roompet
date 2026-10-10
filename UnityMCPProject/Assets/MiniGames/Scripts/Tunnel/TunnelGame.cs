@@ -395,9 +395,17 @@ namespace DshMiniGames
             for (int i = 0; i < n; i++)
             {
                 Vector2 hp = hole + points[i];
-                Vector2 dir = hp.normalized;
+                // Outward from the HOLE centre (not the tunnel centre): the old radial-from-tunnel
+                // direction crossed the mesh back over the hole when the hole sat off-centre, which
+                // covered the hole and made a wall with no hole in it.
+                Vector2 dir = (hp - hole).normalized;
                 if (dir.sqrMagnitude < 0.0001f) dir = Vector2.up;
-                Vector2 rp = dir * RingRadius;
+                // Ray-cast from the hole centre along dir to the ring circle (centre 0,0, radius R).
+                float b = Vector2.Dot(hole, dir);
+                float c = hole.sqrMagnitude - RingRadius * RingRadius;
+                float disc = b * b - c;
+                float t = disc > 0f ? -b + Mathf.Sqrt(disc) : 0f;
+                Vector2 rp = hole + dir * Mathf.Max(0.01f, t);
                 verts[2 * i] = new Vector3(hp.x, hp.y, 0f);
                 verts[2 * i + 1] = new Vector3(rp.x, rp.y, 0f);
             }

@@ -68,6 +68,20 @@ namespace DshPet
 
         public static int WordCount => Words.Length;
 
+        /// <summary>
+        /// The system-prompt instruction that turns the pet into a patient English teacher.
+        /// Mounted while English chat mode is on, so the pet answers in English and actively
+        /// teaches — words, phrases, example sentences and little dialogues — rather than just
+        /// translating whatever the player wrote.
+        /// </summary>
+        public static readonly string EnglishTeacherPrompt =
+            "现在你是主人的英语小老师，要陪主人面对面练英语：\n" +
+            "1. 全程用英语回答，句子简短清楚，适合初学者。\n" +
+            "2. 每轮主动教一点：一个新单词或短语，附上中文意思，再给一句例句。\n" +
+            "3. 主人用英语开口时多鼓励；说错了就温柔纠正，再示范正确说法。\n" +
+            "4. 可以顺势展开成小对话（打招呼、点餐、问路、聊宠物等）。\n" +
+            "5. 中文只用来解释意思，你平时说的话仍然要用英语。";
+
         /// <summary>Wraps an index into the word list (never throws on negatives).</summary>
         public static EnglishWord WordAt(int index)
             => Words[((index % WordCount) + WordCount) % WordCount];

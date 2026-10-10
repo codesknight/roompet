@@ -153,23 +153,47 @@ namespace DshPet
         }
 
         /// <summary>
-        /// Gives a fresh save its first animal.
+        /// Gives a fresh save its first animal, chosen by the player on the front door.
         ///
         /// Without this the player opens the game with an empty room and no way to get a pet
         /// except grinding the runner — which is a terrible first five minutes for a pet game.
+        /// A save that already has pets predates the onboarding flow, so it is migrated rather
+        /// than re-seeded.
         /// </summary>
         private static void EnsureStarters()
         {
             EnsureUnlocked();
 
-            if (_data.Pets.Count > 0) return;
+            if (_data.Pets.Count > 0)
+            {
+                // Migration: an existing home already made its choice, even if it happened before
+                // the pick-your-pet screen existed. Mark it so the front door never pops the
+                // starter question over a player who is already living with a bear.
+                if (!PetOnboarding.HasChosenStarter)
+                {
+                    string migrate = _data.Pets[0].SpeciesId;
+                    for (int i = 0; i < _data.Pets.Count; i++)
+                    {
+                        if (_data.Pets[i].Primary) { migrate = _data.Pets[i].SpeciesId; break; }
+                    }
+                    PetOnboarding.MarkChosen(migrate);
+                }
+                return;
+            }
 
-            var starter = PetSpecies.All[0];
+            string chosen = PetOnboarding.IsStarterChoice(PetOnboarding.StarterChoice)
+                ? PetOnboarding.StarterChoice
+                : "fox";
+
+            var starter = PetSpecies.Get(chosen);
             var record = PetRecord.Create(starter.Id, starter.DisplayName,
                 PetPersonality.Load(starter.Id), 1);
             record.Primary = true;
             _data.Pets.Add(record);
             _data.Backpack.Add(record.Id);
+
+            // Starter kit: one bag of kibble so the tutorial's first feed is possible at once.
+            PetOnboarding.GrantStarterKit();
         }
 
         private static void EnsureUnlocked()
@@ -463,7 +487,20 @@ namespace DshPet
 
             for (int i = 0; i < Data.Pets.Count; i++) Data.Pets[i].Primary = false;
             target.Primary = true;
-            if (!IsInBackpack(recordId)) AddToBackpack(recordId);
+
+            // The primary pet leads the backpack list: the panel and the room both read it first,
+            // so "主要照顾" is always the first slot rather than wherever the pet happened to be
+            // added. If the backpack is full the record keeps its flag but stays out of the room,
+            // which the panel labels "主要照顾（不在房间里）".
+            if (!Data.Backpack.Contains(recordId) && Data.Backpack.Count < BackpackSlots)
+            {
+                Data.Backpack.Add(recordId);
+            }
+            if (Data.Backpack.Contains(recordId))
+            {
+                Data.Backpack.Remove(recordId);
+                Data.Backpack.Insert(0, recordId);
+            }
 
             Save();
             Changed?.Invoke();
