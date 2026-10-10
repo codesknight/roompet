@@ -155,6 +155,14 @@ namespace DshPet
         private DateTime _builtJournalMonth;
         private DateTime _builtJournalDay;
 
+        // uGUI collection panel (fourth slice, fifth piece).
+        private UnityEngine.UI.Image _collectionPanel;
+        private UnityEngine.UI.Text _collectionBalance;
+        private UnityEngine.UI.Text _collectionMessageText;
+        private RectTransform _collectionContent;
+        private readonly List<UnityEngine.UI.Text> _collectionTabLabels = new List<UnityEngine.UI.Text>();
+        private int _builtCollectionTab = -1;
+
         /// <summary>Set by hoverable world objects; shown near the cursor.</summary>
         public static void SetCursorHint(string hint) => _cursorHint = hint;
 
@@ -350,7 +358,7 @@ namespace DshPet
             // The settings panel is now uGUI — see SyncSettingsPanel.
             if (_showPromptPreview) DrawPromptPreview(gm);
             // The journal (calendar) is now uGUI — see SyncJournalPanel.
-            if (_showCollection) DrawCollection(gm);
+            // The collection panel is now uGUI — see SyncCollectionPanel.
             if (_showFurnish) DrawFurnish(gm);
             // The placement bar is now uGUI — see SyncPlacementBar.
 
@@ -710,6 +718,7 @@ namespace DshPet
             BuildMapPanel();
             BuildSettingsPanel();
             BuildJournalPanel();
+            BuildCollectionPanel();
         }
 
         private void Update()
@@ -739,6 +748,7 @@ namespace DshPet
             SyncMapPanel();
             SyncSettingsPanel();
             SyncJournalPanel();
+            SyncCollectionPanel();
         }
 
         /// <summary>
@@ -2115,6 +2125,283 @@ namespace DshPet
                 _journalStatus = $"再点一次确认清理 {_journalMonth:yyyy 年 M 月} 的记录";
             }
             _builtJournalDay = DateTime.MinValue;
+        }
+
+        // --------------------------------------------------------------- collection (uGUI)
+
+        private void BuildCollectionPanel()
+        {
+            _collectionPanel = DshMobile.Ugui.Panel("CollectionPanel", _root, 18f,
+                new Color(0.11f, 0.10f, 0.14f, 1f), new Color(1f, 1f, 1f, 0.14f), 2f);
+            _collectionPanel.gameObject.SetActive(false);
+            var p = _collectionPanel.rectTransform;
+
+            var title = DshMobile.Ugui.Text("Title", p, "宠物图鉴", 24, new Color(1f, 0.94f, 0.82f), UnityEngine.TextAnchor.MiddleLeft, true);
+            DshMobile.Ugui.SetRect(title.rectTransform, 18f, 14f, 200f, 32f);
+
+            _collectionBalance = DshMobile.Ugui.Text("Balance", p, "", 20, new Color(1f, 0.94f, 0.82f), UnityEngine.TextAnchor.MiddleRight, true);
+            DshMobile.Ugui.SetRect(_collectionBalance.rectTransform, -280f, 14f, 200f, 32f);
+
+            var tabs = new[] { CollectionTab.Shop, CollectionTab.Warehouse, CollectionTab.Backpack };
+            for (int i = 0; i < tabs.Length; i++)
+            {
+                var tab = DshMobile.Ugui.Button("Tab", p, PetCollectionPanel.TabLabel(tabs[i]), 16, new Color(0.30f, 0.40f, 0.58f));
+                DshMobile.Ugui.SetRect(tab.GetComponent<RectTransform>(), 18f + i * 146f, 48f, 140f, 34f);
+                _collectionTabLabels.Add(tab.GetComponentInChildren<UnityEngine.UI.Text>());
+                CollectionTab captured = tabs[i];
+                tab.onClick.AddListener(() => { PetCollectionPanel.Tab = captured; _builtCollectionTab = -1; });
+            }
+
+            var close = DshMobile.Ugui.Button("Close", p, "关闭", 16, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRect(close.GetComponent<RectTransform>(), -94f, 48f, 76f, 34f);
+            close.onClick.AddListener(() => _showCollection = false);
+
+            _collectionMessageText = DshMobile.Ugui.Text("Message", p, "", 14, new Color(0.7f, 0.95f, 0.75f), UnityEngine.TextAnchor.MiddleLeft);
+            DshMobile.Ugui.SetRect(_collectionMessageText.rectTransform, 18f, 88f, 500f, 22f);
+
+            var viewport = new GameObject("Viewport", typeof(RectTransform));
+            viewport.transform.SetParent(p, false);
+            viewport.AddComponent<UnityEngine.UI.RectMask2D>();
+            var viewportImg = viewport.AddComponent<UnityEngine.UI.Image>();
+            viewportImg.color = new Color(0f, 0f, 0f, 0f);
+            viewportImg.raycastTarget = true;
+            var scroll = p.gameObject.AddComponent<UnityEngine.UI.ScrollRect>();
+            scroll.viewport = viewport.GetComponent<RectTransform>();
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = UnityEngine.UI.ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 30f;
+            scroll.viewport.anchorMin = new Vector2(0f, 0f);
+            scroll.viewport.anchorMax = new Vector2(1f, 1f);
+            scroll.viewport.offsetMin = new Vector2(18f, 14f);
+            scroll.viewport.offsetMax = new Vector2(-18f, -116f);
+
+            var content = new GameObject("Content", typeof(RectTransform));
+            content.transform.SetParent(viewport.transform, false);
+            _collectionContent = content.GetComponent<RectTransform>();
+            _collectionContent.anchorMin = new Vector2(0f, 1f);
+            _collectionContent.anchorMax = new Vector2(1f, 1f);
+            _collectionContent.pivot = new Vector2(0.5f, 1f);
+            scroll.content = _collectionContent;
+        }
+
+        private void SyncCollectionPanel()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            bool open = _showCollection;
+            _collectionPanel.gameObject.SetActive(open);
+            _modalScrim.gameObject.SetActive(open || _showSettings || _showJournal || gm.DoorPromptOpen);
+            if (!open) return;
+
+            var w = Mathf.Min(760f, DesignWidth - 48f);
+            var h = Mathf.Min(560f, DesignHeight - 48f);
+            _collectionPanel.rectTransform.anchorMin = _collectionPanel.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            _collectionPanel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            _collectionPanel.rectTransform.anchoredPosition = Vector2.zero;
+            _collectionPanel.rectTransform.sizeDelta = new Vector2(w, h);
+
+            _collectionBalance.text = "宠物币 " + DshMobile.PetWallet.Coins.ToString("N0");
+            _collectionMessageText.text = _collectionMessage;
+            _collectionMessageText.color = _collectionError ? new Color(1f, 0.65f, 0.55f) : new Color(0.7f, 0.95f, 0.75f);
+
+            var tabs = new[] { CollectionTab.Shop, CollectionTab.Warehouse, CollectionTab.Backpack };
+            for (int i = 0; i < _collectionTabLabels.Count; i++)
+                _collectionTabLabels[i].color = PetCollectionPanel.Tab == tabs[i] ? new Color(1f, 0.92f, 0.7f) : Color.white;
+
+            if (_builtCollectionTab != (int)PetCollectionPanel.Tab)
+            {
+                RebuildCollectionContent(gm, w);
+                _builtCollectionTab = (int)PetCollectionPanel.Tab;
+            }
+        }
+
+        private void RebuildCollectionContent(PetGameManager gm, float w)
+        {
+            for (int i = _collectionContent.childCount - 1; i >= 0; i--) Destroy(_collectionContent.GetChild(i).gameObject);
+            float y = 4f;
+
+            if (PetCollectionPanel.Tab == CollectionTab.Shop)
+            {
+                y = BuildGacha(_collectionContent, y, w);
+                y += 12f;
+                y = BuildCollectionLabel(_collectionContent, y, "直接领养");
+                foreach (var species in PetCollectionPanel.ShopOrder())
+                {
+                    y = BuildShopSpecies(gm, _collectionContent, y, w, species);
+                }
+            }
+            else
+            {
+                bool inBackpack = PetCollectionPanel.Tab == CollectionTab.Backpack;
+                y = BuildCollectionLabel(_collectionContent, y, inBackpack
+                    ? $"背包 {PetCollection.Backpack.Count}/{PetCollection.BackpackSlots}　在背包里的宠物会一起在房间里走动。"
+                    : $"仓库里一共有 {PetCollection.Warehouse.Count} 只宠物，容量不限。");
+
+                var pets = inBackpack ? RecordsIn(PetCollection.Backpack) : new List<PetRecord>(PetCollection.Warehouse);
+                if (pets.Count == 0) y = BuildCollectionLabel(_collectionContent, y, "这里还没有宠物，去商城领一只吧。");
+                foreach (var record in pets)
+                {
+                    y = BuildPetRecord(gm, _collectionContent, y, w, record, inBackpack);
+                }
+            }
+
+            _collectionContent.sizeDelta = new Vector2(-4f, y + 12f);
+        }
+
+        private static float BuildCollectionLabel(RectTransform content, float y, string text)
+        {
+            var label = DshMobile.Ugui.Text("Label", content, text, 15, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            label.horizontalOverflow = HorizontalWrapMode.Wrap;
+            label.rectTransform.anchorMin = label.rectTransform.anchorMax = new Vector2(0f, 1f);
+            label.rectTransform.pivot = new Vector2(0f, 1f);
+            label.rectTransform.anchoredPosition = new Vector2(2f, -y);
+            label.rectTransform.sizeDelta = new Vector2(-4f, 24f);
+            return y + 26f;
+        }
+
+        private float BuildGacha(RectTransform content, float y, float w)
+        {
+            var title = DshMobile.Ugui.Text("GachaTitle", content, "🎰 扭蛋机", 20, new Color(1f, 0.94f, 0.82f), UnityEngine.TextAnchor.UpperLeft, true);
+            title.rectTransform.anchorMin = title.rectTransform.anchorMax = new Vector2(0f, 1f);
+            title.rectTransform.pivot = new Vector2(0f, 1f);
+            title.rectTransform.anchoredPosition = new Vector2(2f, -y);
+            title.rectTransform.sizeDelta = new Vector2(200f, 28f);
+            y += 30f;
+
+            y = BuildCollectionLabel(content, y, "投 " + PetGacha.Cost + " 币，随机转出一只扭蛋专属宠物（不进直售）。");
+            y = BuildCollectionLabel(content, y, "奖池：" + PetGacha.OddsText());
+
+            bool afford = DshMobile.PetWallet.CanAfford(PetGacha.Cost);
+            var roll = DshMobile.Ugui.Button("Roll", content,
+                afford ? $"🎲 扭一次（¥{PetGacha.Cost}）" : $"还差 {PetGacha.Cost - DshMobile.PetWallet.Coins} 币",
+                16, new Color(0.98f, 0.72f, 0.22f));
+            roll.interactable = afford;
+            roll.GetComponent<RectTransform>().anchorMin = roll.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 1f);
+            roll.GetComponent<RectTransform>().pivot = new Vector2(0f, 1f);
+            roll.GetComponent<RectTransform>().anchoredPosition = new Vector2(2f, -y);
+            roll.GetComponent<RectTransform>().sizeDelta = new Vector2(Mathf.Min(w - 60f, 400f), 46f);
+            roll.onClick.AddListener(() =>
+            {
+                string message;
+                PetCollection.RollGacha(out message);
+                SetCollectionMessage(message);
+                DshMobile.MobileHaptics.Medium();
+                _builtCollectionTab = -1;
+            });
+            return y + 54f;
+        }
+
+        private float BuildShopSpecies(PetGameManager gm, RectTransform content, float y, float w, PetSpecies species)
+        {
+            bool owned = PetCollection.IsSpeciesUnlocked(species.Id);
+            int price = PetCollection.PriceFor(species.Id);
+            bool afford = DshMobile.PetWallet.CanAfford(price);
+
+            var row = new GameObject("Species", typeof(RectTransform));
+            row.transform.SetParent(content, false);
+            var rowRt = row.GetComponent<RectTransform>();
+            rowRt.anchorMin = new Vector2(0f, 1f);
+            rowRt.anchorMax = new Vector2(1f, 1f);
+            rowRt.pivot = new Vector2(0f, 1f);
+            rowRt.anchoredPosition = new Vector2(0f, -y);
+            rowRt.sizeDelta = new Vector2(0f, 48f);
+
+            var dot = DshMobile.Ugui.Image("Dot", row.transform, species.Fur);
+            DshMobile.Ugui.Place(dot.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(2f, -2f), new Vector2(20f, 20f));
+
+            var name = DshMobile.Ugui.Text("Name", row.transform, $"{species.DisplayName}　{species.Blurb}", 16, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(name.rectTransform, 30f, 2f, w - 230f, 24f);
+
+            var sub = DshMobile.Ugui.Text("Sub", row.transform, owned
+                ? $"已拥有 {PetCollection.OwnedCount(species.Id)} 只　再买一只 {price} 币"
+                : $"未解锁　{price} 币", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(sub.rectTransform, 30f, 26f, w - 230f, 20f);
+
+            var buy = DshMobile.Ugui.Button("Buy", row.transform, afford ? $"领回家 {price}" : $"还差 {price - DshMobile.PetWallet.Coins}", 16,
+                new Color(0.30f, 0.55f, 0.35f));
+            buy.interactable = afford;
+            buy.GetComponent<RectTransform>().anchorMin = buy.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 0.5f);
+            buy.GetComponent<RectTransform>().pivot = new Vector2(1f, 0.5f);
+            buy.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 0f);
+            buy.GetComponent<RectTransform>().sizeDelta = new Vector2(150f, 38f);
+            PetSpecies captured = species;
+            buy.onClick.AddListener(() => { var r = PetCollectionPanel.Buy(captured.Id); SetCollectionMessage(r.Message, r.Error); _builtCollectionTab = -1; });
+
+            return y + 54f;
+        }
+
+        private float BuildPetRecord(PetGameManager gm, RectTransform content, float y, float w, PetRecord record, bool inBackpack)
+        {
+            var species = PetSpecies.Get(record.SpeciesId);
+            bool isPrimary = PetCollection.Primary != null && PetCollection.Primary.Id == record.Id;
+
+            var row = new GameObject("Pet", typeof(RectTransform));
+            row.transform.SetParent(content, false);
+            var rowRt = row.GetComponent<RectTransform>();
+            rowRt.anchorMin = new Vector2(0f, 1f);
+            rowRt.anchorMax = new Vector2(1f, 1f);
+            rowRt.pivot = new Vector2(0f, 1f);
+            rowRt.anchoredPosition = new Vector2(0f, -y);
+            rowRt.sizeDelta = new Vector2(0f, 84f);
+
+            var dot = DshMobile.Ugui.Image("Dot", row.transform, species.Fur);
+            DshMobile.Ugui.Place(dot.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(2f, -2f), new Vector2(20f, 20f));
+
+            var name = DshMobile.Ugui.Text("Name", row.transform, $"{record.Name}　{species.DisplayName}", 16, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(name.rectTransform, 30f, 2f, w - 340f, 24f);
+
+            var role = DshMobile.Ugui.Text("Role", row.transform, $"{record.Personality.Archetype}　·　{PetCollectionPanel.RoleLabel(inBackpack, isPrimary)}", 14,
+                new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(role.rectTransform, 30f, 26f, w - 340f, 20f);
+
+            var voice = DshMobile.Ugui.Text("Voice", row.transform, "音色：" + PetVoice.Describe(species, record.Personality), 14,
+                new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(voice.rectTransform, 30f, 46f, w - 340f, 20f);
+
+            var sell = DshMobile.Ugui.Button("Sell", row.transform, _armedSell == "sell:" + record.Id ? "真的卖掉？" : "卖掉", 14,
+                new Color(0.75f, 0.35f, 0.35f));
+            sell.interactable = !isPrimary;
+            sell.GetComponent<RectTransform>().anchorMin = sell.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 1f);
+            sell.GetComponent<RectTransform>().pivot = new Vector2(1f, 1f);
+            sell.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, -2f);
+            sell.GetComponent<RectTransform>().sizeDelta = new Vector2(96f, 30f);
+            PetRecord captured = record;
+            sell.onClick.AddListener(() =>
+            {
+                if (_armedSell == "sell:" + captured.Id)
+                {
+                    _armedSell = null;
+                    var r = PetCollectionPanel.Sell(captured.Id);
+                    SetCollectionMessage(r.Message, r.Error);
+                    _builtCollectionTab = -1;
+                }
+                else
+                {
+                    _armedSell = "sell:" + captured.Id;
+                    SetCollectionMessage($"再点一次就把{captured.Name}卖掉，能得到 {PetCollection.SellPriceFor(captured.SpeciesId)} 个宠物币（没法撤销）");
+                }
+            });
+
+            var action = DshMobile.Ugui.Button("Action", row.transform, "", 14, new Color(0.30f, 0.40f, 0.58f));
+            action.GetComponent<RectTransform>().anchorMin = action.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 1f);
+            action.GetComponent<RectTransform>().pivot = new Vector2(1f, 1f);
+            action.GetComponent<RectTransform>().anchoredPosition = new Vector2(-100f, -2f);
+            action.GetComponent<RectTransform>().sizeDelta = new Vector2(112f, 30f);
+            var actionLabel = action.GetComponentInChildren<UnityEngine.UI.Text>();
+
+            if (inBackpack)
+            {
+                if (isPrimary) { action.gameObject.SetActive(false); }
+                else { actionLabel.text = "主要照顾"; action.onClick.AddListener(() => { var r = PetCollectionPanel.MakePrimary(captured.Id); SetCollectionMessage(r.Message, r.Error); _builtCollectionTab = -1; }); }
+            }
+            else
+            {
+                actionLabel.text = "放进背包";
+                action.onClick.AddListener(() => { var r = PetCollectionPanel.PutInBackpack(captured.Id); SetCollectionMessage(r.Message, r.Error); _builtCollectionTab = -1; });
+            }
+
+            return y + 90f;
         }
 
         /// <summary>
