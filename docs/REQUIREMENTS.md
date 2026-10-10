@@ -494,6 +494,17 @@
 | R36.5 | 全套回归 | 新增 3 条单测，377/377 全绿 | 测试全绿 ✅ |
 
 
+## 阶段 37：隧道沉浸感 + 棱镜 UI 美化 + 两个游戏配 BGM/音效
+
+| 编号 | 需求 | 实现 | 验收证据 |
+|---|---|---|---|
+| R37.1 | 隧道飞船离镜头近一点 | 相机 -8.2 → -6.0，飞船更大、隧道壁贴边掠过 | 运行中：camera z=-6.0 ✅ |
+| R37.2 | 棱镜 UI 按钮丰富好看 | 圆角彩色按钮（`Rounded` 圆角纹理 + `MakeButton`），难度橙/蓝/紫、模式绿/红、开始亮绿 | 运行中：编译通过 ✅ |
+| R37.3 | 两个游戏配 BGM | `MobileMusic.TrackForScene` 加 `Tunnel→SliceFruit(The Rush)`、`Prism→Puzzle(Contemplation)`，sceneLoaded 自动播放 | 运行中：Music Current=SliceFruit ✅ |
+| R37.4 | 音效搭配 | 隧道过门"叮"/撞毁闷响；棱镜整轮琶音/点错 buzz（`PrismAudio.Tone`/`Arpeggio` 程序化合成） | 运行中：编译通过 ✅ |
+| R37.5 | 全套回归 | 纯画面/UI/音频无新单测，377/377 全绿 | 测试全绿 ✅ |
+
+
 ## 非功能需求 / 设计约束
 
 

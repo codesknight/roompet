@@ -37,6 +37,73 @@ namespace DshMiniGames
             _centered.normal.textColor = new Color(0.92f, 0.92f, 0.98f);
         }
 
+        // ------------------------------------------------------------------ nicer buttons
+
+        private static readonly System.Collections.Generic.Dictionary<Color, Texture2D> _roundCache =
+            new System.Collections.Generic.Dictionary<Color, Texture2D>();
+
+        /// <summary>A soft rounded-rect button background, shaded a touch lighter at the top.</summary>
+        private static Texture2D Rounded(Color fill)
+        {
+            Texture2D cached;
+            if (_roundCache.TryGetValue(fill, out cached) && cached != null) return cached;
+
+            const int w = 96, h = 48;
+            const float radius = 14f;
+            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 0; x < w; x++)
+                {
+                    float dx = Mathf.Max(Mathf.Abs(x + 0.5f - w * 0.5f) - (w * 0.5f - radius), 0f);
+                    float dy = Mathf.Max(Mathf.Abs(y + 0.5f - h * 0.5f) - (h * 0.5f - radius), 0f);
+                    float dist = Mathf.Sqrt(dx * dx + dy * dy) - radius;
+                    float alpha = Mathf.Clamp01(0.5f - dist);
+                    if (alpha <= 0f) { tex.SetPixel(x, y, new Color(0f, 0f, 0f, 0f)); continue; }
+
+                    float t = 1f - (float)y / h;
+                    Color c = Color.Lerp(fill, Color.white, t * 0.25f);
+                    tex.SetPixel(x, y, new Color(c.r, c.g, c.b, alpha));
+                }
+            }
+            tex.Apply();
+            _roundCache[fill] = tex;
+            return tex;
+        }
+
+        /// <summary>A coloured rounded button, tinted by <paramref name="fill"/>.</summary>
+        private GUIStyle MakeButton(Color fill)
+        {
+            var style = new GUIStyle(GUI.skin.button)
+            {
+                fontSize = 17,
+                padding = new RectOffset(14, 14, 10, 10),
+                alignment = TextAnchor.MiddleCenter,
+                fontStyle = FontStyle.Bold
+            };
+            style.normal.background = Rounded(fill);
+            style.hover.background = Rounded(Color.Lerp(fill, Color.white, 0.18f));
+            style.active.background = Rounded(Color.Lerp(fill, Color.black, 0.18f));
+            var text = new Color(0.07f, 0.05f, 0.12f);
+            style.normal.textColor = text;
+            style.hover.textColor = text;
+            style.active.textColor = text;
+            return style;
+        }
+
+        private static Color DifficultyColor(PrismDifficulty difficulty)
+        {
+            switch (difficulty)
+            {
+                case PrismDifficulty.Spectrum: return new Color(0.30f, 0.75f, 0.92f);
+                case PrismDifficulty.Prism: return new Color(0.72f, 0.45f, 0.95f);
+                default: return new Color(0.98f, 0.72f, 0.22f);
+            }
+        }
+
+        private static Color ModeColor(PrismMode mode)
+            => mode == PrismMode.Rush ? new Color(0.95f, 0.45f, 0.36f) : new Color(0.38f, 0.82f, 0.50f);
+
         private void OnGUI()
         {
             if (_game == null) return;
@@ -97,7 +164,7 @@ namespace DshMiniGames
             DrawModeButton(new Rect(cx + 20f, y, 160f, 44f), "竞速（限时）", PrismMode.Rush);
             y += 60f;
 
-            if (GUI.Button(new Rect(cx - 130f, y, 260f, 54f), "开始", _button))
+            if (GUI.Button(new Rect(cx - 130f, y, 260f, 54f), "开始", MakeButton(new Color(0.40f, 0.90f, 0.60f))))
             {
                 _game.StartRun(_selectedDifficulty, _selectedMode);
             }
@@ -113,8 +180,10 @@ namespace DshMiniGames
             bool locked = (int)difficulty > unlocked;
             bool selected = _selectedDifficulty == difficulty;
             GUI.enabled = !locked;
-            if (GUI.Button(rect, locked ? label + "（未解锁）" : label,
-                selected ? SelectedStyle() : _button))
+            var style = MakeButton(selected
+                ? Color.Lerp(DifficultyColor(difficulty), Color.white, 0.25f)
+                : DifficultyColor(difficulty));
+            if (GUI.Button(rect, locked ? label + "（未解锁）" : label, style))
             {
                 _selectedDifficulty = difficulty;
             }
@@ -124,17 +193,11 @@ namespace DshMiniGames
         private void DrawModeButton(Rect rect, string label, PrismMode mode)
         {
             bool selected = _selectedMode == mode;
-            if (GUI.Button(rect, label, selected ? SelectedStyle() : _button))
+            var style = MakeButton(selected ? Color.Lerp(ModeColor(mode), Color.white, 0.25f) : ModeColor(mode));
+            if (GUI.Button(rect, label, style))
             {
                 _selectedMode = mode;
             }
-        }
-
-        private GUIStyle SelectedStyle()
-        {
-            var style = new GUIStyle(_button);
-            style.normal.textColor = new Color(1f, 0.9f, 0.4f);
-            return style;
         }
 
         private GUIStyle Centered()
@@ -171,11 +234,11 @@ namespace DshMiniGames
                 $"最高 {_game.Best}　·　本局赚了 {_game.RunCoins} 币", Centered());
 
             float y = 290f;
-            if (GUI.Button(new Rect(cx - 150f, y, 300f, 50f), "再来一次", _button))
+            if (GUI.Button(new Rect(cx - 150f, y, 300f, 50f), "再来一次", MakeButton(new Color(0.40f, 0.90f, 0.60f))))
             {
                 _game.StartRun(_selectedDifficulty, _selectedMode);
             }
-            if (GUI.Button(new Rect(cx - 150f, y + 60f, 300f, 50f), "换难度 / 模式", _button))
+            if (GUI.Button(new Rect(cx - 150f, y + 60f, 300f, 50f), "换难度 / 模式", MakeButton(new Color(0.40f, 0.60f, 0.92f))))
             {
                 _game.BackToMenu();
             }

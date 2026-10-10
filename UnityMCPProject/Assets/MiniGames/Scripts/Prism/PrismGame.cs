@@ -55,6 +55,32 @@ namespace DshMiniGames
             clip.SetData(samples, 0);
             return clip;
         }
+
+        /// <summary>An ascending little melody, for "you got the whole sequence right".</summary>
+        public static float[] Arpeggio(float[] freqs, float noteSeconds = 0.12f)
+        {
+            var parts = new float[freqs.Length][];
+            for (int i = 0; i < freqs.Length; i++)
+            {
+                parts[i] = Tone(freqs[i], noteSeconds, 0.25f, 0.09f);
+            }
+            return Concat(parts);
+        }
+
+        private static float[] Concat(float[][] parts)
+        {
+            int total = 0;
+            for (int i = 0; i < parts.Length; i++) total += parts[i] != null ? parts[i].Length : 0;
+            var result = new float[Mathf.Max(16, total)];
+            int at = 0;
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (parts[i] == null) continue;
+                System.Array.Copy(parts[i], 0, result, at, parts[i].Length);
+                at += parts[i].Length;
+            }
+            return result;
+        }
     }
 
     /// <summary>One clickable pad on the board.</summary>
@@ -208,6 +234,7 @@ namespace DshMiniGames
                     _feedbackRoundComplete = true;
                     _feedbackTimer = 0.45f;
                     State = Phase.Feedback;
+                    PlaySuccess();
                 }
             }
             else
@@ -216,6 +243,7 @@ namespace DshMiniGames
                 _feedbackRoundComplete = false;
                 _feedbackTimer = 0.6f;
                 State = Phase.Feedback;
+                PlayFail();
             }
         }
 
@@ -528,6 +556,20 @@ namespace DshMiniGames
                 _source.Stop();
                 _source.PlayOneShot(clip);
             }
+        }
+
+        /// <summary>A bright rising arpeggio for completing a round.</summary>
+        private void PlaySuccess()
+        {
+            if (_source == null) return;
+            _source.PlayOneShot(PrismAudio.ToClip("ok", PrismAudio.Arpeggio(new float[] { 523f, 659f, 784f })));
+        }
+
+        /// <summary>A low buzz for a wrong tap.</summary>
+        private void PlayFail()
+        {
+            if (_source == null) return;
+            _source.PlayOneShot(PrismAudio.ToClip("no", PrismAudio.Tone(140f, 0.42f, 0.5f, 0.2f)));
         }
 
         private void EndRun()

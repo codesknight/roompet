@@ -984,6 +984,14 @@
     规则**（`IsInsideHole` 按圆/方/三角/半圆判定 + `GateShapePoints` 给轮廓画辐条墙），形状随分数逐步
     解锁；"漂浮物"就给障碍加个小圈飘移（`BaseHole + 圆轨道`），别让它傻站。最后**灵敏度要落成
     `ClampSensitivity` + PlayerPrefs + 滑条**，让"跟手"可以被玩家自己调，而不是写死一个手感。
+148. **新场景的 BGM 要"按场景名自动接线"，而不是每个游戏自己记得去放。** `MobileMusic` 用
+    `[RuntimeInitializeOnLoadMethod]` 挂 `sceneLoaded → PlayForScene`，所以一个迷你游戏只要在
+    `TrackForScene` 里加一行 `case "Tunnel": return MusicId.SliceFruit;` 就有 BGM 了——之前隧道和
+    棱镜没进这张表，就一直静音，玩家一眼就发现"没 BGM"。**凡是"每个场景都想要的东西"，用
+    sceneLoaded 钩子 + 一张表解决，别指望新游戏作者记得手动调用。** 音效同理：迷你游戏自己用
+    `AudioSource.PlayOneShot` + 程序化 `Tone`（过门一声叮、撞毁一声闷响、整轮对一串琶音、点错一声
+    buzz），零音频资源。还有个小点：**沉浸感 = 相机离飞船近一点**（-8.2 → -6.0），飞船在画面里更大、
+    隧道壁贴着画面边缘掠过，比"相机拉很远看全貌"更有在隧道里飞的感觉。
 
 ---
 

@@ -189,6 +189,10 @@ namespace DshMobile
                 case "CatchFruit": return MusicId.CatchFruit;
                 case "SliceFruit": return MusicId.SliceFruit;
                 case "AngryBirds": return MusicId.AngryBirds;
+                // The two newest mini-games reuse fitting tracks from the same CC0 set: the tunnel
+                // gets the fast "The Rush", the sequence-memory game gets the calm "Contemplation".
+                case "Tunnel": return MusicId.SliceFruit;
+                case "Prism": return MusicId.Puzzle;
                 default: return MusicId.None;
             }
         }

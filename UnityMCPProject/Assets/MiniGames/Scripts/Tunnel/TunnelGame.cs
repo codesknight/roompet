@@ -33,6 +33,7 @@ namespace DshMiniGames
         private const int RingSegments = 18;
 
         private Camera _camera;
+        private AudioSource _sfx;
         private Transform _ship;
         private Vector2 _shipPos;
         private Vector2 _lastHole;
@@ -61,7 +62,14 @@ namespace DshMiniGames
         {
             Application.targetFrameRate = 60;
             BuildWorld();
+            BuildSource();
             State = Phase.Menu;
+        }
+
+        private void BuildSource()
+        {
+            _sfx = gameObject.AddComponent<AudioSource>();
+            _sfx.playOnAwake = false;
         }
 
         // ------------------------------------------------------------------ world
@@ -78,9 +86,9 @@ namespace DshMiniGames
             }
             existing.orthographic = false;
             existing.fieldOfView = 62f;
-            // A little further back and wider than the first pass, so the ship and the incoming
-            // obstacle are both in frame and the view is never swallowed by a gate up close.
-            existing.transform.position = new Vector3(0f, 0f, -8.2f);
+            // Close behind the ship for a more immersive, "in the tunnel" feel: the ship fills more
+            // of the frame and the walls rush past the edges.
+            existing.transform.position = new Vector3(0f, 0f, -6.0f);
             existing.transform.rotation = Quaternion.identity;
             existing.clearFlags = CameraClearFlags.SolidColor;
             existing.backgroundColor = new Color(0.02f, 0.02f, 0.06f);
@@ -255,6 +263,7 @@ namespace DshMiniGames
                         if (TunnelRules.IsInsideHole(_shipPos, o.Hole, o.Shape, o.Radius))
                         {
                             Score++;
+                            PlayPass();
                             DshMobile.MobileHaptics.Light();
                         }
                         else
@@ -403,7 +412,20 @@ namespace DshMiniGames
             _deathAt = Time.time;
             if (Score > Best) Best = Score;
             if (RunCoins > 0) DshMobile.PetWallet.Add(RunCoins);
+            PlaySfx(PrismAudio.Tone(150f, 0.4f, 0.5f, 0.18f));
             DshMobile.MobileHaptics.Heavy();
+        }
+
+        /// <summary>A short bright chime for passing a gate.</summary>
+        private void PlayPass()
+        {
+            PlaySfx(PrismAudio.Tone(880f, 0.14f, 0.25f, 0.08f));
+        }
+
+        private void PlaySfx(float[] samples)
+        {
+            if (_sfx == null || samples == null) return;
+            _sfx.PlayOneShot(PrismAudio.ToClip("tunnel", samples));
         }
 
         public void ReturnToRoom()
