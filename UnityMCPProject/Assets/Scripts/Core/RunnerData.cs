@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -21,7 +21,9 @@ namespace DshRunner
         public const float JumpDuration = 0.62f;
         public const float LaneChangeTime = 0.11f;
         public const float SlideDuration = 0.6f;
-        public const float SlideScaleY = 0.45f;
+        // The slide is a crouch (squash), not a shrink: the whole character used to scale down to
+        // 45%, which read as "变小". The squash is driven by PlayerController._squash instead.
+        public const float SlideScaleY = 1f;
         public const float Gravity = 46f;
 
         public const float CoinsPerSegmentChance = 0.75f;

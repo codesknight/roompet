@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 namespace DshRunner
 {
@@ -228,7 +228,9 @@ namespace DshRunner
             if (IsSliding) return;
             IsSliding = true;
             _slideTimer = GameConfig.SlideDuration;
-            _squash = 1.25f;
+            // Crouch (shorter + wider), not stretch: a slide is a duck, not a stretch. The old
+            // 1.25 + SlideScaleY shrink made the whole character look like it was shrinking.
+            _squash = 0.6f;
             DshMobile.MobileHaptics.Light();
         }
 
