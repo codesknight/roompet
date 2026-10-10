@@ -29,4 +29,10 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/MiniGames/Scenes/AngryBirds.unity
     guid: cd2ea68ffa36c2d469e1e0722c44f076
+  - enabled: 1
+    path: Assets/MiniGames/Scenes/Prism.unity
+    guid: 123536c429c2352408ff80727efff980
+  - enabled: 1
+    path: Assets/MiniGames/Scenes/Tunnel.unity
+    guid: 7f9f6b73e9e3b8c488b2da83fa7f05ad
   m_configObjects: {}

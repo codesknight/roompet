@@ -567,9 +567,9 @@ namespace DshPet
                     return;
             }
 
-            // The cabin's own touches: the warehouse by the back wall (click to open the
-            // warehouse page), plus a couple of pot plants and a mushroom by the skirting.
-            BuildWarehouse(new Vector3(-3.4f, 0f, 6.0f));
+            // The cabin's own touches: a couple of pot plants and a mushroom by the skirting.
+            // (The warehouse cabinet is default furniture and is built from the inventory, so it
+            // can be moved and stored like the other default objects.)
             SpawnProp("Runner/Nature/plant_bush", new Vector3(6.1f, 0f, 6.1f), 0.9f);
             SpawnProp("Runner/Nature/flower_yellowA", new Vector3(5.6f, 0f, -5.4f), 0.45f);
             SpawnProp("Runner/Nature/mushroom_red", new Vector3(-5.6f, 0f, -5.8f), 0.5f);
@@ -791,22 +791,17 @@ namespace DshPet
             BuildStringLights(new Vector3(-half + 1.2f, 2.45f, z + 0.6f),
                 new Vector3(half - 1.2f, 2.45f, z + 0.6f), 13, 0.45f, warm);
 
-            // The lounge, now real Kenney furniture instead of box-built loungers. A sofa, a
-            // longer sofa, a coffee table, and a rug they sit on.
-            SpawnInteractableProp("Kenney/Furniture/loungeSofa", new Vector3(-2.8f, 0f, 1.9f), 2.4f,
-                InteractableKind.Sofa, "沙发（坐上去休息）", new Vector3(0f, -1.3f));
-            SpawnInteractableProp("Kenney/Furniture/loungeSofaLong", new Vector3(2.9f, 0f, 1.9f), 2.6f,
-                InteractableKind.Sofa, "沙发（坐上去休息）", new Vector3(0f, -1.3f));
+            // The coffee table and rug the default sofas sit around. The sofas, the floor lamp
+            // and the bench are default furniture and are built from the inventory (BuildProp),
+            // so they can be dragged around and stored like any other furniture.
             SpawnProp("Kenney/Furniture/tableCoffee", new Vector3(0f, 0f, 2.4f), 1.2f);
             SpawnProp("Kenney/Furniture/rugRound", new Vector3(0f, 0f, 2.0f), 2.6f);
 
-            // Potted plants along the railing, and a floor lamp to warm the corner.
+            // Potted plants along the railing.
             SpawnProp("Kenney/Furniture/pottedPlant", new Vector3(-half + 1.2f, 0f, -half + 1.7f), 1.0f);
             SpawnProp("Kenney/Furniture/pottedPlant", new Vector3(half - 1.2f, 0f, -half + 1.7f), 1.0f);
             SpawnProp("Kenney/Furniture/plantSmall2", new Vector3(-half + 1.2f, 0f, 0.5f), 0.8f);
             SpawnProp("Kenney/Furniture/plantSmall3", new Vector3(half - 1.2f, 0f, 0.5f), 0.8f);
-            SpawnLamp(new Vector3(-half + 1.4f, 0f, 4.6f));
-            SpawnProp("Kenney/Furniture/bench", new Vector3(4.6f, 0f, -3.4f), 1.6f);
 
             // A brazier: the one warm thing in the middle of the deck.
             var fire = Prim(PrimitiveType.Cylinder, "Brazier", _root, new Vector3(0f, 0.34f, 4.3f),
@@ -1033,7 +1028,7 @@ namespace DshPet
         /// but with a solid collider and an <see cref="Interactable"/> so it can be clicked.
         /// </summary>
         private Interactable SpawnInteractableProp(string resourcePath, Vector3 position, float size,
-            InteractableKind kind, string label, Vector3 approachOffset)
+            InteractableKind kind, string label, Vector3 approachOffset, string itemId = "")
         {
             var instance = InstantiateProp(resourcePath, position, size);
             if (instance == null) return null;
@@ -1046,6 +1041,7 @@ namespace DshPet
             if (interactable == null) interactable = instance.AddComponent<Interactable>();
             interactable.Kind = kind;
             interactable.Label = label;
+            interactable.ItemId = itemId;
             interactable.ApproachPoint = new Vector3(position.x + approachOffset.x, 0f, position.z + approachOffset.y);
             return interactable;
         }
@@ -1057,7 +1053,7 @@ namespace DshPet
         private Interactable SpawnLamp(Vector3 position)
         {
             var interactable = SpawnInteractableProp("Kenney/Furniture/lampRoundFloor", position, 1.5f,
-                InteractableKind.Lamp, "落地灯（点击开关）", new Vector3(0f, -0.6f));
+                InteractableKind.Lamp, "落地灯（点击开关）", new Vector3(0f, -0.6f), "lamp");
             if (interactable == null) return null;
 
             var lightGo = new GameObject("LampLight");
@@ -1075,15 +1071,34 @@ namespace DshPet
             return interactable;
         }
 
+        /// <summary>Builds the default sofa / long sofa / bench, from the item that asked for it.</summary>
+        private Interactable BuildSofa(ShopItem item)
+        {
+            Vector2 at = PetInventory.PositionOf(item.Id, Theme);
+            string resource = item.Id == "sofa" ? "Kenney/Furniture/loungeSofa"
+                : item.Id == "sofa_long" ? "Kenney/Furniture/loungeSofaLong"
+                : "Kenney/Furniture/bench";
+            float scale = item.Id == "sofa" ? 2.4f : item.Id == "sofa_long" ? 2.6f : 1.6f;
+
+            return SpawnInteractableProp(resource, new Vector3(at.x, 0f, at.y), scale,
+                InteractableKind.Sofa, item.Name + "（坐上去休息）", item.ApproachOffset, item.Id);
+        }
+
+        /// <summary>Builds the default floor lamp at a placeable position.</summary>
+        private Interactable BuildLamp(Vector2 at)
+        {
+            return SpawnLamp(new Vector3(at.x, 0f, at.y));
+        }
+
         /// <summary>
         /// The cabin's warehouse: a two-door cabinet clicked to open the warehouse page. It lives
         /// in the cabin only — the other places do not need a second door into the same screen.
         /// </summary>
-        private Interactable BuildWarehouse(Vector3 at)
+        private Interactable BuildWarehouse(Vector2 at)
         {
             var go = new GameObject("Warehouse");
             go.transform.SetParent(_root, false);
-            go.transform.position = new Vector3(at.x, 0f, at.z);
+            go.transform.position = new Vector3(at.x, 0f, at.y);
 
             BoxUnder(go.transform, "Body", new Vector3(0f, 1.0f, 0f), new Vector3(1.6f, 2.0f, 0.9f),
                 new Color(0.52f, 0.36f, 0.22f), 0.5f);
@@ -1106,7 +1121,8 @@ namespace DshPet
             var interactable = go.AddComponent<Interactable>();
             interactable.Kind = InteractableKind.Warehouse;
             interactable.Label = "仓库（点击打开仓库页面）";
-            interactable.ApproachPoint = new Vector3(at.x, 0f, at.z - 1.7f);
+            interactable.ItemId = "warehouse_cabinet";
+            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y - 1.7f);
             return interactable;
         }
 
@@ -1207,6 +1223,9 @@ namespace DshPet
                 case InteractableKind.Swing: return BuildSwing(at);
                 case InteractableKind.Telescope: return BuildTelescope(at);
                 case InteractableKind.RockingChair: return BuildRockingChair(at);
+                case InteractableKind.Sofa: return BuildSofa(item);
+                case InteractableKind.Lamp: return BuildLamp(at);
+                case InteractableKind.Warehouse: return BuildWarehouse(at);
                 default: return null;
             }
         }

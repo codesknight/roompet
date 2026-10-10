@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **359/359 通过**（虚拟宠物 214 + 跑酷 15 + 手机端 49 + 小游戏 81），EditMode |
+| 测试 | **374/374 通过**（虚拟宠物 216 + 跑酷 15 + 手机端 49 + 小游戏 94），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -941,6 +941,16 @@
     `Add("water",1)`），而不是一个 `BucketFull` 布尔——布尔在仓库里显示不出来；② 新加的
     `InteractableKind`（Sofa/Lamp/Warehouse）要同时补 `PetPerception.NameOf`，否则感知和指令里
     全是「东西」。
+
+143. **"默认摆放的家具"和"买了才能摆的家具"要共用一套库存，而不是各写各的硬编码位置。** 露台沙发/台灯
+    上一轮还是 `BuildThemeDecor` 里写死坐标的装饰，这轮要能自由摆放/收回仓库，就得把它们变成
+    `ShopItem.Starter`：开局 `Placed(theme)` 默认摆进自己场景、`BuildPurchasedProps` 统一建造、
+    `Store/Place/MoveItem` 走同一条路。**关键坑**：`Placed(theme)` 每次调用都会"默认补上"缺失的
+    Starter 家具，光看"它不在 placed 里"分不清是"没摆过"还是"被收进仓库了"——需要一个独立的
+    `StoredKey` 记录哪些被收走，否则收进仓库的家具下一帧又自己长回来。另一个坑：**摆放避让的
+    `ResolveOverlap` 在"刚好压在一起"的浮点边界上会差 0.001 判定为重叠**，push 距离要加 0.05 的
+    余量，且"正好压在别人身上"时要把默认推离方向从固定轴改成"推向房间中心"（否则会朝墙/朝下一个
+    障碍一路怼死）。**凡是"默认有 + 玩家可改"的状态，都要先问"怎么区分默认值和用户的显式改动"。**
 
 ---
 

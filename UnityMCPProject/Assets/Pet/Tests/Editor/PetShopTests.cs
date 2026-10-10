@@ -28,13 +28,14 @@ namespace DshPet.Tests
         }
 
         [Test]
-        public void TheDefaultRoomHasOnlyTheTwoBowls()
+        public void TheDefaultRoomHasTheBowlsAndItsDefaultFurniture()
         {
             var placed = PetInventory.Placed(RoomTheme.Cabin);
-            Assert.AreEqual(2, placed.Count, "the starter room is the pet and the two bowls, nothing else");
-            Assert.IsTrue(placed.ContainsKey(PetShop.FoodBowl));
-            Assert.IsTrue(placed.ContainsKey(PetShop.WaterBowl));
-            Assert.IsFalse(PetInventory.IsPlaced("bed", RoomTheme.Cabin));
+            Assert.IsTrue(placed.ContainsKey(PetShop.FoodBowl), "the food bowl is always in the room");
+            Assert.IsTrue(placed.ContainsKey(PetShop.WaterBowl), "the water bowl is always in the room");
+            Assert.IsTrue(placed.ContainsKey("warehouse_cabinet"), "the cabin's default warehouse cabinet is there");
+            Assert.IsFalse(placed.ContainsKey("sofa"), "a terrace sofa is not in the cabin");
+            Assert.IsFalse(PetInventory.IsPlaced("bed", RoomTheme.Cabin), "bought furniture still has to be bought");
             Assert.IsFalse(PetInventory.IsPlaced("litter_box", RoomTheme.Cabin));
         }
 
@@ -314,6 +315,40 @@ namespace DshPet.Tests
                 Place = "Cabin", AvailableTargets = new[] { InteractableKind.AppleTree }
             };
             Assert.IsFalse(eatApple.IsEligible(hungryCabin));
+        }
+
+        [Test]
+        public void DefaultFurnitureCanBeStoredAndReplaced()
+        {
+            // The terrace starts with its sofa, lamp and bench already set down.
+            Assert.IsTrue(PetInventory.IsPlaced("sofa", RoomTheme.Terrace));
+            Assert.IsTrue(PetInventory.IsPlaced("lamp", RoomTheme.Terrace));
+            Assert.IsTrue(PetInventory.IsOwned("sofa"), "default furniture is always owned");
+
+            // Store the sofa: it leaves the room but stays owned.
+            Assert.IsTrue(PetInventory.Store("sofa", RoomTheme.Terrace).Contains("收回"));
+            Assert.IsFalse(PetInventory.IsPlaced("sofa", RoomTheme.Terrace), "stored sofa is no longer in the room");
+            Assert.IsTrue(PetInventory.IsOwned("sofa"));
+
+            // Re-place it: it comes back.
+            Assert.IsTrue(PetInventory.Place("sofa", RoomTheme.Terrace).Contains("摆进了"));
+            Assert.IsTrue(PetInventory.IsPlaced("sofa", RoomTheme.Terrace));
+
+            // Default furniture cannot be sold, only stored.
+            Assert.IsTrue(PetInventory.Sell("sofa").Contains("不能卖"));
+        }
+
+        [Test]
+        public void PlacedFurnitureDoesNotOverlapTheBowls()
+        {
+            // Move the terrace sofa right onto the food bowl: it is pushed clear instead of sitting
+            // inside the bowl. This is the "食物盆/水盆不和其他物体重叠" rule.
+            Vector2 bowl = PetInventory.PositionOf(PetShop.FoodBowl, RoomTheme.Terrace);
+            PetInventory.MoveItem("sofa", bowl, RoomTheme.Terrace);
+
+            Vector2 sofaAt = PetInventory.PositionOf("sofa", RoomTheme.Terrace);
+            Assert.IsFalse(PetInventory.Overlaps(sofaAt, PetInventory.FootprintOf("sofa"), RoomTheme.Terrace, "sofa"),
+                "the sofa must not sit inside the food bowl");
         }
     }
 }

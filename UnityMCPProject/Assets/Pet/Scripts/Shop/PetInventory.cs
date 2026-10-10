@@ -21,6 +21,7 @@ namespace DshPet
         public const string OwnedKey = "dshpet.furnish.owned";
         public const string PlacedKey = "dshpet.furnish.placed";
         public const string CountKey = "dshpet.items.count";
+        public const string StoredKey = "dshpet.furnish.stored";
 
         /// <summary>How many slots the warehouse holds. Reported, and enforced lightly.</summary>
         public const int WarehouseSlots = 99;
@@ -145,6 +146,7 @@ namespace DshPet
         {
             if (string.IsNullOrEmpty(id)) return false;
             if (PetShop.IsStarter(id)) return true;
+            if (PetShop.IsDefault(id)) return true;
             return Owned().Contains(id);
         }
 
@@ -204,7 +206,46 @@ namespace DshPet
             // The two bowls exist in every scene: a place without food or water is not a place.
             if (!map.ContainsKey(PetShop.FoodBowl)) map[PetShop.FoodBowl] = new Vector2(3.4f, 3.2f);
             if (!map.ContainsKey(PetShop.WaterBowl)) map[PetShop.WaterBowl] = new Vector2(4.6f, 3.2f);
+
+            // Default furniture is placed in its own scene until the player stores it. The
+            // "stored" list is the only thing that distinguishes "not placed yet" (default it in)
+            // from "put back in the warehouse" (leave it out) — the placed map alone cannot tell.
+            var stored = StoredStarters();
+            for (int i = 0; i < PetShop.All.Length; i++)
+            {
+                var item = PetShop.All[i];
+                if (item == null || !item.Starter) continue;
+                if (!item.AllowedIn(theme)) continue;
+                if (stored.Contains(item.Id)) continue;
+                if (map.ContainsKey(item.Id)) continue;
+                map[item.Id] = item.DefaultPosition;
+            }
             return map;
+        }
+
+        /// <summary>The default-furniture ids the player has put back in the warehouse.</summary>
+        private static List<string> StoredStarters()
+        {
+            var list = new List<string>();
+            string raw = PlayerPrefs.GetString(StoredKey, "");
+            if (!string.IsNullOrEmpty(raw))
+            {
+                foreach (string part in raw.Split(','))
+                {
+                    if (!string.IsNullOrEmpty(part) && !list.Contains(part)) list.Add(part);
+                }
+            }
+            return list;
+        }
+
+        private static void SetStored(string id, bool stored)
+        {
+            var list = StoredStarters();
+            if (stored) { if (!list.Contains(id)) list.Add(id); }
+            else list.Remove(id);
+            PlayerPrefs.SetString(StoredKey, string.Join(",", list.ToArray()));
+            PlayerPrefs.Save();
+            Changed?.Invoke();
         }
 
         private static string SceneKey(RoomTheme theme) => PlacedKey + "." + (int)theme;
@@ -259,11 +300,68 @@ namespace DshPet
                 Mathf.Clamp(position.y, -limit, limit));
         }
 
+        /// <summary>The overlap radius of a placed item, so furniture does not sit inside furniture.</summary>
+        public static float FootprintOf(string id)
+        {
+            if (id == PetShop.FoodBowl || id == PetShop.WaterBowl) return 0.55f;
+            var item = PetShop.Get(id);
+            if (item != null && item.Footprint > 0f) return item.Footprint;
+            return 0.7f;
+        }
+
+        /// <summary>Whether a position overlaps a piece of furniture already set down in the scene.</summary>
+        public static bool Overlaps(Vector2 position, float radius, RoomTheme theme, string ignoreId = null)
+        {
+            var map = Placed(theme);
+            foreach (var pair in map)
+            {
+                if (pair.Key == ignoreId) continue;
+                if (Vector2.Distance(position, pair.Value) < radius + FootprintOf(pair.Key)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Clamps a placement into the room, then pushes it clear of every other piece of furniture.
+        /// The bowls are ordinary obstacles here, which is exactly "食物盆/水盆不和其他物体重叠".
+        /// </summary>
+        public static Vector2 ResolveOverlap(Vector2 position, float radius, RoomTheme theme, string ignoreId = null)
+        {
+            Vector2 result = ClampToRoom(position);
+            for (int attempt = 0; attempt < 12; attempt++)
+            {
+                bool pushed = false;
+                var map = Placed(theme);
+                foreach (var pair in map)
+                {
+                    if (pair.Key == ignoreId) continue;
+                    float minDist = radius + FootprintOf(pair.Key);
+                    if (Vector2.Distance(result, pair.Value) >= minDist) continue;
+
+                    Vector2 dir = result - pair.Value;
+                    if (dir.sqrMagnitude < 0.0001f)
+                    {
+                        // Exactly on top: push toward the room centre, which is the direction with
+                        // the most open floor — not a fixed axis that may be blocked by a wall.
+                        dir = new Vector2(-pair.Value.x, -pair.Value.y);
+                        if (dir.sqrMagnitude < 0.0001f) dir = new Vector2(1f, 0f);
+                    }
+                    dir.Normalize();
+                    // Push a touch past the minimum, so a float-rounding boundary never leaves two
+                    // pieces of furniture "exactly touching" and thus reported as overlapping.
+                    result = ClampToRoom(pair.Value + dir * (minDist + 0.05f));
+                    pushed = true;
+                }
+                if (!pushed) break;
+            }
+            return result;
+        }
+
         public static void MoveItem(string id, Vector2 position, RoomTheme theme)
         {
             if (!IsPlaced(id, theme)) return;
             var map = Placed(theme);
-            map[id] = ClampToRoom(position);
+            map[id] = ResolveOverlap(position, FootprintOf(id), theme, id);
             SavePlaced(theme, map);
         }
 
@@ -304,8 +402,10 @@ namespace DshPet
             if (!item.AllowedIn(place)) return item.Name + "只能摆在" + PlaceName(item.Scene);
 
             var map = Placed(place);
-            map[id] = item.DefaultPosition;
+            map[id] = ResolveOverlap(item.DefaultPosition, item.Footprint, place, id);
             SavePlaced(place, map);
+
+            if (item.Starter) SetStored(id, false);
             return item.Name + "摆进了" + RoomThemeInfo.Get(place).DisplayName;
         }
 
@@ -318,18 +418,24 @@ namespace DshPet
             var map = Placed(place);
             map.Remove(id);
             SavePlaced(place, map);
+
+            var item = PetShop.Get(id);
+            if (item != null && item.Starter) SetStored(id, true);
             return "收回了仓库";
         }
 
         /// <summary>
         /// Sells one unit of a stackable food, or a whole tool / furniture. Starter bowls and an
-        /// equipped tool cannot be sold (the tool has to come out of the backpack first).
+        /// equipped tool cannot be sold (the tool has to come out of the backpack first), and the
+        /// room's default furniture cannot be sold — it can only be stored, so the default room is
+        /// always restorable.
         /// </summary>
         public static string Sell(string id)
         {
             if (PetShop.IsStarter(id)) return "基础家具不能卖";
             var item = PetShop.Get(id);
             if (item == null) return "没有这件商品";
+            if (item.Starter) return "默认家具不能卖，只能收回仓库";
 
             if (item.IsFood)
             {
@@ -370,6 +476,7 @@ namespace DshPet
             {
                 case ItemScene.Garden: return "花园";
                 case ItemScene.Terrace: return "夜晚露台";
+                case ItemScene.Cabin: return "小屋";
                 default: return "任何地方";
             }
         }
@@ -380,6 +487,7 @@ namespace DshPet
         {
             PlayerPrefs.DeleteKey(OwnedKey);
             PlayerPrefs.DeleteKey(CountKey);
+            PlayerPrefs.DeleteKey(StoredKey);
             for (int i = 0; i < RoomThemeInfo.All.Length; i++)
             {
                 PlayerPrefs.DeleteKey(PlacedKey + "." + (int)RoomThemeInfo.All[i].Theme);

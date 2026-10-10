@@ -30,7 +30,10 @@ namespace DshPet
         Garden = 1,
 
         /// <summary>Only on the night terrace.</summary>
-        Terrace = 2
+        Terrace = 2,
+
+        /// <summary>Only in the cabin.</summary>
+        Cabin = 3
     }
 
     /// <summary>
@@ -79,6 +82,15 @@ namespace DshPet
         public bool Produced;
 
         /// <summary>
+        /// True for furniture the room starts with: always owned, placed by default in its own
+        /// scene, movable and storable, but not sellable — so the default room is always restorable.
+        /// </summary>
+        public bool Starter;
+
+        /// <summary>Rough radius used to keep placed furniture from overlapping, in room metres.</summary>
+        public float Footprint = 0.9f;
+
+        /// <summary>
         /// What you get back for selling it. Purchased goods refund half; food the world produced
         /// (apple, fish) has no buy price, so its whole value is its sell price.
         /// </summary>
@@ -91,9 +103,13 @@ namespace DshPet
         /// <summary>Whether this furniture is allowed in the given place.</summary>
         public bool AllowedIn(RoomTheme theme)
         {
-            if (Scene == ItemScene.Anywhere) return true;
-            return theme == RoomTheme.Garden && Scene == ItemScene.Garden ||
-                   theme == RoomTheme.Terrace && Scene == ItemScene.Terrace;
+            switch (Scene)
+            {
+                case ItemScene.Garden: return theme == RoomTheme.Garden;
+                case ItemScene.Terrace: return theme == RoomTheme.Terrace;
+                case ItemScene.Cabin: return theme == RoomTheme.Cabin;
+                default: return true;
+            }
         }
     }
 
@@ -238,6 +254,43 @@ namespace DshPet
                 Kind = InteractableKind.RockingChair, Scene = ItemScene.Terrace,
                 Blurb = "露台上摇啊摇，宠物会蜷上去打盹。",
                 DefaultPosition = new Vector2(-4.4f, -4.0f), ApproachOffset = new Vector2(0f, 1.4f)
+            },
+
+            // ------------------------------------------------------ 默认家具（房间自带，可挪可收，不可卖）
+            new ShopItem
+            {
+                Id = "sofa", Name = "沙发", Emoji = "🛋️", Price = 160, Category = ShopCategory.Furniture,
+                Kind = InteractableKind.Sofa, Scene = ItemScene.Terrace, Starter = true, Footprint = 1.0f,
+                Blurb = "露台自带的沙发，宠物会坐上去休息。",
+                DefaultPosition = new Vector2(-2.8f, 1.9f), ApproachOffset = new Vector2(0f, -1.3f)
+            },
+            new ShopItem
+            {
+                Id = "sofa_long", Name = "长沙发", Emoji = "🛋️", Price = 180, Category = ShopCategory.Furniture,
+                Kind = InteractableKind.Sofa, Scene = ItemScene.Terrace, Starter = true, Footprint = 1.1f,
+                Blurb = "露台自带的长沙发，宠物会坐上去休息。",
+                DefaultPosition = new Vector2(2.9f, 1.9f), ApproachOffset = new Vector2(0f, -1.3f)
+            },
+            new ShopItem
+            {
+                Id = "lamp", Name = "落地灯", Emoji = "💡", Price = 100, Category = ShopCategory.Furniture,
+                Kind = InteractableKind.Lamp, Scene = ItemScene.Terrace, Starter = true, Footprint = 0.5f,
+                Blurb = "露台自带的落地灯，点一下开、再点一下关。",
+                DefaultPosition = new Vector2(-5.6f, 4.6f), ApproachOffset = new Vector2(0f, -0.6f)
+            },
+            new ShopItem
+            {
+                Id = "bench", Name = "长椅", Emoji = "🪑", Price = 90, Category = ShopCategory.Furniture,
+                Kind = InteractableKind.Sofa, Scene = ItemScene.Terrace, Starter = true, Footprint = 0.9f,
+                Blurb = "露台自带的长椅，宠物会坐上去休息。",
+                DefaultPosition = new Vector2(4.6f, -3.4f), ApproachOffset = new Vector2(0f, -1.2f)
+            },
+            new ShopItem
+            {
+                Id = "warehouse_cabinet", Name = "仓库柜", Emoji = "🗄️", Price = 140, Category = ShopCategory.Furniture,
+                Kind = InteractableKind.Warehouse, Scene = ItemScene.Cabin, Starter = true, Footprint = 0.9f,
+                Blurb = "小屋自带的仓库柜，点它直接打开仓库页。",
+                DefaultPosition = new Vector2(-3.4f, 6.0f), ApproachOffset = new Vector2(0f, -1.7f)
             }
         };
 
@@ -252,5 +305,13 @@ namespace DshPet
 
         /// <summary>The starter furniture: always present, never sold.</summary>
         public static bool IsStarter(string id) => id == FoodBowl || id == WaterBowl;
+
+        /// <summary>Default furniture the room starts with: always owned, movable and storable,
+        /// but not sellable. <see cref="IsStarter"/> (the bowls) is the stricter always-placed case.</summary>
+        public static bool IsDefault(string id)
+        {
+            var item = Get(id);
+            return item != null && item.Starter;
+        }
     }
 }

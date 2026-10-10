@@ -441,6 +441,17 @@
 | R31.7 | 全套回归 | 新增 1 条单测，359/359 全绿 | 测试全绿 ✅ |
 
 
+## 阶段 32：默认家具可自由摆放 + 两个新小游戏（窒息隧道 / 棱镜）
+
+| 编号 | 需求 | 实现 | 验收证据 |
+|---|---|---|---|
+| R32.1 | 场景默认物体可自由摆放、可放回仓库 | 露台沙发×2/落地灯/长椅 + 小屋仓库柜变成 `ShopItem.Starter`（新增 `ItemScene.Cabin`、`Starter`/`Footprint` 字段）：开局 `Placed(theme)` 默认摆进自己场景、`BuildProp` 统一建造、`Store/Place/MoveItem` 走同一条路、`Sell` 拒绝；新增 `StoredKey` 区分"没摆过"与"被收走" | 单测 `DefaultFurnitureCanBeStoredAndReplaced`；运行中：沙发/台灯/长椅/仓库柜都带 `ItemId`（可拖）✅ |
+| R32.2 | 食物盆/水盆不与其他物体重叠 | `PetInventory.ResolveOverlap`：`MoveItem`/`Place` 先钳房间再推开重叠（push 加 0.05 余量、贴脸时推向房间中心），碗也是障碍物（`FootprintOf` 给碗 0.55） | 单测 `PlacedFurnitureDoesNotOverlapTheBowls` ✅ |
+| R32.3 | 新小游戏「窒息隧道」 | 新 `DshMiniGames` 的 `TunnelRules`/`TunnelGame`/`TunnelHud` + 场景 `Tunnel.unity`：3D 隧道 + 单一虚拟摇杆（右下/左下可切），生存（穿随机移动门洞）/矿洞（躲障碍）两模式、霓虹/冰窟/熔岩/绿林四主题；门洞可达、障碍不贴脸由单测钉住 | 单测 6 条；运行中 Menu→Running→Gate/Mine 生成→碰撞→Dead ✅ |
+| R32.4 | 新小游戏「棱镜」 | 新 `PrismRules`/`PrismGame`/`PrismHud` + 场景 `Prism.unity`：看听复现的序列记忆，形状（5 种基本体）定五声音阶、颜色定 6 音域、填充定音色（钢琴/钟声），程序化合成零音频资源；彩虹 6/光谱 30/棱镜 60 三难度 + 经典/竞速两模式 | 单测 7 条；运行中 Menu→Playback(6 垫)→Input ✅ |
+| R32.5 | 全套回归 | 新增 15 条单测（默认家具 2 + 棱镜 7 + 隧道 6），374/374 全绿 | 测试全绿 ✅ |
+
+
 ## 非功能需求 / 设计约束
 
 

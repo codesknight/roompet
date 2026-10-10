@@ -62,17 +62,15 @@
 
 ---
 
-## 这一轮（第 31 轮）的验收清单
+## 这一轮（第 32 轮）的验收清单
 
-- [x] **删掉每场景门左边没用的大柜子**：删 `BuildFurniture`（Shelf/ShelfTop）。运行中验证：Shelf 不存在
-- [x] **露台沙发能坐 + 台灯能开关**：新 `InteractableKind.Sofa` / `Lamp`，`SpawnInteractableProp` / `SpawnLamp` 给它们上碰撞体与交互。运行中验证：2 个沙发（可 `OrderTo(Sofa)`）、台灯点击亮→灭→亮
-- [x] **小屋仓库柜进仓库页**：新 `InteractableKind.Warehouse`，点击调 `PetHud.OpenFurnishWarehouse()`。运行中验证：点仓库 → `ModalOpen` 变 true
-- [x] **花园水池游泳+洗澡**：`UsePending` 的 Pond 分支按需求走洗澡/游泳/喝水。运行中验证：脏了 Cleanliness 0.3→0.96、无聊 Joy 0.30→0.69
-- [x] **大树不穿模**：`SpawnProp(solid:true)` 给 6 棵大树补碰撞体。运行中验证：6 棵树都有 BoxCollider
-- [x] **水桶打水进仓库**：`PetInventory.FillBucketFromPond()` = 装满桶 + `Add("water",1)`。运行中验证：打水后 water 0→1；单测 1 条
-- [x] **测试**：358 → **359** 全绿
-- [x] 文档：本文件 + REQUIREMENTS 阶段 31 + CHANGELOG 第 31 轮 + DEVLOG 坑 142 + README 计数/特性
-- [ ] ⏳ **真机确认**：① 露台沙发可坐、台灯可开关；② 小屋仓库柜进仓库页；③ 花园宠物洗澡/游泳；④ 打水后仓库有「饮用水 ×1」
+- [x] **默认家具可自由摆放/收回仓库**：露台沙发×2/落地灯/长椅 + 小屋仓库柜成为 `ShopItem.Starter`（开局默认摆、能拖/收/再摆、不可卖），`BuildProp` 统一建造；`StoredKey` 区分"没摆过"和"被收走"
+- [x] **食物盆/水盆不重叠**：`ResolveOverlap` 摆放避让（push 加余量、贴脸推往房间中心），碗也是障碍。单测 2 条
+- [x] **新小游戏「窒息隧道」**：3D 隧道 + 单一虚拟摇杆（可左右切换），生存（穿移动门洞）/矿洞（躲障碍）两模式、4 主题；门洞可达/障碍不贴脸单测钉住。运行中验证：Menu→Running→Gate/Mine 生成→碰撞→Dead
+- [x] **新小游戏「棱镜」**：看听复现的序列记忆，形状定音高/颜色定音域/填充定音色，彩虹6/光谱30/棱镜60 三难度 + 经典/竞速。运行中验证：Menu→Playback(6 垫)→Input
+- [x] **测试**：359 → **374**（默认家具 2 + 棱镜 7 + 隧道 6）
+- [x] 文档：本文件 + REQUIREMENTS 阶段 32 + CHANGELOG 第 32 轮 + DEVLOG 坑 143 + README 计数/特性
+- [ ] ⏳ **真机确认**：① 拖走/收回默认家具、拖到饭盆会被推开；② 地图能进两个新小游戏；③ 隧道摇杆顺手、棱镜听得出每个形状
 
 ## 明确推迟或不做
 

@@ -108,6 +108,24 @@ namespace DshPet
                 SceneName = "AngryBirds",
                 ScenePath = "Assets/MiniGames/Scenes/AngryBirds.unity",
                 Icon = "🐦"
+            },
+            new MiniGameDefinition
+            {
+                Id = "prism",
+                DisplayName = "棱镜",
+                Blurb = "看形状、听声音、按顺序复现。序列从 3 个开始，点错一个就结束。",
+                SceneName = "Prism",
+                ScenePath = "Assets/MiniGames/Scenes/Prism.unity",
+                Icon = "🔷"
+            },
+            new MiniGameDefinition
+            {
+                Id = "tunnel",
+                DisplayName = "窒息隧道",
+                Blurb = "一根摇杆上下左右，驾驶飞船穿过动态隧道、躲开障碍，两种玩法。",
+                SceneName = "Tunnel",
+                ScenePath = "Assets/MiniGames/Scenes/Tunnel.unity",
+                Icon = "🚀"
             }
             // 新增玩法就在这里加一行：填一个已在 Build Settings 里的场景即可。
         };

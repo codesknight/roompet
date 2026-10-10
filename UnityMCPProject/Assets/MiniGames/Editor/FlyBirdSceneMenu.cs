@@ -106,6 +106,8 @@ namespace DshMiniGames.EditorTools
             AddIfPresent(scenes, CatchFruitScenePath);
             AddIfPresent(scenes, SliceScenePath);
             AddIfPresent(scenes, AngryBirdsScenePath);
+            AddIfPresent(scenes, PrismSceneMenu.ScenePath);
+            AddIfPresent(scenes, TunnelSceneMenu.ScenePath);
 
             // The room and the runner are registered by their own menus; keeping them here as well
             // means a fresh clone can be made playable by running the menus in any order.
