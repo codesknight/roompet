@@ -28,6 +28,12 @@ namespace DshPet
         public float EarLength = 0.17f;
         public float TailLength = 0.30f;
 
+        /// <summary>
+        /// The imported Cube Pets model for this species, under `Kenney/Pets/`. Empty keeps the
+        /// old procedural body, so the swap can be done one species at a time and rolled back.
+        /// </summary>
+        public string ModelName = "";
+
         // ---- character (drives the prompt) ----
         /// <summary>Injected into the system prompt as "your character".</summary>
         public string Personality = "";
@@ -87,7 +93,7 @@ namespace DshPet
                 Accent = new Color(0.26f, 0.16f, 0.14f),
                 BodyScale = 1f, BodyLength = 0.34f, HeadScale = 0.30f,
                 Ears = EarStyle.Pointy, Tail = TailStyle.Bushy,
-                EarLength = 0.17f, TailLength = 0.32f,
+                EarLength = 0.17f, TailLength = 0.32f, ModelName = "animal-fox",
                 FavoriteFood = "苹果", Price = 0, Starter = true,
                 Personality = "机灵、好奇心重、喜欢探索新东西，偶尔有点小得意和逞强，但很在意主人。",
                 VoiceStyle = "说话轻快、句子短，爱用「诶？」「你看！」这类语气，偶尔自夸一句。"
@@ -100,7 +106,7 @@ namespace DshPet
                 Accent = new Color(0.95f, 0.62f, 0.66f),
                 BodyScale = 0.94f, BodyLength = 0.32f, HeadScale = 0.29f,
                 Ears = EarStyle.Pointy, Tail = TailStyle.Curly,
-                EarLength = 0.14f, TailLength = 0.34f,
+                EarLength = 0.14f, TailLength = 0.34f, ModelName = "animal-cat",
                 FavoriteFood = "小鱼干", Price = 260,
                 Personality = "表面高冷、爱答不理，其实很黏人。被摸的时候会假装不情愿，但尾巴会出卖它。",
                 VoiceStyle = "说话很短，常带「哼」「随便」「才不是」这类傲娇口吻，很少连续说三句以上。"
@@ -113,7 +119,7 @@ namespace DshPet
                 Accent = new Color(0.95f, 0.66f, 0.70f),
                 BodyScale = 0.86f, BodyLength = 0.28f, HeadScale = 0.27f,
                 Ears = EarStyle.Long, Tail = TailStyle.Puff,
-                EarLength = 0.26f, TailLength = 0.12f,
+                EarLength = 0.26f, TailLength = 0.12f, ModelName = "animal-bunny",
                 FavoriteFood = "胡萝卜", Price = 420,
                 Personality = "温柔、胆小，容易被突然的动静吓到，需要慢慢哄。熟悉之后会非常依赖你。",
                 VoiceStyle = "说话软软的、句子短，常用「嗯…」「那个…」，紧张时会重复你的话。"
@@ -126,7 +132,7 @@ namespace DshPet
                 Accent = new Color(0.24f, 0.17f, 0.13f),
                 BodyScale = 1.18f, BodyLength = 0.38f, HeadScale = 0.34f,
                 Ears = EarStyle.Round, Tail = TailStyle.Short,
-                EarLength = 0.09f, TailLength = 0.10f,
+                EarLength = 0.09f, TailLength = 0.10f, ModelName = "animal-polar",
                 FavoriteFood = "蜂蜜", Price = 680,
                 Personality = "憨厚、慢性子、非常贪吃。思考事情要慢半拍，但脾气特别好，被欺负也不生气。",
                 VoiceStyle = "说话慢、爱用「唔…」「那个…那个…」，三句里有两句会提到吃的。"
@@ -142,7 +148,7 @@ namespace DshPet
                 Accent = new Color(0.94f, 0.86f, 0.72f),
                 BodyScale = 0.95f, BodyLength = 0.34f, HeadScale = 0.31f,
                 Ears = EarStyle.Round, Tail = TailStyle.Bushy,
-                EarLength = 0.12f, TailLength = 0.40f,
+                EarLength = 0.12f, TailLength = 0.40f, ModelName = "animal-panda",
                 FavoriteFood = "苹果", Price = 560, GachaOnly = true,
                 Personality = "慢吞吞、喜欢晒太阳，毛茸茸的尾巴是它的宝贝。有点迷糊，但特别温柔。",
                 VoiceStyle = "说话慢悠悠、句子短，爱用「呼啊～」「软软的」这类词，喜欢描述舒服的感觉。"
@@ -155,7 +161,7 @@ namespace DshPet
                 Accent = new Color(0.95f, 0.72f, 0.22f),
                 BodyScale = 0.96f, BodyLength = 0.30f, HeadScale = 0.28f,
                 Ears = EarStyle.Small, Tail = TailStyle.Short,
-                EarLength = 0.06f, TailLength = 0.10f,
+                EarLength = 0.06f, TailLength = 0.10f, ModelName = "animal-penguin",
                 FavoriteFood = "鱼", Price = 640, GachaOnly = true,
                 Personality = "一本正经、爱整洁，走路摇摇摆摆但很守规矩。高兴了会扑扇翅膀（其实是鳍）。",
                 VoiceStyle = "说话正式、句子完整，爱用「在下」「这便」这类古早口吻，偶尔冒出「啪嗒啪嗒」。"
@@ -168,7 +174,7 @@ namespace DshPet
                 Accent = new Color(0.62f, 0.42f, 0.24f),
                 BodyScale = 0.60f, BodyLength = 0.22f, HeadScale = 0.24f,
                 Ears = EarStyle.Round, Tail = TailStyle.Puff,
-                EarLength = 0.08f, TailLength = 0.06f,
+                EarLength = 0.08f, TailLength = 0.06f, ModelName = "animal-hog",
                 FavoriteFood = "宠物粮", Price = 520, GachaOnly = true,
                 Personality = "个子小、精力旺盛，最爱把食物塞进腮帮子。有点神经质，但特别会哄自己开心。",
                 VoiceStyle = "说话又快又碎，爱用「咕」「啾」这类拟声词，一句话常拆成好几段。"

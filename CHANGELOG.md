@@ -4,6 +4,29 @@
 
 ## 未发布
 
+### 第 40 轮：宠物身体替换——程序化方块换成 Kenney Cube Pets
+
+**你要的**：按计划逐步替换宠物身体，做好版本管理、失败可回退。
+
+**🧸 宠物身体换成 Kenney Cube Pets（CC0）**
+
+- 下载并入库 Kenney **Cube Pets 2.0**（24 种方块动物，CC0 1.0，`Assets/Resources/Kenney/Pets/`，
+  出处记入 `THIRD_PARTY.md`）。
+- `PetSpecies` 新增 `ModelName`，7 个物种全部映射：狐狸→fox、猫→cat、兔→bunny、熊→polar、
+  小熊猫→panda、企鹅→penguin、仓鼠→hog。
+- `PetAvatar` 新增 `TryBuildModel()`：**加载模型 → 按物种身高缩放 → 居中、脚贴地**，整体模型当作
+  "Rig"，所以**呼吸/走路起伏/蹦跳/转向/坐睡下蹲**这些整体动画照常，只是精细的腿摆/摇尾/点头没了。
+- 模型缺失时**自动回退到旧的程序化身体**（`ModelName` 为空或缺文件都不崩）。
+
+**🔖 版本管理（可回退）**
+
+- 固定基线 tag **`v0.2.0-prebodyswap`**（永不移动）+ 专用分支 `feature/pet-body` 开发，验证通过才 merge。
+- 回退：`git checkout v0.2.0-prebodyswap`（或 `feature/android-mobile`）即回到方块身体。
+
+**测试**：377 → **378**（新增"每个物种都有可加载的模型"1 条）。
+
+⏳ **真机确认**：① 宠物是更立体的方块动物；② 走路/蹦跳/转向还动；③ 若观感不对可回退到上一版。
+
 ### 第 38 轮：隧道相机跟随 + 两个游戏换更贴合的配乐
 
 **你要的**：① 隧道缺相机跟随、不够沉浸，配乐要科幻激情；② 棱镜配乐要欢快有趣。

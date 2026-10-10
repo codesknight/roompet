@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **377/377 通过**（虚拟宠物 216 + 跑酷 15 + 手机端 49 + 小游戏 97），EditMode |
+| 测试 | **378/378 通过**（虚拟宠物 217 + 跑酷 15 + 手机端 49 + 小游戏 97），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -998,6 +998,15 @@
     **"控制角色/载具"的游戏，相机一定要有跟随 + 阻尼，别让被控物和镜头完全脱钩。** 配乐这边一个
     常识：**BGM 要对"情绪"而不是只对"场景"**——隧道要科幻激情（电子派对），棱镜要欢快有趣
     （放克轻快）；同一套 CC0 曲库里换一首更贴的，比新下载更稳。
+150. **用静态模型替换程序化骨骼，要"整体模型当 Rig"保动画 + 用 `InverseTransformPoint` 转局部坐标。** 宠物
+    身体从方块骨骼换成 Cube Pets 静态模型后，最怕两件事：① 失去"活着"的动画；② 模型跑到世界坐标
+    原点以外的位置去。① 的解法是**把整只模型当成 `_rig`**——呼吸、走路起伏、蹦跳、坐睡下蹲这些
+    **整体动画**本来就只改 `_rig` 的位移，于是静态模型照样起伏蹦跳，只有精细的腿摆/摇尾/点头（那些
+    骨头的动画）自然 no-op；② 的坑很典型：`MeasureBounds` 给的是**世界坐标**，直接当 `localPosition`
+    用，宠物站在 (1.67, 0, 3.03) 时身体就飘到那去了——要先 `transform.InverseTransformPoint` 转成
+    局部坐标再当偏移。**凡是"拿世界包围盒去摆子物体"，先问一句这坐标是世界的还是局部的。** 另外
+    "逐步替换 + 可回退"的版本管理三板斧：**固定基线 tag（永不移动）+ 专用 feature 分支 + 每物种可
+    单独回退**（`ModelName` 留空就回程序化身体），比"直接在主分支上大改"稳得多。
 
 ---
 

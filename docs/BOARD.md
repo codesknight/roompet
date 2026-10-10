@@ -62,13 +62,14 @@
 
 ---
 
-## 这一轮（第 38 轮）的验收清单
+## 这一轮（第 40 轮）的验收清单
 
-- [x] **隧道相机跟随**：相机 X/Y 按 `ship × 0.5` 带阻尼跟随（`1 - e^(-7t)` 平滑），镜头随机动侧移
-- [x] **配乐更贴合**：隧道 → Party Sector（电子派对）、棱镜 → Funky Disco Beats（放克轻快）。运行中验证：Music Current=JumpQuest
-- [x] **测试**：377/377 全绿（相机/配乐，无新单测）
-- [x] 文档：本文件 + REQUIREMENTS 阶段 38 + CHANGELOG 第 38 轮 + DEVLOG 坑 149
-- [ ] ⏳ **真机确认**：① 隧道飞船机动时镜头有跟随感；② 隧道/棱镜新配乐对味
+- [x] **宠物身体换成 Cube Pets**：`PetSpecies.ModelName` 映射 7 物种，`PetAvatar.TryBuildModel()` 加载→缩放→居中→脚贴地，整体模型当 Rig 保整体动画，缺失自动回退程序化身体
+- [x] **版本管理**：固定基线 tag `v0.2.0-prebodyswap` + `feature/pet-body` 分支，可回退
+- [x] **运行中验证**：cat 模型 `BodyModel` 建成（0.54 高、脚贴地、居中），整体动画照常
+- [x] **测试**：377 → **378**（`Species_EveryBodyHasAnImportedModel`）
+- [x] 文档：本文件 + REQUIREMENTS 阶段 40 + CHANGELOG 第 40 轮 + DEVLOG 坑 150 + README 计数
+- [ ] ⏳ **真机确认**：① 宠物是更立体的方块动物；② 走路/蹦跳/转向还动；③ 观感不对可回退
 
 ## 明确推迟或不做
 

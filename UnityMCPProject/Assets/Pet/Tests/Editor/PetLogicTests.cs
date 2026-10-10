@@ -171,6 +171,23 @@ namespace DshPet.Tests
         }
 
         [Test]
+        public void Species_EveryBodyHasAnImportedModel()
+        {
+            // The pet body is now an imported Cube Pets model; every species must name one and
+            // that model must actually be in the build. A missing prefab would silently fall back
+            // to the old procedural body, which is exactly the kind of thing that must not go
+            // unnoticed during the body swap.
+            foreach (var species in PetSpecies.All)
+            {
+                Assert.IsFalse(string.IsNullOrEmpty(species.ModelName),
+                    species.Id + " has no imported body model");
+                var prefab = UnityEngine.Resources.Load<UnityEngine.GameObject>("Kenney/Pets/" + species.ModelName);
+                Assert.IsNotNull(prefab,
+                    species.Id + " model '" + species.ModelName + "' is missing from Resources/Kenney/Pets");
+            }
+        }
+
+        [Test]
         public void Species_CopyIsIndependentOfTheSharedTable()
         {
             // The bug this guards: a serialized field holding a reference into PetSpecies.All

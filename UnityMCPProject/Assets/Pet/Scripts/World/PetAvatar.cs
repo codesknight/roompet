@@ -41,6 +41,7 @@ namespace DshPet
         private Transform _earRight;
         private readonly List<Transform> _hips = new List<Transform>();
         private Transform _shadow;
+        private Transform _model;
 
         private float _legPhase;
         private float _bob;
@@ -120,6 +121,11 @@ namespace DshPet
 
         private void Construct()
         {
+            // Imported-model path: a static Cube Pets mesh replaces the procedural rig. The
+            // whole-body animation (bob / hop / crouch / turn) still applies via _rig; the
+            // per-part animation (legs / tail / head / ears) no-ops because those bones are null.
+            if (TryBuildModel()) return;
+
             float s = Mathf.Max(0.5f, _species.BodyScale);
             float length = _species.BodyLength * s;
             float width = length * 1.35f;
@@ -177,6 +183,83 @@ namespace DshPet
             _shadow = DshMobile.SoftShadow.Attach(transform, width * 0.95f, length * 1.05f, 0.5f);
 
             _baseScale = transform.localScale;
+        }
+
+        /// <summary>
+        /// Builds the body from an imported Cube Pets model instead of the primitive rig.
+        /// Returns false when the species has no model or the prefab is missing, so the caller
+        /// falls back to the procedural body — which is also the rollback path.
+        /// </summary>
+        private bool TryBuildModel()
+        {
+            if (string.IsNullOrEmpty(_species.ModelName)) return false;
+            var prefab = Resources.Load<GameObject>("Kenney/Pets/" + _species.ModelName);
+            if (prefab == null) return false;
+
+            var instance = Instantiate(prefab, transform);
+            instance.name = "BodyModel";
+            _model = instance.transform;
+            _model.localPosition = Vector3.zero;
+            _model.localRotation = Quaternion.identity;
+
+            // Scale the model so its height matches the species' old height, then centre its
+            // footprint on the origin and its feet on the floor.
+            var raw = MeasureBounds(instance);
+            float targetHeight = SpeciesHeight();
+            float scale = targetHeight / Mathf.Max(0.01f, raw.size.y);
+            _model.localScale = Vector3.one * scale;
+
+            var placed = MeasureBounds(instance);
+            // Bounds are world-space; convert to the avatar's local space before using them as an
+            // offset, or a pet standing anywhere but the origin would push its body off to that
+            // spot (the world centre is not the local centre).
+            Vector3 localCenter = transform.InverseTransformPoint(placed.center);
+            Vector3 localMin = transform.InverseTransformPoint(placed.min);
+            _model.localPosition = new Vector3(-localCenter.x, -localMin.y, -localCenter.z);
+
+            // The whole model is the "rig": breathing, walk bob, hopping and the sit/sleep crouch
+            // all apply to it, which is what keeps a static mesh feeling alive.
+            _rig = _model;
+            _rigBase = _model.localPosition + new Vector3(0f, BreathAmplitude, 0f);
+            _body = _head = _tail = _tailMid = _earLeft = _earRight = null;
+            _hips.Clear();
+
+            _shadow = DshMobile.SoftShadow.Attach(transform,
+                placed.size.x * 0.5f, placed.size.z * 0.5f, 0.5f);
+            _baseScale = transform.localScale;
+            return true;
+        }
+
+        /// <summary>The old pet's standing height: leg length plus body height, in world units.</summary>
+        private float SpeciesHeight()
+        {
+            float s = Mathf.Max(0.5f, _species.BodyScale);
+            float length = _species.BodyLength * s;
+            return length * 1.8f;   // legLength (0.85) + body height (0.95)
+        }
+
+        /// <summary>World bounds from every mesh, like <c>PetRoom.MeasureBounds</c> but local here.</summary>
+        private static Bounds MeasureBounds(GameObject go)
+        {
+            bool any = false;
+            var result = new Bounds(go.transform.position, Vector3.zero);
+            foreach (var filter in go.GetComponentsInChildren<MeshFilter>(true))
+            {
+                var mesh = filter.sharedMesh;
+                if (mesh == null) continue;
+                var matrix = filter.transform.localToWorldMatrix;
+                var scale = matrix.lossyScale;
+                var centre = matrix.MultiplyPoint3x4(mesh.bounds.center);
+                var extents = new Vector3(
+                    Mathf.Abs(mesh.bounds.extents.x * scale.x),
+                    Mathf.Abs(mesh.bounds.extents.y * scale.y),
+                    Mathf.Abs(mesh.bounds.extents.z * scale.z));
+                var world = new Bounds(centre, extents * 2f);
+                if (!any) { result = world; any = true; }
+                else result.Encapsulate(world);
+            }
+            if (!any) return new Bounds(go.transform.position, Vector3.one);
+            return result;
         }
 
         private void BuildEars(float headSize)
@@ -302,6 +385,7 @@ namespace DshPet
             for (int i = transform.childCount - 1; i >= 0; i--) RemovePart(transform.GetChild(i).gameObject);
             _hips.Clear();
             _rig = _body = _head = _tail = _tailMid = _earLeft = _earRight = _shadow = null;
+            _model = null;
             _mudSpots = null;
             _dirtiness = -1f;
             _built = false;

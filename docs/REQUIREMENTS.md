@@ -515,6 +515,16 @@
 | R38.4 | 全套回归 | 相机/配乐无新单测，377/377 全绿 | 测试全绿 ✅ |
 
 
+## 阶段 40：宠物身体替换——程序化方块换成 Kenney Cube Pets
+
+| 编号 | 需求 | 实现 | 验收证据 |
+|---|---|---|---|
+| R40.1 | 逐步替换宠物身体 | `PetSpecies.ModelName` 映射 7 物种（fox/cat/bunny/polar/panda/penguin/hog），`PetAvatar.TryBuildModel()` 加载→按物种身高缩放→居中脚贴地，整体模型当 Rig 保整体动画，缺失自动回退程序化身体 | 运行中：cat 的 `BodyModel` 建成（0.54 高、脚贴地、居中）✅ |
+| R40.2 | 版本管理、可回退 | 固定基线 tag `v0.2.0-prebodyswap`（永不移动）+ `feature/pet-body` 分支开发，验证通过才 merge | tag + 分支已推送 ✅ |
+| R40.3 | 素材合规 | Kenney Cube Pets 2.0（CC0 1.0，24 种），`Assets/Resources/Kenney/Pets/` + `colormap.png`，记入 `THIRD_PARTY.md`；`.assets/` 原始下载加入 `.gitignore` | 单测 `Species_EveryBodyHasAnImportedModel` ✅ |
+| R40.4 | 全套回归 | 新增 1 条单测，378/378 全绿 | 测试全绿 ✅ |
+
+
 ## 非功能需求 / 设计约束
 
 

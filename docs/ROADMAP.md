@@ -73,6 +73,10 @@
 - [x] **隧道相机跟随 + 换更贴合的配乐**：第 38 轮做了——隧道相机按 `ship × 0.5` 带阻尼跟随（镜头随机动
   侧移）；配乐换成隧道 Party Sector（电子派对）、棱镜 Funky Disco Beats（放克轻快）。DEVLOG 坑 149。
 
+- [x] **宠物身体替换（Kenney Cube Pets）**：第 40 轮做了——`PetSpecies.ModelName` 映射 7 物种，
+  `PetAvatar.TryBuildModel()` 加载静态模型、整体当 Rig 保整体动画、缺失回退程序化身体；版本管理
+  固定基线 tag + feature 分支可回退。DEVLOG 坑 150。（下一步：IMGUI→uGUI）
+
 - [x] **语音输出（TTS）**：第 10 轮做了，第 11 轮修掉了**真机上完全不响**的两个原因
   （Android 11+ 的 `queries` 包可见性、初始化失败被永久记住），并加了引擎状态自述、
   「▶ 测试朗读」按钮与对话里的开关提示。**发音质量仍需要真机听一次**。
