@@ -100,6 +100,21 @@ namespace DshPet
         private readonly List<GameObject> _bubbles = new List<GameObject>();
         private int _builtMessageCount = -1;
 
+        // uGUI pet card (third slice).
+        private UnityEngine.UI.Image _cardPanel;
+        private readonly List<UnityEngine.UI.Button> _chipButtons = new List<UnityEngine.UI.Button>();
+        private readonly List<UnityEngine.UI.Text> _chipLabels = new List<UnityEngine.UI.Text>();
+        private UnityEngine.UI.InputField _renameField;
+        private UnityEngine.UI.Text _headerSummary;
+        private UnityEngine.UI.Text _detailText;
+        private UnityEngine.UI.ScrollRect _detailScroll;
+        private readonly List<RectTransform> _needFills = new List<RectTransform>();
+        private readonly List<UnityEngine.UI.Image> _needFillImages = new List<UnityEngine.UI.Image>();
+        private readonly List<UnityEngine.UI.Text> _needLabels = new List<UnityEngine.UI.Text>();
+        private readonly List<UnityEngine.UI.Button> _footerButtons = new List<UnityEngine.UI.Button>();
+        private int _builtPetIndex = -1;
+        private bool _builtCardExpanded;
+
         /// <summary>Set by hoverable world objects; shown near the cursor.</summary>
         public static void SetCursorHint(string hint) => _cursorHint = hint;
 
@@ -277,7 +292,7 @@ namespace DshPet
             // left the modal's own text fields unable to take focus.
             bool modal = ModalOpen;
             if (modal) GUI.enabled = false;
-            DrawPetCards(gm, layout);
+            // The pet card is now uGUI — see SyncPetCard.
             if (Mobile) DrawMobileChat(gm, layout);
             // The expanded chat (and the whole desktop chat) is now uGUI — see SyncChat.
             DrawViewSwitcher(gm, layout);
@@ -650,6 +665,7 @@ namespace DshPet
             _cursorHintText.gameObject.SetActive(false);
 
             BuildChat();
+            BuildPetCard();
         }
 
         private void Update()
@@ -674,6 +690,7 @@ namespace DshPet
             }
 
             SyncChat();
+            SyncPetCard();
         }
 
         /// <summary>
@@ -977,6 +994,306 @@ namespace DshPet
         {
             var audio = PetAudioDirector.Instance;
             if (audio != null) audio.ToggleMute();
+        }
+
+        // ------------------------------------------------------------------- pet card (uGUI)
+
+        private void BuildPetCard()
+        {
+            _cardPanel = DshMobile.Ugui.Panel("CardPanel", _root, 16f,
+                new Color(0.11f, 0.10f, 0.14f, 0.95f), new Color(1f, 1f, 1f, 0.10f), 2f);
+            _cardPanel.gameObject.SetActive(false);
+            var p = _cardPanel.rectTransform;
+
+            // Needs bars: four fixed rows; the bladder is appended by SyncPetCard when it matters.
+            for (int i = 0; i < 5; i++)
+            {
+                var row = new GameObject("Need" + i, typeof(RectTransform));
+                row.transform.SetParent(p, false);
+                var label = DshMobile.Ugui.Text("Label", row.transform, "", 14,
+                    new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleLeft);
+                label.rectTransform.anchorMin = label.rectTransform.anchorMax = new Vector2(0f, 0.5f);
+                label.rectTransform.pivot = new Vector2(0f, 0.5f);
+                label.rectTransform.sizeDelta = new Vector2(40f, 20f);
+
+                var bg = DshMobile.Ugui.Image("Bg", row.transform, new Color(1f, 1f, 1f, 0.18f));
+                bg.rectTransform.anchorMin = new Vector2(0f, 0.5f);
+                bg.rectTransform.anchorMax = new Vector2(1f, 0.5f);
+                bg.rectTransform.pivot = new Vector2(0f, 0.5f);
+                bg.rectTransform.anchoredPosition = new Vector2(46f, 0f);
+                bg.rectTransform.sizeDelta = new Vector2(-120f, 10f);
+
+                var fill = DshMobile.Ugui.Image("Fill", row.transform, Color.white);
+                fill.rectTransform.anchorMin = new Vector2(0f, 0.5f);
+                fill.rectTransform.anchorMax = new Vector2(0f, 0.5f);
+                fill.rectTransform.pivot = new Vector2(0f, 0.5f);
+                fill.rectTransform.anchoredPosition = new Vector2(46f, 0f);
+                fill.rectTransform.sizeDelta = new Vector2(0f, 10f);
+
+                var value = DshMobile.Ugui.Text("Value", row.transform, "", 13,
+                    new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleLeft);
+                value.rectTransform.anchorMin = value.rectTransform.anchorMax = new Vector2(1f, 0.5f);
+                value.rectTransform.pivot = new Vector2(1f, 0.5f);
+                value.rectTransform.anchoredPosition = new Vector2(-6f, 0f);
+                value.rectTransform.sizeDelta = new Vector2(44f, 20f);
+
+                _needLabels.Add(label);
+                _needFills.Add(fill.rectTransform);
+                _needFillImages.Add(fill);
+            }
+
+            // Header summary (name is a chip; the summary sits under it).
+            _headerSummary = DshMobile.Ugui.Text("HeaderSummary", p, "", 14,
+                new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.UpperLeft);
+            _headerSummary.horizontalOverflow = HorizontalWrapMode.Wrap;
+
+            // Rename field for the primary pet.
+            _renameField = DshMobile.Ugui.InputField("Rename", p);
+
+            // Detail scroll.
+            var viewport = new GameObject("Viewport", typeof(RectTransform));
+            viewport.transform.SetParent(p, false);
+            viewport.AddComponent<UnityEngine.UI.RectMask2D>();
+            var viewportImg = viewport.AddComponent<UnityEngine.UI.Image>();
+            viewportImg.color = new Color(0f, 0f, 0f, 0f);
+            viewportImg.raycastTarget = true;
+            _detailScroll = p.gameObject.AddComponent<UnityEngine.UI.ScrollRect>();
+            _detailScroll.viewport = viewport.GetComponent<RectTransform>();
+            _detailScroll.horizontal = false;
+            _detailScroll.vertical = true;
+            _detailScroll.movementType = UnityEngine.UI.ScrollRect.MovementType.Clamped;
+            _detailScroll.scrollSensitivity = 30f;
+
+            var content = new GameObject("Content", typeof(RectTransform));
+            content.transform.SetParent(viewport.transform, false);
+            var contentRt = content.GetComponent<RectTransform>();
+            contentRt.anchorMin = new Vector2(0f, 1f);
+            contentRt.anchorMax = new Vector2(1f, 1f);
+            contentRt.pivot = new Vector2(0.5f, 1f);
+            _detailScroll.content = contentRt;
+
+            _detailText = DshMobile.Ugui.Text("Detail", content.transform, "", 14,
+                new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.UpperLeft);
+            _detailText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            DshMobile.Ugui.Stretch(_detailText.rectTransform);
+            _detailText.rectTransform.offsetMin = new Vector2(2f, 0f);
+            _detailText.rectTransform.offsetMax = new Vector2(-2f, 0f);
+        }
+
+        private void SyncPetCard()
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+
+            var cards = gm.Cards();
+            bool show = cards.Count > 0;
+            _cardPanel.gameObject.SetActive(show);
+            if (!show) return;
+
+            var layout = ComputeLayout(DesignWidth, DesignHeight, PetSpecies.Count, TranscriptVisible);
+            int selected = Mathf.Clamp(gm.SelectedPetIndex, 0, cards.Count - 1);
+            var card = cards[selected];
+            bool expanded = gm.CardExpanded;
+
+            var names = new string[cards.Count];
+            float chipBudget = Mathf.Max(40f, (layout.Status.width - 28f) * 0.45f);
+            for (int i = 0; i < cards.Count; i++) names[i] = ShortenChip(ChipLabel(cards[i], cards[i].Name), chipBudget, 14);
+
+            var plan = ComputeCardLayout(layout.Status, names, expanded, card.Primary, 14, 14);
+            ApplyDesignRect(_cardPanel.rectTransform, plan.Panel);
+            var p = _cardPanel.rectTransform;
+
+            // Chips (rebuilt when the set of pets changes).
+            if (_builtPetIndex != selected || _chipButtons.Count != cards.Count)
+            {
+                RebuildChips(gm, cards, names, plan.ChipRows, p, plan.Panel.width);
+                _builtPetIndex = selected;
+            }
+
+            float innerW = plan.Panel.width - 28f;
+
+            // Header summary.
+            string mood = card.Needs != null ? PetUtil.MoodLabel(card.Needs.Mood) : "—";
+            string need = card.Needs != null ? card.Needs.DominantNeed : "";
+            string who = card.Species != null ? card.Species.DisplayName : "";
+            string summary = $"{card.Name}　·　{mood}　·　{(string.IsNullOrEmpty(need) ? "状态不错" : "想要：" + need)}";
+            _headerSummary.text = summary;
+            _headerSummary.rectTransform.anchorMin = _headerSummary.rectTransform.anchorMax = new Vector2(0f, 1f);
+            _headerSummary.rectTransform.pivot = new Vector2(0f, 1f);
+            _headerSummary.rectTransform.anchoredPosition = new Vector2(14f, -(12f + plan.ChipsHeight + 4f));
+            _headerSummary.rectTransform.sizeDelta = new Vector2(innerW, plan.HeaderHeight - 8f);
+
+            // Rename field (primary, expanded only).
+            _renameField.gameObject.SetActive(expanded && card.Primary);
+            if (expanded && card.Primary)
+            {
+                if (_editPetName == null || _editPetName != gm.PetName) _editPetName = gm.PetName;
+                if (!_renameField.isFocused) _renameField.text = _editPetName;
+                if (_renameField.isFocused) _editPetName = _renameField.text;
+                _renameField.GetComponent<RectTransform>().anchorMin = _renameField.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 1f);
+                _renameField.GetComponent<RectTransform>().pivot = new Vector2(0f, 1f);
+                _renameField.GetComponent<RectTransform>().anchoredPosition = new Vector2(14f, -(12f + plan.ChipsHeight + 2f));
+                _renameField.GetComponent<RectTransform>().sizeDelta = new Vector2(innerW - 60f, 30f);
+            }
+            IsTextInputFocused = IsTextInputFocused || _renameField.isFocused;
+
+            // Detail (needs bars + text), rebuilt when the selected pet/expansion changes.
+            float detailY = 12f + plan.ChipsHeight + plan.HeaderHeight;
+            float footerH = plan.FooterHeight + 12f;
+
+            _detailScroll.viewport.anchorMin = new Vector2(0f, 0f);
+            _detailScroll.viewport.anchorMax = new Vector2(1f, 1f);
+            _detailScroll.viewport.offsetMin = new Vector2(12f, footerH);
+            _detailScroll.viewport.offsetMax = new Vector2(-12f, -detailY);
+
+            if (_builtCardExpanded != expanded)
+            {
+                RebuildDetail(gm, card, expanded);
+                _builtCardExpanded = expanded;
+            }
+            SyncNeedsBars(card.Needs, plan.Panel.width);
+
+            // Footer buttons (rebuilt when the plan changes).
+            RebuildFooter(gm, plan, p, plan.Panel.width);
+        }
+
+        private void RebuildChips(PetGameManager gm, List<PetGameManager.PetCard> cards, string[] names, int maxRows, RectTransform p, float designWidth)
+        {
+            foreach (var b in _chipButtons) if (b != null) Destroy(b.gameObject);
+            _chipButtons.Clear();
+            _chipLabels.Clear();
+
+            var packed = PackRows(names, Mathf.Max(60f, designWidth - 28f - RowPackingSlack), 14, buttonPadding: 20f, spacing: ChipSpacing);
+            int rowCount = Mathf.Clamp(maxRows, 0, packed.Length);
+            int index = 0;
+
+            for (int r = 0; r < rowCount; r++)
+            {
+                float x = 14f;
+                foreach (string label in packed[r])
+                {
+                    if (index >= cards.Count) break;
+                    float chipWidth = Mathf.Min(designWidth - 28f, EstimatedLabelWidth(label, 14) + 20f);
+                    var chip = DshMobile.Ugui.Button("Chip", p, label, 14, new Color(0.30f, 0.40f, 0.58f));
+                    chip.GetComponent<RectTransform>().anchorMin = chip.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 1f);
+                    chip.GetComponent<RectTransform>().pivot = new Vector2(0f, 1f);
+                    chip.GetComponent<RectTransform>().anchoredPosition = new Vector2(x, -(12f + r * (ChipHeight + ChipSpacing)));
+                    chip.GetComponent<RectTransform>().sizeDelta = new Vector2(chipWidth, ChipHeight);
+                    int ci = index;
+                    chip.onClick.AddListener(() => gm.SelectPet(ci, toggleIfSame: true));
+                    _chipButtons.Add(chip);
+                    _chipLabels.Add(chip.GetComponentInChildren<UnityEngine.UI.Text>());
+                    x += chipWidth + ChipSpacing;
+                    index++;
+                }
+            }
+
+            for (int i = 0; i < _chipLabels.Count; i++)
+                _chipLabels[i].color = i == gm.SelectedPetIndex ? new Color(1f, 0.94f, 0.75f) : Color.white;
+        }
+
+        private void RebuildDetail(PetGameManager gm, PetGameManager.PetCard card, bool expanded)
+        {
+            var sb = new System.Text.StringBuilder();
+            if (expanded)
+            {
+                if (card.Primary && !gm.BrainConfig.CanUseNetwork)
+                    sb.AppendLine("⚙ 配置大脑连接（当前离线）");
+
+                if (card.Personality != null)
+                {
+                    sb.AppendLine("性格：" + gm.Personality.Archetype);
+                    if (!Mobile || _statusDetail) sb.AppendLine(card.Personality.Summary);
+                }
+
+                sb.AppendLine("音色：" + PetVoice.Describe(card.Species, card.Personality));
+
+                if (!card.Primary)
+                {
+                    sb.AppendLine("同伴：自己走动、有自己的状态与音色，摸它有反应；它不接大脑，所以不花 token。");
+                    sb.AppendLine("想换主要照顾的那只，去「宠物」面板的背包页。");
+                }
+                else if (!Mobile || _statusDetail)
+                {
+                    string mode = gm.Controller != null ? gm.Controller.CurrentMode.ToString() : "-";
+                    string action = string.IsNullOrEmpty(gm.LastActionLabel) ? "休息中" : gm.LastActionLabel;
+                    sb.AppendLine($"行为：{mode}　动作：{action}");
+                    if (!string.IsNullOrEmpty(gm.LastBehaviorLabel)) sb.AppendLine($"刚才：{gm.LastBehaviorLabel}");
+                    if (!string.IsNullOrEmpty(gm.LastNudgeReason)) sb.AppendLine($"主动开口：{gm.LastNudgeReason}");
+                    sb.AppendLine("大脑：" + gm.BrainConfig.Describe());
+                    if (!gm.BrainConfig.CanUseNetwork) sb.AppendLine("　" + gm.BrainConfig.StatusDetail());
+                }
+
+                if (card.Primary) sb.AppendLine($"{gm.Journal.Count} 条记忆　·　{card.Needs.MoodScore:P0} 状态分");
+                else sb.AppendLine($"状态分 {card.Needs.MoodScore:P0}　·　亲密度 {card.Needs.Affection:P0}");
+            }
+
+            _detailText.text = sb.ToString();
+            _detailText.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, Mathf.Max(60f, _detailText.preferredHeight + 10f));
+            _detailText.rectTransform.anchoredPosition = new Vector2(0f, -4f);
+        }
+
+        private void SyncNeedsBars(PetNeeds needs, float designWidth)
+        {
+            var bars = new[] {
+                new { Label = "饱食", Value = needs != null ? needs.Hunger : 0f, Color = new Color(0.95f, 0.62f, 0.30f) },
+                new { Label = "精力", Value = needs != null ? needs.Energy : 0f, Color = new Color(0.45f, 0.80f, 0.95f) },
+                new { Label = "开心", Value = needs != null ? needs.Joy : 0f, Color = new Color(0.98f, 0.80f, 0.35f) },
+                new { Label = "清洁", Value = needs != null ? needs.Cleanliness : 0f, Color = new Color(0.60f, 0.90f, 0.65f) },
+                new { Label = "便意", Value = needs != null ? needs.Bladder : 0f, Color = new Color(0.85f, 0.72f, 0.45f) }
+            };
+
+            var p = _cardPanel.rectTransform;
+            bool showBladder = needs != null && needs.Bladder < 0.6f;
+            float y = 12f + 0f;
+
+            for (int i = 0; i < 5; i++)
+            {
+                if (i == 4 && !showBladder) { _needLabels[i].transform.parent.gameObject.SetActive(false); continue; }
+                _needLabels[i].transform.parent.gameObject.SetActive(true);
+                var rowRt = _needLabels[i].transform.parent.GetComponent<RectTransform>();
+                rowRt.anchorMin = rowRt.anchorMax = new Vector2(0f, 1f);
+                rowRt.pivot = new Vector2(0f, 1f);
+                rowRt.anchoredPosition = new Vector2(14f, -y);
+                rowRt.sizeDelta = new Vector2(designWidth - 28f, 22f);
+
+                var b = bars[i];
+                _needLabels[i].text = b.Label;
+                float v = Mathf.Clamp01(b.Value);
+                _needFills[i].sizeDelta = new Vector2((designWidth - 148f) * v, 10f);
+                _needFillImages[i].color = v < 0.25f ? Color.Lerp(b.Color, Color.red, 0.55f) : b.Color;
+                _needLabels[i].transform.parent.Find("Value").GetComponent<UnityEngine.UI.Text>().text = $"{b.Value:P0}";
+                y += 24f;
+            }
+        }
+
+        private void RebuildFooter(PetGameManager gm, PetCardLayout plan, RectTransform p, float designWidth)
+        {
+            foreach (var b in _footerButtons) if (b != null) Destroy(b.gameObject);
+            _footerButtons.Clear();
+
+            float y = plan.FooterHeight + 6f;
+            foreach (var row in plan.FooterRows)
+            {
+                var packed = row;
+                float total = 0f;
+                foreach (var label in packed) total += EstimatedLabelWidth(label, 14) + 18f + 6f;
+                float x = 14f + Mathf.Max(0f, (designWidth - 28f - total) * 0.5f);
+                foreach (string label in packed)
+                {
+                    float w = EstimatedLabelWidth(label, 14) + 18f;
+                    var btn = DshMobile.Ugui.Button("Footer", p, label, 14, new Color(0.30f, 0.40f, 0.58f));
+                    btn.GetComponent<RectTransform>().anchorMin = btn.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 0f);
+                    btn.GetComponent<RectTransform>().pivot = new Vector2(0f, 0f);
+                    btn.GetComponent<RectTransform>().anchoredPosition = new Vector2(x, y - FooterRowHeight);
+                    btn.GetComponent<RectTransform>().sizeDelta = new Vector2(w, FooterRowHeight);
+                    string lbl = label;
+                    btn.onClick.AddListener(() => HandleFooterButton(lbl, gm));
+                    _footerButtons.Add(btn);
+                    x += w + 6f;
+                }
+                y -= FooterRowHeight + 4f;
+            }
         }
 
         /// <summary>
