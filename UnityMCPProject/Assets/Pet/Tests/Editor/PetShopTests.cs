@@ -390,5 +390,68 @@ namespace DshPet.Tests
             Assert.IsFalse(PetInventory.Overlaps(sofaAt, PetInventory.FootprintOf("sofa"), RoomTheme.Terrace, "sofa"),
                 "the sofa must not sit inside the food bowl");
         }
+
+        [Test]
+        public void StackableWallsAndFencesCanBeBoughtAndPlacedManyTimes()
+        {
+            DshMobile.PetWallet.Add(1000);
+            var wall = PetShop.Get("indoor_wall");
+            var fence = PetShop.Get("outdoor_fence");
+            Assert.IsNotNull(wall, "the indoor short wall is in the shop");
+            Assert.IsNotNull(fence, "the outdoor fence is in the shop");
+            Assert.IsTrue(wall.Stackable && fence.Stackable);
+            Assert.AreEqual(InteractableKind.Wall, wall.Kind.Value);
+            Assert.AreEqual(InteractableKind.Fence, fence.Kind.Value);
+            Assert.IsTrue(fence.AllowedIn(RoomTheme.Garden));
+            Assert.IsFalse(fence.AllowedIn(RoomTheme.Cabin), "a garden fence is not indoor furniture");
+            Assert.IsTrue(wall.AllowedIn(RoomTheme.Cabin));
+            Assert.IsTrue(wall.AllowedIn(RoomTheme.Terrace), "an indoor wall fits the terrace too");
+
+            // No purchase limit: the same wall can be bought over and over.
+            Assert.IsTrue(PetInventory.Buy(wall).Contains("共有 1 段"));
+            Assert.IsTrue(PetInventory.Buy(wall).Contains("共有 2 段"));
+            Assert.IsTrue(PetInventory.Buy(wall).Contains("共有 3 段"));
+            Assert.AreEqual(3, PetInventory.OwnedCount("indoor_wall"));
+
+            // Each placement makes an independent movable copy.
+            Assert.IsTrue(PetInventory.Place("indoor_wall", RoomTheme.Cabin).Contains("摆进了"));
+            Assert.IsTrue(PetInventory.Place("indoor_wall", RoomTheme.Cabin).Contains("摆进了"));
+            Assert.AreEqual(2, PetInventory.PlacedCopyCount("indoor_wall"));
+            Assert.AreEqual(1, PetInventory.UnplacedCopies("indoor_wall"));
+
+            Assert.IsTrue(PetInventory.Place("indoor_wall", RoomTheme.Cabin).Contains("摆进了"));
+            Assert.AreEqual(0, PetInventory.UnplacedCopies("indoor_wall"));
+            Assert.IsTrue(PetInventory.Place("indoor_wall", RoomTheme.Cabin).Contains("没有多余的"),
+                "once every owned copy is set down there is nothing left to place");
+
+            // Selling a stackable piece sells one unplaced copy, not a placed one.
+            string firstCopy = PetInventory.FirstPlacedCopyKey("indoor_wall", RoomTheme.Cabin);
+            Assert.IsNotNull(firstCopy, "a wall copy is set down in the cabin");
+            PetInventory.Store(firstCopy, RoomTheme.Cabin);
+            Assert.AreEqual(1, PetInventory.UnplacedCopies("indoor_wall"));
+            Assert.IsTrue(PetInventory.Sell("indoor_wall").Contains("返还"));
+            Assert.AreEqual(2, PetInventory.OwnedCount("indoor_wall"));
+        }
+
+        [Test]
+        public void DefaultDecorIsMovableStorableAndNotSellable()
+        {
+            var rug = PetShop.Get("rug");
+            Assert.IsNotNull(rug);
+            Assert.IsTrue(rug.Starter, "the rug is default furniture");
+            Assert.AreEqual(InteractableKind.Decor, rug.Kind.Value);
+            Assert.IsTrue(PetInventory.IsOwned("rug"));
+            Assert.IsTrue(PetInventory.IsPlaced("rug", RoomTheme.Cabin), "the rug is in the cabin by default");
+            Assert.IsFalse(PetInventory.IsPlaced("rug", RoomTheme.Terrace), "the cabin rug is not on the terrace");
+
+            // Store it, then bring it back.
+            Assert.IsTrue(PetInventory.Store("rug", RoomTheme.Cabin).Contains("收回"));
+            Assert.IsFalse(PetInventory.IsPlaced("rug", RoomTheme.Cabin));
+            Assert.IsTrue(PetInventory.Place("rug", RoomTheme.Cabin).Contains("摆进了"));
+            Assert.IsTrue(PetInventory.IsPlaced("rug", RoomTheme.Cabin));
+
+            // Default decor cannot be sold, only stored.
+            Assert.IsTrue(PetInventory.Sell("rug").Contains("不能卖"));
+        }
     }
 }

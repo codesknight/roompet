@@ -81,6 +81,9 @@ namespace DshPet
                 case InteractableKind.Lamp: return "落地灯";
                 case InteractableKind.Warehouse: return "仓库";
                 case InteractableKind.Robot: return "管家机器人";
+                case InteractableKind.Wall: return "室内短墙";
+                case InteractableKind.Fence: return "户外栅栏";
+                case InteractableKind.Decor: return "装饰";
                 default: return "东西";
             }
         }

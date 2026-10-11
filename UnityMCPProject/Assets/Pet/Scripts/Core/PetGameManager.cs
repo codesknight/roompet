@@ -1895,6 +1895,15 @@ namespace DshPet
                 return;
             }
 
+            // Walls, fences and decor are pure decoration: a tap explains how to move them rather
+            // than sending the pet over to sniff a partition.
+            if (target.Kind == InteractableKind.Wall || target.Kind == InteractableKind.Fence ||
+                target.Kind == InteractableKind.Decor)
+            {
+                PetHud.SetToast("这是装饰物，去「仓库 → 自由摆放」可以拖动或收回。");
+                return;
+            }
+
             if (Controller != null) Controller.GoTo(target);
         }
 

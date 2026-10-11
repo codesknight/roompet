@@ -80,7 +80,16 @@ namespace DshPet
         Warehouse,
 
         /// <summary>Smart furniture: a butler robot that follows and cares for pets, toggled on/off.</summary>
-        Robot
+        Robot,
+
+        /// <summary>Indoor furniture: a short partition wall segment, buyable any number of times.</summary>
+        Wall,
+
+        /// <summary>Garden furniture: a movable fence segment, buyable any number of times.</summary>
+        Fence,
+
+        /// <summary>Placeable decor (a rug, a table, a plant): movable and storable, no pet use.</summary>
+        Decor
     }
 
     /// <summary>One turn of the conversation.</summary>

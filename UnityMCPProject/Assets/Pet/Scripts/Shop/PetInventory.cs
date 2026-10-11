@@ -150,12 +150,73 @@ namespace DshPet
             return list;
         }
 
+        /// <summary>Strips the "#n" copy index from a placed key, returning the base shop id.</summary>
+        public static string BaseId(string placedKey)
+        {
+            if (string.IsNullOrEmpty(placedKey)) return placedKey;
+            int hash = placedKey.IndexOf('#');
+            return hash > 0 ? placedKey.Substring(0, hash) : placedKey;
+        }
+
         public static bool IsOwned(string id)
         {
             if (string.IsNullOrEmpty(id)) return false;
+            id = BaseId(id);
             if (PetShop.IsStarter(id)) return true;
             if (PetShop.IsDefault(id)) return true;
-            return Owned().Contains(id);
+            if (Owned().Contains(id)) return true;
+            var item = PetShop.Get(id);
+            return item != null && item.Stackable && Count(id) > 0;
+        }
+
+        /// <summary>How many of a piece of furniture are owned: 1 for ordinary furniture, the
+        /// stackable count for walls and fences.</summary>
+        public static int OwnedCount(string id)
+        {
+            id = BaseId(id);
+            var item = PetShop.Get(id);
+            if (item != null && item.Stackable) return Count(id);
+            return IsOwned(id) ? 1 : 0;
+        }
+
+        /// <summary>How many copies of a stackable furniture are set down across every scene.</summary>
+        public static int PlacedCopyCount(string id)
+        {
+            id = BaseId(id);
+            int count = 0;
+            for (int i = 0; i < RoomThemeInfo.All.Length; i++)
+            {
+                var theme = RoomThemeInfo.All[i].Theme;
+                foreach (var key in Placed(theme).Keys)
+                {
+                    if (BaseId(key) == id) count++;
+                }
+            }
+            return count;
+        }
+
+        /// <summary>Owned copies that are still in the warehouse, not set down anywhere.</summary>
+        public static int UnplacedCopies(string id)
+            => Mathf.Max(0, Count(id) - PlacedCopyCount(id));
+
+        /// <summary>The first placed copy key ("id#n") in a scene, or null when none are set down.</summary>
+        public static string FirstPlacedCopyKey(string id, RoomTheme theme)
+        {
+            id = BaseId(id);
+            foreach (var key in Placed(theme).Keys)
+            {
+                if (BaseId(key) == id) return key;
+            }
+            return null;
+        }
+
+        /// <summary>The next free copy key ("id#n") for a stackable furniture in one scene.</summary>
+        private static string NextCopyKey(string id, RoomTheme place)
+        {
+            var map = Placed(place);
+            int n = 0;
+            while (map.ContainsKey(id + "#" + n)) n++;
+            return id + "#" + n;
         }
 
         private static void AddOwned(string id)
@@ -312,6 +373,7 @@ namespace DshPet
         /// <summary>The overlap radius of a placed item, so furniture does not sit inside furniture.</summary>
         public static float FootprintOf(string id)
         {
+            id = BaseId(id);
             if (id == PetShop.FoodBowl || id == PetShop.WaterBowl) return 0.55f;
             var item = PetShop.Get(id);
             if (item != null && item.Footprint > 0f) return item.Footprint;
@@ -389,6 +451,16 @@ namespace DshPet
                 return $"买了一袋{item.Name}（够吃 {item.FoodUnits} 顿）";
             }
 
+            // Stackable furniture (walls, fences) can be bought over and over — each purchase
+            // adds one more copy to the warehouse, ready to be placed in the room.
+            if (item.Stackable)
+            {
+                if (!DshMobile.PetWallet.TrySpend(item.Price))
+                    return $"还差 {item.Price - DshMobile.PetWallet.Coins} 个宠物币";
+                Add(item.Id, 1);
+                return $"买下了一段{item.Name}（现在共有 {Count(item.Id)} 段，去仓库摆出来）";
+            }
+
             if (IsOwned(item.Id)) return item.Name + "已经买过了";
             if (!DshMobile.PetWallet.TrySpend(item.Price))
                 return $"还差 {item.Price - DshMobile.PetWallet.Coins} 个宠物币";
@@ -403,16 +475,31 @@ namespace DshPet
         public static string Place(string id, RoomTheme place)
         {
             if (PetShop.IsStarter(id)) return "这是基础家具，一直都在房间里";
-            var item = PetShop.Get(id);
+            var item = PetShop.Get(BaseId(id));
             if (item == null) return "没有这件商品";
             if (!item.IsFurniture) return item.Name + "不是家具，不用摆放";
-            if (!IsOwned(id)) return "还没有这件家具，先去商城买";
-            if (IsPlaced(id, place)) return "已经摆在这里了";
             if (!item.AllowedIn(place)) return item.Name + "只能摆在" + PlaceName(item.Scene);
 
-            var map = Placed(place);
-            map[id] = ResolveOverlap(item.DefaultPosition, item.Footprint, place, id);
-            SavePlaced(place, map);
+            // A stackable piece places one copy at a time, under its own "#n" key, so the player
+            // can set down several walls or fences and move each one independently.
+            if (item.Stackable)
+            {
+                if (UnplacedCopies(item.Id) <= 0) return "没有多余的" + item.Name + "可以摆（都摆好了，先收回一段）";
+                string key = NextCopyKey(item.Id, place);
+                var map = Placed(place);
+                map[key] = ResolveOverlap(item.DefaultPosition, item.Footprint, place, key);
+                SavePlaced(place, map);
+                int left = UnplacedCopies(item.Id);
+                return item.Name + "摆进了" + RoomThemeInfo.Get(place).DisplayName +
+                       (left > 0 ? $"（仓库还有 {left} 段）" : "");
+            }
+
+            if (!IsOwned(id)) return "还没有这件家具，先去商城买";
+            if (IsPlaced(id, place)) return "已经摆在这里了";
+
+            var m = Placed(place);
+            m[id] = ResolveOverlap(item.DefaultPosition, item.Footprint, place, id);
+            SavePlaced(place, m);
 
             if (item.Starter) SetStored(id, false);
             return item.Name + "摆进了" + RoomThemeInfo.Get(place).DisplayName;
@@ -421,15 +508,15 @@ namespace DshPet
         /// <summary>Picks furniture up off this scene's floor and returns it to the warehouse.</summary>
         public static string Store(string id, RoomTheme place)
         {
-            if (PetShop.IsStarter(id)) return "基础家具不能收起来";
+            if (PetShop.IsStarter(BaseId(id))) return "基础家具不能收起来";
             if (!IsPlaced(id, place)) return "它没在这个地方";
 
             var map = Placed(place);
             map.Remove(id);
             SavePlaced(place, map);
 
-            var item = PetShop.Get(id);
-            if (item != null && item.Starter) SetStored(id, true);
+            var item = PetShop.Get(BaseId(id));
+            if (item != null && item.Starter) SetStored(BaseId(id), true);
             return "收回了仓库";
         }
 
@@ -441,39 +528,51 @@ namespace DshPet
         /// </summary>
         public static string Sell(string id)
         {
-            if (PetShop.IsStarter(id)) return "基础家具不能卖";
-            var item = PetShop.Get(id);
+            string baseId = BaseId(id);
+            if (PetShop.IsStarter(baseId)) return "基础家具不能卖";
+            var item = PetShop.Get(baseId);
             if (item == null) return "没有这件商品";
             if (item.Starter) return "默认家具不能卖，只能收回仓库";
 
             if (item.IsFood)
             {
-                if (Count(id) <= 0) return "没有多余的" + item.Name + "可以卖";
-                SetCount(id, Count(id) - 1);
+                if (Count(baseId) <= 0) return "没有多余的" + item.Name + "可以卖";
+                SetCount(baseId, Count(baseId) - 1);
                 DshMobile.PetWallet.Add(item.SellPrice);
                 return $"卖掉了{item.Name}，赚了 {item.SellPrice} 个宠物币";
             }
 
             if (item.IsTool)
             {
-                if (PetBackpack.IsEquipped(id)) return "先把" + item.Name + "从背包里取下来再卖";
-                if (!IsOwned(id)) return "还没有" + item.Name;
-                RemoveOwned(id);
+                if (PetBackpack.IsEquipped(baseId)) return "先把" + item.Name + "从背包里取下来再卖";
+                if (!IsOwned(baseId)) return "还没有" + item.Name;
+                RemoveOwned(baseId);
                 DshMobile.PetWallet.Add(item.SellPrice);
                 return $"卖掉了{item.Name}，返还 {item.SellPrice} 个宠物币";
             }
 
-            if (!IsOwned(id)) return "还没有这件家具";
+            // A stackable piece sells one unplaced copy at a time; the copies still set down in
+            // the room stay where they are.
+            if (item.Stackable)
+            {
+                int unplaced = UnplacedCopies(baseId);
+                if (unplaced <= 0) return "没有多余的" + item.Name + "可以卖（都摆在房间里了）";
+                SetCount(baseId, Count(baseId) - 1);
+                DshMobile.PetWallet.Add(item.SellPrice);
+                return $"卖掉了{item.Name}一段，返还 {item.SellPrice} 个宠物币";
+            }
+
+            if (!IsOwned(baseId)) return "还没有这件家具";
 
             // Selling removes the furniture from every scene it was set down in.
             for (int i = 0; i < RoomThemeInfo.All.Length; i++)
             {
                 var theme = RoomThemeInfo.All[i].Theme;
                 var map = Placed(theme);
-                if (map.Remove(id)) SavePlaced(theme, map);
+                if (map.Remove(baseId)) SavePlaced(theme, map);
             }
 
-            RemoveOwned(id);
+            RemoveOwned(baseId);
             DshMobile.PetWallet.Add(item.SellPrice);
             return $"卖掉了{item.Name}，返还 {item.SellPrice} 个宠物币";
         }

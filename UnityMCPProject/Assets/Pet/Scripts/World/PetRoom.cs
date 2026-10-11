@@ -57,7 +57,6 @@ namespace DshPet
 
             ApplyTheme();
             BuildShell();
-            BuildRug();
 
             BuildBowls();
             BuildPurchasedProps();
@@ -545,13 +544,6 @@ namespace DshPet
                 distance * 4f / 24f);
         }
 
-        private void BuildRug()
-        {
-            Box("Rug", new Vector3(0f, 0.02f, 0.5f), new Vector3(6.5f, 0.04f, 5f), RugColor, 0.6f);
-            Box("RugInner", new Vector3(0f, 0.035f, 0.5f), new Vector3(5.2f, 0.03f, 3.8f),
-                Color.Lerp(RugColor, Color.white, 0.35f), 0.6f);
-        }
-
         /// <summary>Decor that only makes sense in one place.</summary>
         private void BuildThemeDecor()
         {
@@ -791,17 +783,17 @@ namespace DshPet
             BuildStringLights(new Vector3(-half + 1.2f, 2.45f, z + 0.6f),
                 new Vector3(half - 1.2f, 2.45f, z + 0.6f), 13, 0.45f, warm);
 
-            // The coffee table and rug the default sofas sit around. The sofas, the floor lamp
-            // and the bench are default furniture and are built from the inventory (BuildProp),
-            // so they can be dragged around and stored like any other furniture.
-            SpawnProp("Kenney/Furniture/tableCoffee", new Vector3(0f, 0f, 2.4f), 1.2f);
+            // The coffee table the default sofas sit around. The sofas, the floor lamp and the
+            // bench are default furniture and are built from the inventory (BuildPropAt), so they
+            // can be dragged around and stored like any other furniture; the coffee table is now
+            // default furniture too (the round rug stays as ambient scenery under it).
             SpawnProp("Kenney/Furniture/rugRound", new Vector3(0f, 0f, 2.0f), 2.6f);
 
-            // Potted plants along the railing.
-            SpawnProp("Kenney/Furniture/pottedPlant", new Vector3(-half + 1.2f, 0f, -half + 1.7f), 1.0f);
-            SpawnProp("Kenney/Furniture/pottedPlant", new Vector3(half - 1.2f, 0f, -half + 1.7f), 1.0f);
-            SpawnProp("Kenney/Furniture/plantSmall2", new Vector3(-half + 1.2f, 0f, 0.5f), 0.8f);
-            SpawnProp("Kenney/Furniture/plantSmall3", new Vector3(half - 1.2f, 0f, 0.5f), 0.8f);
+            // Potted plants along the railing. The first one is default furniture (potted_plant);
+            // the rest are scenery with solid colliders so nothing walks through them.
+            SpawnProp("Kenney/Furniture/pottedPlant", new Vector3(half - 1.2f, 0f, -half + 1.7f), 1.0f, solid: true);
+            SpawnProp("Kenney/Furniture/plantSmall2", new Vector3(-half + 1.2f, 0f, 0.5f), 0.8f, solid: true);
+            SpawnProp("Kenney/Furniture/plantSmall3", new Vector3(half - 1.2f, 0f, 0.5f), 0.8f, solid: true);
 
             // A brazier: the one warm thing in the middle of the deck.
             var fire = Prim(PrimitiveType.Cylinder, "Brazier", _root, new Vector3(0f, 0.34f, 4.3f),
@@ -1072,15 +1064,14 @@ namespace DshPet
         }
 
         /// <summary>Builds the default sofa / long sofa / bench, from the item that asked for it.</summary>
-        private Interactable BuildSofa(ShopItem item)
+        private Interactable BuildSofa(ShopItem item, Vector3 at)
         {
-            Vector2 at = PetInventory.PositionOf(item.Id, Theme);
             string resource = item.Id == "sofa" ? "Kenney/Furniture/loungeSofa"
                 : item.Id == "sofa_long" ? "Kenney/Furniture/loungeSofaLong"
                 : "Kenney/Furniture/bench";
             float scale = item.Id == "sofa" ? 2.4f : item.Id == "sofa_long" ? 2.6f : 1.6f;
 
-            return SpawnInteractableProp(resource, new Vector3(at.x, 0f, at.y), scale,
+            return SpawnInteractableProp(resource, at, scale,
                 InteractableKind.Sofa, item.Name + "（坐上去休息）", item.ApproachOffset, item.Id);
         }
 
@@ -1174,44 +1165,51 @@ namespace DshPet
         private void BuildPurchasedProps()
         {
             var placed = PetInventory.Placed(Theme);
-            for (int i = 0; i < PetShop.All.Length; i++)
+            foreach (var entry in placed)
             {
-                var item = PetShop.All[i];
-                if (item.IsFood || !item.Kind.HasValue) continue;
-                if (!placed.ContainsKey(item.Id)) continue;
+                var item = PetShop.Get(PetInventory.BaseId(entry.Key));
+                if (item == null || item.IsFood || !item.Kind.HasValue) continue;
 
                 // Per-scene placement means this map only ever holds what belongs here; the check
                 // stays as a second lock so a bad save cannot put a telescope in the garden.
                 if (!item.AllowedIn(Theme)) continue;
 
-                BuildProp(item);
+                BuildPropAt(item, new Vector3(entry.Value.x, 0f, entry.Value.y), entry.Key);
             }
         }
 
         /// <summary>Builds one placed shop prop at the position the player chose for it.</summary>
-        private Interactable BuildProp(ShopItem item)
+        private Interactable BuildPropAt(ShopItem item, Vector3 at, string placedKey)
         {
-            Vector2 at = PetInventory.PositionOf(item.Id, Theme);
+            Interactable result;
             switch (item.Kind.Value)
             {
-                case InteractableKind.Bed: return BuildBed(at);
-                case InteractableKind.Ball: return BuildBall(at);
-                case InteractableKind.Brush: return BuildBrush(at);
-                case InteractableKind.Toilet: return BuildToilet(at);
-                case InteractableKind.Bath: return BuildBath(at);
-                case InteractableKind.Toy: return BuildToy(at);
-                case InteractableKind.AppleTree: return BuildAppleTree(at);
-                case InteractableKind.Pond: return BuildPond(at);
-                case InteractableKind.GrassHeap: return BuildGrassHeap(at);
-                case InteractableKind.Swing: return BuildSwing(at);
-                case InteractableKind.Telescope: return BuildTelescope(at);
-                case InteractableKind.RockingChair: return BuildRockingChair(at);
-                case InteractableKind.Sofa: return BuildSofa(item);
-                case InteractableKind.Lamp: return BuildLamp(at);
-                case InteractableKind.Warehouse: return BuildWarehouse(at);
-                case InteractableKind.Robot: return BuildRobot(at);
+                case InteractableKind.Bed: result = BuildBed(at); break;
+                case InteractableKind.Ball: result = BuildBall(at); break;
+                case InteractableKind.Brush: result = BuildBrush(at); break;
+                case InteractableKind.Toilet: result = BuildToilet(at); break;
+                case InteractableKind.Bath: result = BuildBath(at); break;
+                case InteractableKind.Toy: result = BuildToy(at); break;
+                case InteractableKind.AppleTree: result = BuildAppleTree(at); break;
+                case InteractableKind.Pond: result = BuildPond(at); break;
+                case InteractableKind.GrassHeap: result = BuildGrassHeap(at); break;
+                case InteractableKind.Swing: result = BuildSwing(at); break;
+                case InteractableKind.Telescope: result = BuildTelescope(at); break;
+                case InteractableKind.RockingChair: result = BuildRockingChair(at); break;
+                case InteractableKind.Sofa: result = BuildSofa(item, at); break;
+                case InteractableKind.Lamp: result = BuildLamp(at); break;
+                case InteractableKind.Warehouse: result = BuildWarehouse(at); break;
+                case InteractableKind.Robot: result = BuildRobot(at); break;
+                case InteractableKind.Wall: result = BuildWall(at); break;
+                case InteractableKind.Fence: result = BuildFence(at); break;
+                case InteractableKind.Decor: result = BuildDecor(item, at); break;
                 default: return null;
             }
+
+            // Free placement reads the exact placed key back off the interactable, so a wall or
+            // fence copy (indoor_wall#1) can be moved independently of its siblings.
+            if (result != null) result.ItemId = placedKey;
+            return result;
         }
 
         private Interactable[] BuildBowls()
@@ -1630,6 +1628,101 @@ namespace DshPet
             // model ships with the furniture pack, and the lounge chair reads as "sit and doze").
             return SpawnInteractableProp("Kenney/Furniture/loungeChairRelax", new Vector3(at.x, 0f, at.y), 1.4f,
                 InteractableKind.RockingChair, "摇椅", new Vector3(0f, 1.4f), "rocking_chair");
+        }
+
+        // -------------------------------------------------------------- walls / fences / decor
+
+        /// <summary>A short indoor partition wall: a painted panel on a base, with a solid box
+        /// collider so it can be clicked and dragged. Buyable any number of times.</summary>
+        private Interactable BuildWall(Vector3 at)
+        {
+            var go = new GameObject("Wall");
+            go.transform.SetParent(_root, false);
+            go.transform.position = at;
+
+            BoxUnder(go.transform, "Panel", new Vector3(0f, 0.62f, 0f), new Vector3(1.4f, 1.2f, 0.22f),
+                new Color(0.80f, 0.78f, 0.72f), 0.5f);
+            BoxUnder(go.transform, "Base", new Vector3(0f, 0.08f, 0f), new Vector3(1.6f, 0.16f, 0.4f),
+                new Color(0.58f, 0.42f, 0.30f), 0.45f);
+
+            var hit = go.AddComponent<BoxCollider>();
+            hit.size = new Vector3(1.6f, 1.28f, 0.44f);
+            hit.center = new Vector3(0f, 0.64f, 0f);
+
+            var interactable = go.AddComponent<Interactable>();
+            interactable.Kind = InteractableKind.Wall;
+            interactable.Label = "室内短墙（装饰，可拖动）";
+            interactable.ItemId = "indoor_wall";
+            interactable.ApproachPoint = at + new Vector3(0f, 0f, 1.2f);
+            return interactable;
+        }
+
+        /// <summary>A movable garden fence segment: two posts and a panel, with a solid box
+        /// collider. Buyable any number of times.</summary>
+        private Interactable BuildFence(Vector3 at)
+        {
+            var go = new GameObject("Fence");
+            go.transform.SetParent(_root, false);
+            go.transform.position = at;
+
+            var wood = new Color(0.86f, 0.80f, 0.66f);
+            BoxUnder(go.transform, "Panel", new Vector3(0f, 0.42f, 0f), new Vector3(1.5f, 0.7f, 0.06f),
+                wood, 0.4f);
+            BoxUnder(go.transform, "PostL", new Vector3(-0.72f, 0.4f, 0f), new Vector3(0.12f, 0.8f, 0.12f),
+                wood * 1.08f, 0.45f);
+            BoxUnder(go.transform, "PostR", new Vector3(0.72f, 0.4f, 0f), new Vector3(0.12f, 0.8f, 0.12f),
+                wood * 1.08f, 0.45f);
+
+            var hit = go.AddComponent<BoxCollider>();
+            hit.size = new Vector3(1.6f, 0.84f, 0.2f);
+            hit.center = new Vector3(0f, 0.42f, 0f);
+
+            var interactable = go.AddComponent<Interactable>();
+            interactable.Kind = InteractableKind.Fence;
+            interactable.Label = "户外栅栏（装饰，可拖动）";
+            interactable.ItemId = "outdoor_fence";
+            interactable.ApproachPoint = at + new Vector3(0f, 0f, -1.2f);
+            return interactable;
+        }
+
+        /// <summary>Placeable decor (rug / coffee table / potted plant): movable and storable.</summary>
+        private Interactable BuildDecor(ShopItem item, Vector3 at)
+        {
+            switch (item.Id)
+            {
+                case "rug": return BuildRugItem(at);
+                case "coffee_table":
+                    return SpawnInteractableProp(item.Model, at, 1.2f, InteractableKind.Decor,
+                        "茶几（装饰，可拖动）", new Vector3(0f, -1.4f), item.Id);
+                case "potted_plant":
+                    return SpawnInteractableProp(item.Model, at, 1.0f, InteractableKind.Decor,
+                        "盆栽（装饰，可拖动）", new Vector3(0f, -1.2f), item.Id);
+                default: return null;
+            }
+        }
+
+        /// <summary>The cabin rug: a flat, clickable, movable floor mat (no solid blocking).</summary>
+        private Interactable BuildRugItem(Vector3 at)
+        {
+            var go = new GameObject("Rug");
+            go.transform.SetParent(_root, false);
+            go.transform.position = at;
+
+            BoxUnder(go.transform, "RugOuter", new Vector3(0f, 0.02f, 0f), new Vector3(6.5f, 0.04f, 5f),
+                RugColor, 0.6f);
+            BoxUnder(go.transform, "RugInner", new Vector3(0f, 0.035f, 0f), new Vector3(5.2f, 0.03f, 3.8f),
+                Color.Lerp(RugColor, Color.white, 0.35f), 0.6f);
+
+            var hit = go.AddComponent<BoxCollider>();
+            hit.size = new Vector3(6.5f, 0.06f, 5f);
+            hit.center = new Vector3(0f, 0.03f, 0f);
+
+            var interactable = go.AddComponent<Interactable>();
+            interactable.Kind = InteractableKind.Decor;
+            interactable.Label = "地毯（装饰，可拖动）";
+            interactable.ItemId = "rug";
+            interactable.ApproachPoint = at + new Vector3(0f, 0f, -2.4f);
+            return interactable;
         }
 
         // ---------------------------------------------------------------------- messes

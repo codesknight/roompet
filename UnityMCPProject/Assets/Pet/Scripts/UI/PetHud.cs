@@ -179,6 +179,7 @@ namespace DshPet
         private RectTransform _furnishContent;
         private readonly List<UnityEngine.UI.Text> _furnishTabLabels = new List<UnityEngine.UI.Text>();
         private int _builtFurnishTab = -1;
+        private float _furnishLabelWidth = 500f;
 
         // uGUI prompt preview panel (fourth slice, seventh piece).
         private UnityEngine.UI.Image _promptPanel;
@@ -2814,6 +2815,7 @@ namespace DshPet
         private void RebuildFurnishContent(PetGameManager gm, float w)
         {
             for (int i = _furnishContent.childCount - 1; i >= 0; i--) Destroy(_furnishContent.GetChild(i).gameObject);
+            _furnishLabelWidth = Mathf.Max(200f, w - 40f);
             float y = 4f;
 
             if (_furnishTab == 0) RebuildShopTab(w, ref y);
@@ -2858,6 +2860,7 @@ namespace DshPet
             {
                 y = BuildFurnishLabel(_furnishContent, y, $"　{item.Emoji} {item.Name} —— 世界里获得（能卖 ¥{item.SellPrice}）");
                 y = BuildFurnishLabel(_furnishContent, y, "　" + item.Blurb);
+                if (!string.IsNullOrEmpty(item.Usage)) y = BuildFurnishLabel(_furnishContent, y, "　用法：" + item.Usage);
                 return y;
             }
 
@@ -2870,14 +2873,17 @@ namespace DshPet
             rowRt.anchoredPosition = new Vector2(0f, -y);
             rowRt.sizeDelta = new Vector2(0f, 36f);
 
-            var name = DshMobile.Ugui.Text("Name", row.transform, $"{item.Emoji} {item.Name}", 16, Color.white, UnityEngine.TextAnchor.UpperLeft);
-            DshMobile.Ugui.SetRect(name.rectTransform, 2f, 4f, 150f, 28f);
+            bool stackable = item.Stackable;
+            string nameText = $"{item.Emoji} {item.Name}" + (stackable ? $"（已有 {PetInventory.OwnedCount(item.Id)} 段）" : "");
+            var name = DshMobile.Ugui.Text("Name", row.transform, nameText, 16, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(name.rectTransform, 2f, 4f, 240f, 28f);
 
             var price = DshMobile.Ugui.Text("Price", row.transform, "¥" + item.Price, 16, Color.white, UnityEngine.TextAnchor.UpperLeft);
-            DshMobile.Ugui.SetRect(price.rectTransform, 158f, 4f, 70f, 28f);
+            DshMobile.Ugui.SetRect(price.rectTransform, 248f, 4f, 70f, 28f);
 
-            bool owned = item.IsFood ? false : PetInventory.IsOwned(item.Id);
-            string buyLabel = item.IsFood ? (item.FoodUnits > 1 ? $"购买（+{item.FoodUnits}）" : "购买") : (owned ? "已拥有" : "购买");
+            bool owned = !stackable && !item.IsFood && PetInventory.IsOwned(item.Id);
+            string buyLabel = item.IsFood ? (item.FoodUnits > 1 ? $"购买（+{item.FoodUnits}）" : "购买")
+                : stackable ? "购买（+1）" : (owned ? "已拥有" : "购买");
             var buy = DshMobile.Ugui.Button("Buy", row.transform, buyLabel, 15, new Color(0.30f, 0.55f, 0.35f));
             buy.interactable = !owned;
             buy.GetComponent<RectTransform>().anchorMin = buy.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 0.5f);
@@ -2889,6 +2895,7 @@ namespace DshPet
 
             y += 38f;
             y = BuildFurnishLabel(_furnishContent, y, "　" + item.Blurb);
+            if (!string.IsNullOrEmpty(item.Usage)) y = BuildFurnishLabel(_furnishContent, y, "　用法：" + item.Usage);
             if (item.IsFurniture && item.Scene != ItemScene.Anywhere)
             {
                 bool here = item.AllowedIn(PetWorldMap.Current);
@@ -2906,6 +2913,8 @@ namespace DshPet
                 string id = i < equipped.Count ? equipped[i] : "";
                 var item = string.IsNullOrEmpty(id) ? null : PetShop.Get(id);
                 y = BuildEquipRow(w, i, item, ref y);
+                if (item != null && !string.IsNullOrEmpty(item.Usage))
+                    y = BuildFurnishLabel(_furnishContent, y, "　　用法：" + item.Usage);
             }
 
             if (PetBackpack.BucketFull) y = BuildFurnishLabel(_furnishContent, y, "水桶里装满了水，去浇苹果树吧。");
@@ -2917,6 +2926,8 @@ namespace DshPet
                 if (!item.IsTool || !PetInventory.IsOwned(item.Id) || PetBackpack.IsEquipped(item.Id)) continue;
                 anyTool = true;
                 y = BuildSimpleActionRow(w, $"{item.Emoji} {item.Name}", "装备", () => { _furnishMessage = PetBackpack.Equip(item.Id); DshMobile.MobileHaptics.Light(); _builtFurnishTab = -1; }, ref y);
+                if (!string.IsNullOrEmpty(item.Usage))
+                    y = BuildFurnishLabel(_furnishContent, y, "　　用法：" + item.Usage);
             }
             if (!anyTool) y = BuildFurnishLabel(_furnishContent, y, "还没有没装备的道具。商城买水桶、铲子，再来这里装备。");
 
@@ -2981,12 +2992,14 @@ namespace DshPet
             bool anyHere = false;
             foreach (var id in placed.Keys)
             {
-                var item = PetShop.Get(id);
+                var item = PetShop.Get(PetInventory.BaseId(id));
                 if (item == null) continue;
                 anyHere = true;
                 if (!PetShop.IsStarter(id))
                 {
-                    y = BuildSimpleActionRow(w, $"{item.Emoji} {item.Name}", "收回仓库", () => { _furnishMessage = PetInventory.Store(id, currentPlace); DshMobile.MobileHaptics.Light(); gm.RebuildRoom(); _builtFurnishTab = -1; }, ref y);
+                    // A stackable copy shows its "#n" number so each segment can be told apart.
+                    string suffix = item.Stackable ? CopySuffix(id) : "";
+                    y = BuildSimpleActionRow(w, $"{item.Emoji} {item.Name}{suffix}", "收回仓库", () => { _furnishMessage = PetInventory.Store(id, currentPlace); DshMobile.MobileHaptics.Light(); gm.RebuildRoom(); _builtFurnishTab = -1; }, ref y);
                 }
                 else
                 {
@@ -2999,11 +3012,19 @@ namespace DshPet
             bool any = false;
             foreach (var item in PetShop.All)
             {
-                if (!item.IsFurniture || !PetInventory.IsOwned(item.Id) || placed.ContainsKey(item.Id)) continue;
+                if (!item.IsFurniture || !PetInventory.IsOwned(item.Id)) continue;
+                if (!item.Stackable && placed.ContainsKey(item.Id)) continue;
+                if (item.Stackable && PetInventory.UnplacedCopies(item.Id) <= 0) continue;
+
                 any = true;
                 bool allowed = item.AllowedIn(currentPlace);
-                y = BuildFurnishPlaceSellRow(w, item, allowed, gm, ref y);
+                string label = item.Stackable
+                    ? $"{item.Emoji} {item.Name} ×{PetInventory.OwnedCount(item.Id)}（可摆 {PetInventory.UnplacedCopies(item.Id)} 段）"
+                    : $"{item.Emoji} {item.Name}";
+                y = BuildFurnishPlaceSellRow(w, item, allowed, gm, ref y, label);
                 if (!allowed) y = BuildFurnishLabel(_furnishContent, y, "　只能摆在" + PetInventory.PlaceName(item.Scene) + "。");
+                else if (!string.IsNullOrEmpty(item.Usage))
+                    y = BuildFurnishLabel(_furnishContent, y, "　用法：" + item.Usage);
             }
             if (!any) y = BuildFurnishLabel(_furnishContent, y, "仓库空空的。去商城看看，家具买回来才能摆进房间。");
 
@@ -3045,7 +3066,7 @@ namespace DshPet
             return y + 34f;
         }
 
-        private float BuildFurnishPlaceSellRow(float w, ShopItem item, bool allowed, PetGameManager gm, ref float y)
+        private float BuildFurnishPlaceSellRow(float w, ShopItem item, bool allowed, PetGameManager gm, ref float y, string label = null)
         {
             var row = new GameObject("Furniture", typeof(RectTransform));
             row.transform.SetParent(_furnishContent, false);
@@ -3056,8 +3077,8 @@ namespace DshPet
             rowRt.anchoredPosition = new Vector2(0f, -y);
             rowRt.sizeDelta = new Vector2(0f, 30f);
 
-            var name = DshMobile.Ugui.Text("Name", row.transform, $"{item.Emoji} {item.Name}", 15, Color.white, UnityEngine.TextAnchor.UpperLeft);
-            DshMobile.Ugui.SetRect(name.rectTransform, 2f, 2f, 150f, 26f);
+            var name = DshMobile.Ugui.Text("Name", row.transform, label ?? $"{item.Emoji} {item.Name}", 15, Color.white, UnityEngine.TextAnchor.UpperLeft);
+            DshMobile.Ugui.SetRect(name.rectTransform, 2f, 2f, 190f, 26f);
 
             var place = DshMobile.Ugui.Button("Place", row.transform, "摆放", 14, new Color(0.30f, 0.55f, 0.35f));
             place.interactable = allowed;
@@ -3075,6 +3096,15 @@ namespace DshPet
             sell.GetComponent<RectTransform>().sizeDelta = new Vector2(108f, 30f);
             sell.onClick.AddListener(() => { _furnishMessage = PetInventory.Sell(captured.Id); DshMobile.MobileHaptics.Light(); _builtFurnishTab = -1; });
             return y + 34f;
+        }
+
+        /// <summary>"#n" as a display suffix for a stackable copy, so each wall/fence segment can
+        /// be told apart in the warehouse list. Empty for ordinary furniture.</summary>
+        private static string CopySuffix(string placedKey)
+        {
+            int hash = placedKey.IndexOf('#');
+            if (hash > 0) return "（第 " + (placedKey.Substring(hash + 1)) + " 段）";
+            return "";
         }
 
         private float BuildSimpleActionRow(float w, string label, string action, UnityEngine.Events.UnityAction onClick, ref float y)
@@ -3100,15 +3130,21 @@ namespace DshPet
             return y + 34f;
         }
 
-        private static float BuildFurnishLabel(RectTransform content, float y, string text)
+        private float BuildFurnishLabel(RectTransform content, float y, string text)
         {
             var label = DshMobile.Ugui.Text("Label", content, text, 15, Color.white, UnityEngine.TextAnchor.UpperLeft);
             label.horizontalOverflow = HorizontalWrapMode.Wrap;
+            label.verticalOverflow = VerticalWrapMode.Overflow;
             label.rectTransform.anchorMin = label.rectTransform.anchorMax = new Vector2(0f, 1f);
             label.rectTransform.pivot = new Vector2(0f, 1f);
             label.rectTransform.anchoredPosition = new Vector2(2f, -y);
-            label.rectTransform.sizeDelta = new Vector2(-4f, 24f);
-            return y + 26f;
+            label.rectTransform.sizeDelta = new Vector2(_furnishLabelWidth, 22f);
+            Canvas.ForceUpdateCanvases();
+            // Size the row to the wrapped text so long blurbs wrap into their own line instead of
+            // spilling over the next row (feedback: 商城/仓库/背包 文案重叠错位).
+            float h = Mathf.Max(22f, label.preferredHeight + 4f);
+            label.rectTransform.sizeDelta = new Vector2(_furnishLabelWidth, h);
+            return y + h + 2f;
         }
 
         // ------------------------------------------------------------ prompt preview (uGUI)
@@ -6910,20 +6946,22 @@ namespace DshPet
                 {
                     GUILayout.Label($"　{item.Emoji} {item.Name} —— 世界里获得（能卖 ¥{item.SellPrice}）", _small);
                     GUILayout.Label("　" + item.Blurb, _small);
+                    if (!string.IsNullOrEmpty(item.Usage)) GUILayout.Label("　用法：" + item.Usage, _small);
                     GUILayout.Space(6f);
                     continue;
                 }
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label($"{item.Emoji} {item.Name}", _label, GUILayout.Width(150f));
+                string stackLabel = item.Stackable ? $"{item.Emoji} {item.Name}（已有 {PetInventory.OwnedCount(item.Id)} 段）" : $"{item.Emoji} {item.Name}";
+                GUILayout.Label(stackLabel, _label, GUILayout.Width(240f));
                 GUILayout.Label($"¥{item.Price}", _label, GUILayout.Width(70f));
                 GUILayout.FlexibleSpace();
 
-                bool owned = item.IsFood ? false : PetInventory.IsOwned(item.Id);
+                bool owned = !item.Stackable && !item.IsFood && PetInventory.IsOwned(item.Id);
                 GUI.enabled = !owned;
                 string buyLabel = item.IsFood
                     ? (item.FoodUnits > 1 ? $"购买（+{item.FoodUnits}）" : "购买")
-                    : (owned ? "已拥有" : "购买");
+                    : item.Stackable ? "购买（+1）" : (owned ? "已拥有" : "购买");
                 if (GUILayout.Button(buyLabel, _button, GUILayout.Width(110f), GUILayout.Height(34f)))
                 {
                     _furnishMessage = PetInventory.Buy(item);
@@ -6933,6 +6971,7 @@ namespace DshPet
                 GUILayout.EndHorizontal();
 
                 GUILayout.Label("　" + item.Blurb, _small);
+                if (!string.IsNullOrEmpty(item.Usage)) GUILayout.Label("　用法：" + item.Usage, _small);
 
                 if (item.IsFurniture && item.Scene != ItemScene.Anywhere)
                 {
@@ -6968,6 +7007,9 @@ namespace DshPet
                     DshMobile.MobileHaptics.Light();
                 }
                 GUILayout.EndHorizontal();
+
+                if (item != null && !string.IsNullOrEmpty(item.Usage))
+                    GUILayout.Label("　　用法：" + item.Usage, _small);
             }
 
             GUILayout.Space(4f);
@@ -6991,6 +7033,9 @@ namespace DshPet
                     DshMobile.MobileHaptics.Light();
                 }
                 GUILayout.EndHorizontal();
+
+                if (!string.IsNullOrEmpty(item.Usage))
+                    GUILayout.Label("　　用法：" + item.Usage, _small);
             }
             if (!anyTool) GUILayout.Label("还没有没装备的道具。商城买水桶、铲子，再来这里装备。", _small);
 
@@ -7060,11 +7105,12 @@ namespace DshPet
             bool anyHere = false;
             foreach (var id in placed.Keys)
             {
-                var item = PetShop.Get(id);
+                var item = PetShop.Get(PetInventory.BaseId(id));
                 if (item == null) continue;
                 anyHere = true;
                 GUILayout.BeginHorizontal();
-                GUILayout.Label($"{item.Emoji} {item.Name}", _label, GUILayout.Width(150f));
+                string suffix = item.Stackable ? CopySuffix(id) : "";
+                GUILayout.Label($"{item.Emoji} {item.Name}{suffix}", _label, GUILayout.Width(170f));
                 GUILayout.FlexibleSpace();
 
                 if (!PetShop.IsStarter(id))
@@ -7086,11 +7132,16 @@ namespace DshPet
             foreach (var item in PetShop.All)
             {
                 if (!item.IsFurniture) continue;
-                if (!PetInventory.IsOwned(item.Id) || placed.ContainsKey(item.Id)) continue;
+                if (!PetInventory.IsOwned(item.Id)) continue;
+                if (!item.Stackable && placed.ContainsKey(item.Id)) continue;
+                if (item.Stackable && PetInventory.UnplacedCopies(item.Id) <= 0) continue;
                 any = true;
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label($"{item.Emoji} {item.Name}", _label, GUILayout.Width(150f));
+                string label = item.Stackable
+                    ? $"{item.Emoji} {item.Name} ×{PetInventory.OwnedCount(item.Id)}（可摆 {PetInventory.UnplacedCopies(item.Id)} 段）"
+                    : $"{item.Emoji} {item.Name}";
+                GUILayout.Label(label, _label, GUILayout.Width(230f));
                 GUILayout.FlexibleSpace();
 
                 bool allowed = item.AllowedIn(currentPlace);
@@ -7116,6 +7167,7 @@ namespace DshPet
                 }
                 else
                 {
+                    if (!string.IsNullOrEmpty(item.Usage)) GUILayout.Label("　用法：" + item.Usage, _small);
                     // Where else this owned furniture is already set down.
                     var elsewhere = PetInventory.ScenesWherePlaced(item.Id);
                     var names = new System.Collections.Generic.List<string>();
