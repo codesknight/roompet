@@ -229,7 +229,6 @@ namespace DshPet
             {
                 new Vector2(-4.4f, -4.4f),   // 小床
                 new Vector2(-5.2f, 4.6f),    // 澡盆
-                new Vector2(-1.6f, 4.6f),    // 梳子
                 new Vector2(1.8f, 4.2f),     // 球
                 new Vector2(5.1f, -5.0f),    // 猫砂盆
                 new Vector2(2.6f, 3.4f),     // 饭碗

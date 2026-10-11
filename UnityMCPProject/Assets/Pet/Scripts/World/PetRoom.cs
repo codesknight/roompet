@@ -1209,6 +1209,7 @@ namespace DshPet
                 case InteractableKind.Sofa: return BuildSofa(item);
                 case InteractableKind.Lamp: return BuildLamp(at);
                 case InteractableKind.Warehouse: return BuildWarehouse(at);
+                case InteractableKind.Robot: return BuildRobot(at);
                 default: return null;
             }
         }
@@ -1387,6 +1388,32 @@ namespace DshPet
             interactable.Label = "猫砂盆";
             interactable.ItemId = "litter_box";
             interactable.ApproachPoint = new Vector3(at.x, 0f, at.y + 1.4f);
+            return interactable;
+        }
+
+        /// <summary>
+        /// The butler robot: a small procedural droid (no Kenney robot exists in the bundle) that
+        /// follows and cares for pets. Click toggles working/standby; see <see cref="RobotButler"/>.
+        /// </summary>
+        private Interactable BuildRobot(Vector2 at)
+        {
+            var go = new GameObject("RobotButler");
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(at.x, 0f, at.y);
+
+            // Build the visual before the Interactable so its Awake captures the renderers.
+            var robot = go.AddComponent<RobotButler>();
+            robot.BuildModel();
+
+            var hit = go.AddComponent<BoxCollider>();
+            hit.size = new Vector3(0.6f, 0.85f, 0.6f);
+            hit.center = new Vector3(0f, 0.42f, 0f);
+
+            var interactable = go.AddComponent<Interactable>();
+            interactable.Kind = InteractableKind.Robot;
+            interactable.Label = "管家机器人";
+            interactable.ItemId = "robot_butler";
+            interactable.ApproachPoint = new Vector3(at.x, 0f, at.y + 1.1f);
             return interactable;
         }
 

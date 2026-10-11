@@ -190,10 +190,8 @@ namespace DshPet
             },
             new ShopItem
             {
-                Id = "brush", Name = "梳子", Emoji = "🪮", Price = 40, Category = ShopCategory.Furniture,
-                Kind = InteractableKind.Brush,
-                Blurb = "玩脏了就梳梳毛，干净又开心。",
-                DefaultPosition = new Vector2(-1.6f, 4.6f), ApproachOffset = new Vector2(0f, -1.2f)
+                Id = "brush", Name = "梳子", Emoji = "🪮", Price = 40, Category = ShopCategory.Tool,
+                Blurb = "背包装备后，说「梳毛」就能帮宠物梳毛——它是随身工具，不用摆在房间里。"
             },
             new ShopItem
             {
@@ -208,6 +206,13 @@ namespace DshPet
                 Kind = InteractableKind.Bath,
                 Blurb = "彻底洗个澡，脏东西一次冲干净。",
                 DefaultPosition = new Vector2(-5.2f, 4.6f), ApproachOffset = new Vector2(0f, -1.2f)
+            },
+            new ShopItem
+            {
+                Id = "robot_butler", Name = "管家机器人", Emoji = "🤖", Price = 5000, Category = ShopCategory.Furniture,
+                Kind = InteractableKind.Robot, Footprint = 0.7f,
+                Blurb = "智能家具。点一下开机：它会自动跟随状态最差的宠物，喂食、哄睡、陪玩、清洁、清理排泄物；再点一下待机（摆放模式可挪位置）。开机眼睛亮绿灯，待机变黑。",
+                DefaultPosition = new Vector2(0f, 0f), ApproachOffset = new Vector2(0f, -1.2f)
             },
 
             // ------------------------------------------------------ 花园专属家具

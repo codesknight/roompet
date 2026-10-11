@@ -206,6 +206,33 @@ namespace DshPet.Tests
         }
 
         [Test]
+        public void TheBrushIsAToolCarriedInTheBackpack()
+        {
+            var brush = PetShop.Get("brush");
+            Assert.IsNotNull(brush);
+            Assert.IsTrue(brush.IsTool, "梳子是工具，不是家具");
+            Assert.IsNull(brush.Kind, "a tool is carried, not placed as furniture");
+
+            DshMobile.PetWallet.Add(1000);
+            PetInventory.Buy(brush);
+            Assert.IsFalse(PetBackpack.HasBrush, "buying is not equipping");
+            Assert.AreEqual("梳子装进了背包", PetBackpack.Equip("brush"));
+            Assert.IsTrue(PetBackpack.HasBrush);
+        }
+
+        [Test]
+        public void TheRobotButlerIsPremiumFurnitureThatGoesAnywhere()
+        {
+            var robot = PetShop.Get("robot_butler");
+            Assert.IsNotNull(robot, "the robot is in the shop");
+            Assert.AreEqual(5000, robot.Price, "the robot is a 5000-coin premium item");
+            Assert.IsTrue(robot.IsFurniture);
+            Assert.AreEqual(InteractableKind.Robot, robot.Kind.Value);
+            Assert.IsTrue(robot.AllowedIn(RoomTheme.Cabin));
+            Assert.IsTrue(robot.AllowedIn(RoomTheme.Garden));
+        }
+
+        [Test]
         public void TheBackpackHoldsThreeToolsAndGatesTheShovel()
         {
             DshMobile.PetWallet.Add(1000);

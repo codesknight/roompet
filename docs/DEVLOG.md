@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **412/412 通过**（虚拟宠物 234 + 跑酷 15 + 手机端 56 + 小游戏 100，另有少量跨程序集计数），EditMode |
+| 测试 | **414/414 通过**（虚拟宠物 236 + 跑酷 15 + 手机端 56 + 小游戏 100，另有少量跨程序集计数），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -1196,6 +1196,14 @@
       结果 Kenney 马桶的原模型接近立方体（raw 约 4.8×4.5×3.4 单位），`InstantiateProp` 按最大边缩放到 1.4 → 实体约 **2.95 米宽**，比 2.2 米的床还大
       （用户报"马桶比床都大"）。修法：先量 raw bounds，按"目标高度 ≈ 0.76 米"反推 `size=0.8`（4.51×0.8/4.77）。**给道具定 size 前先量模型实际比例，别按直觉。**
 
+186. **把"家具"改成"工具"，不只是改分类——要同时把"宠物主动走到它旁边用"的行为改成"主人手持后直接操作"。** 梳子原来摆在房间里
+      （宠物脏了会主动走过去梳毛），改成背包装备后房间里不再有梳子，`PetBehaviorLibrary` 那条"去梳子"的行为会永远找不到目标、静默失效。
+      修法：商城分类改 `Tool`、去掉 `Kind`；命令「梳毛」由 `Controller.OrderTo(Brush)` 改成 `GroomPet()`（检查 `PetBackpack.HasBrush` 后直接 `Needs.Clean`），
+      默认摆放位与 keep-out 圈一并清掉。**凡是"从房间移到背包"的物件，先搜一遍谁在"走到它旁边用"——那条路径必须一并改成手持操作。**
+
+187. **execute_code 里的 `Thread.Sleep` 会冻结整个游戏循环，别用它来"等几帧"。** 用探针验证"管家机器人跟随 + 喂食"时，
+      `Thread.Sleep(2500)` 把主线程也睡了，`Update` 一帧没跑，机器人看着像没动。改成"分两次调用、中间隔自然时间"，机器人果然已经追着宠物把饥饿从 0.10 喂回 0.66。
+
 ## 八、一分钟速查
 
 ```powershell
@@ -1240,7 +1248,7 @@ Tools/DSH Mobile/Preview/Report Current Viewport    # 打印当前视口 / 方�
 Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
-EditMode，期望 412/412
+EditMode，期望 414/414
 
 # 重新生成英语角词库（改词库等级/来源后）
 node scripts/gen_english_words.js

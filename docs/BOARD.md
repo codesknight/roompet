@@ -303,6 +303,17 @@
 - [x] 文档：本文件 + CHANGELOG 第 59 轮 + DEVLOG 坑 185 + README 计数
 - [ ] ⏳ **真机确认**：① 马桶明显比床小；② 发送后「正在想…」不与「收起」重叠；③ 接果子魔球灯有光束、更绚丽
 
+## 这一轮（第 60 轮）的验收清单
+
+- [x] **梳子改工具**：`PetShop` 分类 Tool、去 Kind/摆放位；`PetBackpack.HasBrush`；「梳毛」→ `GroomPet()`（装备梳子后直接 `Needs.Clean`）；清掉 keep-out 圈
+- [x] **管家机器人商城项**：`robot_butler` 5000 币、`InteractableKind.Robot`、可摆任意场景（`Footprint 0.7`）
+- [x] **机器人建模**：`RobotButler.BuildModel()` 程序化（底座/躯干/头/屏幕/天线 + 共享发光眼睛材质），Kenney 无 robot 模组故程序化
+- [x] **开关交互**：点击 → `OnInteractableClicked` 拦截 `Robot` → `ToggleRobot`；`Working` 持久化 `dshpet.robot.working`
+- [x] **工作/待机**：开机眼睛绿（`_EMISSION`）、跟随状态最差宠物（`FindWorstPet` 按 `MoodScore<0.60`）、按 `DominantNeed` 服务（喂食/如厕/哄睡/陪玩/清洁）+ 路过清排泄物；待机眼睛黑、原地不动
+- [x] **验证**：414/414 通过（+2：梳子工具、机器人高价家具）+ PetRoom play-mode 探针 `robot 买/摆/眼绿/眼黑/跟随/喂食(饥饿 0.10→0.66)` ✅
+- [x] 文档：本文件 + CHANGELOG 第 60 轮 + DEVLOG 坑 186–187 + README 计数
+- [ ] ⏳ **真机确认**：① 梳子在背包装备栏、说「梳毛」能梳；② 机器人 5000 币可买、摆放后点击开/关、眼睛绿/黑；③ 机器人会追着状态差的宠物照顾、路过清理便便
+
 ## 明确推迟或不做
 
 | 项 | 状态 | 原因 |

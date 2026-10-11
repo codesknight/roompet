@@ -1789,10 +1789,29 @@ namespace DshPet
                         || Controller.OrderTo(InteractableKind.Toy);
                 case PetOrderKind.Toilet: return Controller.OrderTo(InteractableKind.Toilet);
                 case PetOrderKind.Bath: return Controller.OrderTo(InteractableKind.Bath);
-                case PetOrderKind.Groom: return Controller.OrderTo(InteractableKind.Brush);
+                case PetOrderKind.Groom: return GroomPet();
 
                 default: return false;
             }
+        }
+
+        /// <summary>
+        /// The owner grooms the pet with the brush — a backpack tool now, not a piece of furniture
+        /// (feedback: 梳子是工具，不是家具). Without it the caller answers honestly ("梳子不在手边呢").
+        /// </summary>
+        private bool GroomPet()
+        {
+            if (!PetBackpack.HasBrush) return false;
+
+            Needs.Clean(0.5f);
+            Needs.AddAffection(0.04f);
+            PetAudioDirector.Instance?.Play(SfxId.Brush);
+            DshMobile.MobileHaptics.Light();
+
+            Memory.AddPet("（主人用梳子帮它顺毛，它舒服得眯起了眼）");
+            Journal.Add(MemoryKind.Care, "主人帮我梳了毛", "", 0.3f);
+            ChatChanged?.Invoke();
+            return true;
         }
 
         /// <summary>Prompt preview, for the debug panel.</summary>
@@ -1866,7 +1885,27 @@ namespace DshPet
                 return;
             }
 
+            // The butler robot is a switch, not a destination: click toggles working/standby.
+            if (target.Kind == InteractableKind.Robot)
+            {
+                ToggleRobot(target);
+                return;
+            }
+
             if (Controller != null) Controller.GoTo(target);
+        }
+
+        /// <summary>Switches the butler robot between working and standby.</summary>
+        private void ToggleRobot(Interactable target)
+        {
+            if (target == null) return;
+
+            var robot = target.GetComponent<RobotButler>();
+            if (robot == null) return;
+
+            robot.SetWorking(!robot.Working);
+            PetHud.SetToast(robot.Working ? "管家机器人开机了，开始照顾宠物。" : "管家机器人待机了。");
+            DshMobile.MobileHaptics.Light();
         }
 
         /// <summary>Flips a floor lamp's light on or off.</summary>

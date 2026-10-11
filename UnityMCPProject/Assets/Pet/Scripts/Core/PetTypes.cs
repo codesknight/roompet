@@ -77,7 +77,10 @@ namespace DshPet
         Lamp,
 
         /// <summary>Cabin furniture: the warehouse, clicked to open the warehouse page.</summary>
-        Warehouse
+        Warehouse,
+
+        /// <summary>Smart furniture: a butler robot that follows and cares for pets, toggled on/off.</summary>
+        Robot
     }
 
     /// <summary>One turn of the conversation.</summary>

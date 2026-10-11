@@ -47,6 +47,9 @@ namespace DshPet
         /// <summary>The bucket, carried: required to draw water and water the tree.</summary>
         public static bool HasBucket => IsEquipped("bucket");
 
+        /// <summary>The brush, carried: required to groom the pet directly.</summary>
+        public static bool HasBrush => IsEquipped("brush");
+
         /// <summary>The bucket, full of water from the pond. Draw water first, then water the tree.</summary>
         public static bool BucketFull
         {
