@@ -403,10 +403,11 @@ namespace DshMiniGames
         /// </summary>
         private void BuildGate(Transform root, Vector2 hole, GateShape shape, float radius)
         {
-            var accent = TunnelRules.TunnelColor(Theme, true);
             var points = TunnelRules.GateShapePoints(shape, radius, 48);
 
-            BuildSpokes(root, hole, points, accent);
+            // A "wall" of scattered boulders/logs around the hole, instead of the old radial grill
+            // (feedback: 辐条墙洞太丑，换成模组). The glowing outline still marks the passable gap.
+            BuildModelWall(root, hole, points);
 
             // The glowing outline of the hole shape itself.
             for (int s = 0; s < points.Length; s++)
@@ -419,36 +420,53 @@ namespace DshMiniGames
             }
         }
 
-        /// <summary>
-        /// Fills the wall around a shaped hole with radial spokes: one bar per boundary point, from
-        /// the hole's edge out to the tunnel ring, leaving the hole shape open in the middle. The
-        /// bars are thin enough to read as a grill, dense enough to read as a wall.
-        /// </summary>
-        private void BuildSpokes(Transform root, Vector2 hole, Vector2[] points, Color color)
+        private static readonly string[] WallModels =
         {
-            int n = points.Length;
+            "Runner/Nature/rock_largeA",
+            "Runner/Nature/log",
+            "Runner/Nature/rock_smallA",
+            "Runner/Nature/tree_blocks",
+        };
+
+        /// <summary>
+        /// Fills the space between the hole's edge and the tunnel ring with a loose ring of free
+        /// nature models (boulders, logs, stacked wood), leaving the shaped hole open in the middle.
+        /// The hole itself is the *logical* passable area — the collision test reads the hole, not
+        /// the models — so the gap is guaranteed drivable no matter how the debris is scattered.
+        /// </summary>
+        private void BuildModelWall(Transform root, Vector2 hole, Vector2[] points)
+        {
+            int n = 14;
             for (int i = 0; i < n; i++)
             {
-                Vector2 hp = hole + points[i];
+                float angle = i * Mathf.PI * 2f / n;
+                Vector2 dir = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
 
-                // Ray-cast from the hole centre through the boundary point to the ring circle.
-                Vector2 dir = (hp - hole).normalized;
-                if (dir.sqrMagnitude < 0.0001f) dir = Vector2.up;
+                // Nearest boundary point to this direction, so a shaped hole keeps its shape.
+                Vector2 bp = points[0];
+                float best = -2f;
+                for (int p = 0; p < points.Length; p++)
+                {
+                    float d = Vector2.Dot(points[p].normalized, dir);
+                    if (d > best) { best = d; bp = points[p]; }
+                }
+                Vector2 hp = hole + bp;
+
+                // Ray from the hole centre through that point out to the tunnel ring.
                 float b = Vector2.Dot(hole, dir);
                 float c = hole.sqrMagnitude - RingRadius * RingRadius;
                 float disc = b * b - c;
                 float t = disc > 0f ? -b + Mathf.Sqrt(disc) : 0f;
                 Vector2 rp = hole + dir * Mathf.Max(0.01f, t);
 
-                float len = Vector2.Distance(hp, rp);
-                if (len < 0.02f) continue;
                 Vector2 mid = (hp + rp) * 0.5f;
-                float ang = Mathf.Atan2(rp.y - hp.y, rp.x - hp.x) * Mathf.Rad2Deg;
-                Prim("Spoke", PrimitiveType.Cube, root,
-                    new Vector3(mid.x, mid.y, 0f),
-                    new Vector3(len, 0.22f, 0.16f),
-                    Quaternion.Euler(0f, 0f, ang),
-                    color, 0.55f);
+                float ang = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+
+                var model = DshMobile.KenneyModel.LoadPath(WallModels[i % WallModels.Length], root, 0.5f, true);
+                if (model == null) continue;
+                model.localPosition = new Vector3(mid.x, mid.y, 0f);
+                // Logs lie along the radial line; rocks are roughly symmetric so the tilt is harmless.
+                model.localRotation = Quaternion.Euler(0f, 0f, ang - 90f);
             }
         }
 

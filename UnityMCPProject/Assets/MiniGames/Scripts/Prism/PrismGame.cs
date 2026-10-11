@@ -308,47 +308,54 @@ namespace DshMiniGames
             FitCamera(rows, cols);
         }
 
+        /// <summary>The five pad shapes, mapped to free fruit models so a pad reads as a real object
+        /// instead of a primitive (feedback: 棱镜几何体换成模组).</summary>
+        private static readonly string[] ShapeModels =
+        {
+            "Runner/Items/grapes",     // Sphere
+            "Runner/Items/apple",      // Cube
+            "Runner/Items/carrot",     // Cone
+            "Runner/Items/corn",       // Cylinder
+            "Runner/Items/strawberry", // Capsule
+        };
+
         private GameObject BuildShape(PrismCombo combo)
         {
-            GameObject go;
-            switch (combo.Shape)
-            {
-                case PrismShape.Cube: go = GameObject.CreatePrimitive(PrimitiveType.Cube); break;
-                case PrismShape.Cone: go = GameObject.CreatePrimitive(PrimitiveType.Cylinder); break;
-                case PrismShape.Cylinder: go = GameObject.CreatePrimitive(PrimitiveType.Cylinder); break;
-                case PrismShape.Capsule: go = GameObject.CreatePrimitive(PrimitiveType.Capsule); break;
-                default: go = GameObject.CreatePrimitive(PrimitiveType.Sphere); break;
-            }
+            var root = new GameObject("Pad");
+            var model = DshMobile.KenneyModel.LoadPath(ShapeModels[(int)combo.Shape], root.transform, 0.66f, true);
 
-            // Sphere, cylinder, cone and capsule read as "cone" only when squashed differently;
-            // give each a distinct silhouette so the shapes are told apart at a glance.
-            switch (combo.Shape)
+            if (model == null)
             {
-                case PrismShape.Cone: go.transform.localScale = new Vector3(0.68f, 0.28f, 0.68f); break; // puck
-                case PrismShape.Cylinder: go.transform.localScale = new Vector3(0.44f, 0.74f, 0.44f); break; // tall
-                case PrismShape.Capsule: go.transform.localScale = new Vector3(0.5f, 0.72f, 0.5f); break;
-                case PrismShape.Sphere: go.transform.localScale = Vector3.one * 0.66f; break;
-                default: go.transform.localScale = Vector3.one * 0.62f; break;
+                // Fallback: the old primitives, for a build missing the item models.
+                GameObject go;
+                switch (combo.Shape)
+                {
+                    case PrismShape.Cone: go = GameObject.CreatePrimitive(PrimitiveType.Cylinder); go.transform.localScale = new Vector3(0.68f, 0.28f, 0.68f); break;
+                    case PrismShape.Cylinder: go = GameObject.CreatePrimitive(PrimitiveType.Cylinder); go.transform.localScale = new Vector3(0.44f, 0.74f, 0.44f); break;
+                    case PrismShape.Capsule: go = GameObject.CreatePrimitive(PrimitiveType.Capsule); go.transform.localScale = new Vector3(0.5f, 0.72f, 0.5f); break;
+                    case PrismShape.Sphere: go = GameObject.CreatePrimitive(PrimitiveType.Sphere); go.transform.localScale = Vector3.one * 0.66f; break;
+                    default: go = GameObject.CreatePrimitive(PrimitiveType.Cube); go.transform.localScale = Vector3.one * 0.62f; break;
+                }
+                go.transform.SetParent(root.transform, false);
             }
 
             var color = ColorOf(combo.Color);
-            var renderer = go.GetComponent<Renderer>();
-            var mat = new Material(Shader.Find("Standard"))
+            var renderers = root.GetComponentsInChildren<Renderer>(true);
+            foreach (var renderer in renderers)
             {
-                name = "Prism_" + combo
-            };
-            mat.color = color;
-            if (combo.Fill == PrismFill.Bell)
-            {
-                mat.EnableKeyword("_EMISSION");
-                mat.SetColor("_EmissionColor", color * 0.55f);
+                var mat = new Material(Shader.Find("Standard")) { name = "Prism_" + combo };
+                mat.color = color;
+                if (combo.Fill == PrismFill.Bell)
+                {
+                    mat.EnableKeyword("_EMISSION");
+                    mat.SetColor("_EmissionColor", color * 0.55f);
+                }
+                renderer.sharedMaterial = mat;
             }
-            renderer.sharedMaterial = mat;
 
             // Pads must be clickable.
-            var collider = go.GetComponent<Collider>();
-            if (collider == null) go.AddComponent<BoxCollider>();
-            return go;
+            root.AddComponent<BoxCollider>();
+            return root;
         }
 
         private void FitCamera(int rows, int cols)
@@ -463,14 +470,7 @@ namespace DshMiniGames
             _flashPad = pad;
             _flashTimer = 0.30f;
             pad.transform.localScale = pad.BaseScale * 1.3f;
-
-            var renderer = pad.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                renderer.sharedMaterial.color = color;
-                renderer.sharedMaterial.EnableKeyword("_EMISSION");
-                renderer.sharedMaterial.SetColor("_EmissionColor", color * 0.9f);
-            }
+            TintPad(pad, color, 0.9f);
         }
 
         private void TickFlash()
@@ -509,14 +509,11 @@ namespace DshMiniGames
         /// <summary>Briefly brightens a pad (its own colour, slightly whiter) during playback.</summary>
         private void Brighten(PrismPad pad, bool on)
         {
-            var renderer = pad.GetComponent<Renderer>();
-            if (renderer == null) return;
+            if (pad == null) return;
             if (on)
             {
                 var baseColor = ColorOf(pad.Combo.Color);
-                renderer.sharedMaterial.color = Color.Lerp(baseColor, Color.white, 0.45f);
-                renderer.sharedMaterial.EnableKeyword("_EMISSION");
-                renderer.sharedMaterial.SetColor("_EmissionColor", baseColor * 0.8f);
+                TintPad(pad, Color.Lerp(baseColor, Color.white, 0.45f), 0.8f);
             }
             else
             {
@@ -526,18 +523,32 @@ namespace DshMiniGames
 
         private void RestoreColor(PrismPad pad)
         {
-            var renderer = pad.GetComponent<Renderer>();
-            if (renderer == null) return;
+            if (pad == null) return;
             var baseColor = ColorOf(pad.Combo.Color);
-            renderer.sharedMaterial.color = baseColor;
-            if (pad.Combo.Fill == PrismFill.Bell)
+            TintPad(pad, baseColor, pad.Combo.Fill == PrismFill.Bell ? 0.55f : 0f);
+        }
+
+        /// <summary>Applies a colour (and optional emission) to every mesh of a pad, so a multi-part
+        /// fruit model flashes as one object.</summary>
+        private static void TintPad(PrismPad pad, Color color, float emission)
+        {
+            var renderers = pad.GetComponentsInChildren<Renderer>(true);
+            foreach (var renderer in renderers)
             {
-                renderer.sharedMaterial.EnableKeyword("_EMISSION");
-                renderer.sharedMaterial.SetColor("_EmissionColor", baseColor * 0.55f);
-            }
-            else
-            {
-                renderer.sharedMaterial.DisableKeyword("_EMISSION");
+                if (renderer == null) continue;
+                var mat = renderer.sharedMaterial;
+                if (mat == null) continue;
+                mat.color = color;
+                if (emission > 0f)
+                {
+                    mat.EnableKeyword("_EMISSION");
+                    mat.SetColor("_EmissionColor", color * emission);
+                }
+                else
+                {
+                    mat.DisableKeyword("_EMISSION");
+                    mat.SetColor("_EmissionColor", Color.black);
+                }
             }
         }
 

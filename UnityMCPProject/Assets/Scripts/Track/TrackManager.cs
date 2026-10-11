@@ -217,7 +217,9 @@ namespace DshRunner
         private void PlaceFenceLine(Segment segment)
         {
             float pathWidth = GameConfig.LaneCount * GameConfig.LaneWidth + 0.6f;
-            float fenceX = pathWidth * 0.5f + 0.4f;
+            // Keep the fence panels well clear of the running lanes — the fence models are wide, and
+            // scaling them by height made them spill onto the track (feedback: 栅栏都上了跑道).
+            float fenceX = pathWidth * 0.5f + 1.6f;
             int posts = Mathf.Max(1, Mathf.RoundToInt(GameConfig.SegmentLength / FenceSpacing));
             var rng = new System.Random(TrackPlanner.HashSeed(_level != null ? _level.Seed : 0, 51000 + segment.Index));
 
@@ -227,7 +229,7 @@ namespace DshRunner
                 {
                     float z = (i + 0.5f) * (GameConfig.SegmentLength / posts);
                     string prop = FenceProps[rng.Next(FenceProps.Length)];
-                    PlaceProp(segment, prop, new Vector3(side * fenceX, 0f, z), 2.4f,
+                    PlaceProp(segment, prop, new Vector3(side * fenceX, 0f, z), 1.5f,
                         (float)rng.NextDouble() * 360f);
                 }
             }

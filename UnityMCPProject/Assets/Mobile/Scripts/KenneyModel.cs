@@ -18,12 +18,20 @@ namespace DshMobile
         /// missing so the caller can fall back.
         /// </summary>
         public static Transform Load(string resourceName, Transform parent, float height, bool centerVertically = false)
+            => LoadPath("Kenney/Pets/" + resourceName, parent, height, centerVertically);
+
+        /// <summary>
+        /// The same loader, for any Resources path (e.g. "Runner/Nature/stump_round"): instantiate,
+        /// scale so the model's height equals <paramref name="height"/>, centre on X/Z and mount on
+        /// the floor (or centre vertically). Returns null when the resource is missing.
+        /// </summary>
+        public static Transform LoadPath(string resourcePath, Transform parent, float height, bool centerVertically = false)
         {
-            var prefab = Resources.Load<GameObject>("Kenney/Pets/" + resourceName);
+            var prefab = Resources.Load<GameObject>(resourcePath);
             if (prefab == null) return null;
 
             var instance = Object.Instantiate(prefab, parent);
-            instance.name = "BodyModel_" + resourceName;
+            instance.name = "BodyModel_" + System.IO.Path.GetFileName(resourcePath);
 
             float target = Mathf.Max(0.05f, height);
             var raw = MeasureBounds(instance);

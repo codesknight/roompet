@@ -288,18 +288,21 @@ namespace DshRunner
         {
             if (_visual == null) return;
 
-            _squash = Mathf.Lerp(_squash, 1f, 1f - Mathf.Exp(-14f * Time.deltaTime));
+            // Jump squash recovers; a slide *holds* the flat pose for its whole duration (the old
+            // version recovered it in a fraction of a second, so the slide read as a one-frame shake).
+            if (!IsSliding) _squash = Mathf.Lerp(_squash, 1f, 1f - Mathf.Exp(-14f * Time.deltaTime));
 
-            float slideScale = IsSliding ? GameConfig.SlideScaleY : 1f;
-            float sx = _baseScale.x * (2f - _squash) * slideScale;
-            float sy = _baseScale.y * _squash * slideScale;
-            float sz = _baseScale.z * (2f - _squash) * slideScale;
+            float flat = IsSliding ? 0.34f : _squash;
+            float stretch = IsSliding ? 1.55f : 1f;
 
-            _visual.localScale = new Vector3(sx, sy, sz);
+            _visual.localScale = new Vector3(
+                _baseScale.x * (2f - flat),
+                _baseScale.y * flat,
+                _baseScale.z * (2f - flat) * stretch);
 
-            // Single-axis pitch only. The old version fed the same accumulator into both
-            // X and Y, which produced a fast yaw spin on top of the tumble.
-            _visual.localRotation = Quaternion.Euler(_visualRoll + _speedLean, 0f, _tilt);
+            // A slide is a belly-dive: pitch forward under the bar, then straighten out.
+            float slidePitch = IsSliding ? -62f : 0f;
+            _visual.localRotation = Quaternion.Euler(_visualRoll + _speedLean + slidePitch, 0f, _tilt);
         }
 
         /// <summary>Player's feet in world space; used for "did I clear the barrier".</summary>

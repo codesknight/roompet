@@ -82,6 +82,9 @@ namespace DshMiniGames
     /// check, and played by the game — so "the level is winnable" is a statement about the level the
     /// player actually receives, not about a diagram of it.
     /// </summary>
+    /// <summary>What a bird does. Charge gets a mid-flight tap boost; Bomb explodes on contact.</summary>
+    public enum BirdKind { Normal = 0, Charge = 1, Bomb = 2 }
+
     public sealed class BirdLevel
     {
         public int Stage;
@@ -146,6 +149,14 @@ namespace DshMiniGames
         /// <summary>How many blocks/pigs the level has, for the diagnostics line.</summary>
         public string Describe()
             => "第 " + Stage + " 关：" + Pigs.Count + " 只猪、" + Blocks.Count + " 块、" + Birds + " 只鸟";
+
+        /// <summary>The kind of the bird at <paramref name="birdIndex"/>: normal, charge, bomb, then repeat.
+        /// The first bird is always normal so the player learns the sling before the special birds.</summary>
+        public BirdKind KindOf(int birdIndex)
+        {
+            int k = ((birdIndex % 3) + 3) % 3;
+            return k == 1 ? BirdKind.Charge : k == 2 ? BirdKind.Bomb : BirdKind.Normal;
+        }
     }
 
     /// <summary>The physics and damage numbers.</summary>
@@ -655,6 +666,7 @@ namespace DshMiniGames
             public SimPig[] Pigs;
             public Vector2 BirdPosition;
             public Vector2 BirdVelocity;
+            public BirdKind BirdKind;
             public int Impacts;
             public bool Stopped;
             public float Time;
@@ -715,15 +727,30 @@ namespace DshMiniGames
         /// verdict is kept (the generator, where sixty-five recordings would be pure garbage).
         /// </summary>
         public static BirdShotResult Simulate(BirdLevel level, Vector2 velocity, BirdSettings settings,
-            bool applyToLevel = true, bool record = false)
+            bool applyToLevel = true, bool record = false, BirdKind kind = BirdKind.Normal)
+        {
+            if (level == null) return new BirdShotResult();
+            var target = applyToLevel ? level : level.Clone();
+            return SimulateFrom(target, new Vector2(target.SlingX, target.SlingY), velocity, settings,
+                true, record, kind);
+        }
+
+        /// <summary>
+        /// Runs a shot from a mid-flight state instead of the sling — the charge bird's tap-to-boost
+        /// re-simulates from where the bird already is, with a boosted velocity. Same rules, same
+        /// verdict, same replay.
+        /// </summary>
+        public static BirdShotResult SimulateFrom(BirdLevel level, Vector2 position, Vector2 velocity,
+            BirdSettings settings, bool applyToLevel = true, bool record = false, BirdKind kind = BirdKind.Normal)
         {
             if (level == null) return new BirdShotResult();
 
             var target = applyToLevel ? level : level.Clone();
             var sim = Build(target, settings, record);
 
-            sim.BirdPosition = new Vector2(target.SlingX, target.SlingY);
+            sim.BirdPosition = position;
             sim.BirdVelocity = velocity;
+            sim.BirdKind = kind;
             sim.Result.Path.Add(sim.BirdPosition);
             RecordFrame(sim);
 
@@ -934,6 +961,9 @@ namespace DshMiniGames
             float ground = sim.Floor + settings.BirdRadius;
             if (sim.BirdPosition.y <= ground)
             {
+                // The bomb bird also detonates on the ground: landing is contact too.
+                if (sim.BirdKind == BirdKind.Bomb) { Explode(sim, sim.BirdPosition); return; }
+
                 sim.BirdPosition.y = ground;
                 if (sim.BirdVelocity.y < 0f) sim.BirdVelocity.y = -sim.BirdVelocity.y * 0.22f;
 
@@ -971,6 +1001,23 @@ namespace DshMiniGames
             var settings = sim.S;
             float speed = sim.BirdVelocity.magnitude;
             bool hard = speed >= settings.MinImpactSpeed;
+
+            // The bomb bird explodes the moment it touches anything — no bounce, just a big bang.
+            if (sim.BirdKind == BirdKind.Bomb)
+            {
+                bool contact = false;
+                for (int i = 0; i < sim.Pigs.Length && !contact; i++)
+                {
+                    if (!sim.Pigs[i].Alive) continue;
+                    if (SegmentHitsPoint(prev, sim.BirdPosition, settings.BirdRadius + sim.Pigs[i].R, sim.Pigs[i].P)) contact = true;
+                }
+                for (int i = 0; i < sim.Blocks.Length && !contact; i++)
+                {
+                    if (!sim.Blocks[i].Alive) continue;
+                    if (SegmentHitsBox(prev, sim.BirdPosition, settings.BirdRadius, sim.Blocks[i])) contact = true;
+                }
+                if (contact) { Explode(sim, sim.BirdPosition); return; }
+            }
 
             // Pigs: swept against the bird's path this step. A slow bird still bounces off a pig
             // (it never tunnels through), but only a fast one kills it.
@@ -1033,6 +1080,48 @@ namespace DshMiniGames
 
                 return;
             }
+        }
+
+        /// <summary>The bomb bird's payload: a radial blast that kills pigs outright and flings and
+        /// damages every block inside the radius. The bird is spent.</summary>
+        private static void Explode(Sim sim, Vector2 at)
+        {
+            const float radius = 2.0f;
+            const float impulse = 5.2f;
+
+            for (int i = 0; i < sim.Pigs.Length; i++)
+            {
+                var pig = sim.Pigs[i];
+                if (!pig.Alive) continue;
+                if (Vector2.Distance(pig.P, at) <= radius + pig.R)
+                {
+                    KillPig(sim, i, pig.P);
+                }
+            }
+
+            for (int i = 0; i < sim.Blocks.Length; i++)
+            {
+                var block = sim.Blocks[i];
+                if (!block.Alive) continue;
+
+                float d = Vector2.Distance(block.P, at);
+                if (d > radius) continue;
+
+                Vector2 dir = (block.P - at).normalized;
+                if (dir.sqrMagnitude < 0.0001f) dir = Vector2.up;
+                float power = 1f - Mathf.Clamp01(d / radius);
+
+                Wake(sim, block);
+                ApplyImpulse(sim, new BodyRef { Kind = KindBlock, Index = i }, dir * (impulse * power), block.P);
+
+                int damage = 2 + Mathf.FloorToInt(power * 3f);
+                var updated = sim.Level.Blocks[i];
+                updated.Health -= damage;
+                sim.Level.Blocks[i] = updated;
+                if (updated.Health <= 0) BreakBlock(sim, i, block.P);
+            }
+
+            Stop(sim);
         }
 
         private static BlockKind KindOf(BirdBlock block) => block.Kind;
