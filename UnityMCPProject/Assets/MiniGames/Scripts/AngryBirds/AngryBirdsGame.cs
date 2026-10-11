@@ -793,12 +793,13 @@ namespace DshMiniGames
 
         private void BuildPig(Transform root, float radius)
         {
-            // Prefer the Kenney pig over the green sphere. Identity keeps its -Z face toward the
-            // camera (z=-14), so the pig faces the screen rather than the sling.
+            // Prefer the Kenney pig over the green sphere. The pig model's head and front legs sit
+            // on its +Z side, so identity leaves its back to the camera; 180° Y turns the head
+            // toward the screen (camera at z=-14) — feedback: 猪的屁股对着屏幕。
             var model = DshMobile.KenneyModel.Load("animal-pig", root, radius * 2f, centerVertically: true);
             if (model != null)
             {
-                model.localRotation = Quaternion.Euler(0f, 0f, 0f);
+                model.localRotation = Quaternion.Euler(0f, 180f, 0f);
                 return;
             }
 

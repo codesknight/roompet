@@ -126,14 +126,15 @@ namespace DshMiniGames
         }
 
         /// <summary>
-        /// 刀刃颜色: a row of coloured swatches under the mode button. Each swatch is tinted with its
-        /// blade colour and, when tapped, recolours the blade, its tip and its particle trail
-        /// (feedback: 切水果刀刃可选颜色).
+        /// 刀刃颜色: a row of coloured swatches along the BOTTOM-LEFT corner, kept out of the way of
+        /// the top-centre score / 最高 / 宠物币 text it used to overlap (feedback: 刀刃颜色按钮和
+        /// 最高分、宠物币字体重叠). Each swatch is tinted with its blade colour and recolours the
+        /// blade, its tip and its particle trail.
         /// </summary>
         private void BuildBladeColorPicker()
         {
             var label = DshMobile.Ugui.Text("BladeColorLabel", _root, "刀刃颜色", 15, Pale, TextAnchor.MiddleLeft);
-            DshMobile.Ugui.SetRect(label.rectTransform, 16f, 70f, 90f, 22f);
+            DshMobile.Ugui.SetRectBottomLeft(label.rectTransform, 16f, 58f, 90f, 22f);
 
             for (int i = 0; i < SliceGame.BladeColorNames.Length; i++)
             {
@@ -141,7 +142,7 @@ namespace DshMiniGames
                 var color = SliceGame.BladeColorFor(i);
                 var button = DshMobile.Ugui.Button("BladeColor" + i, _root, SliceGame.BladeColorNames[i], 14,
                     new Color(color.r, color.g, color.b, 0.85f));
-                DshMobile.Ugui.SetRect(button.GetComponent<RectTransform>(), 16f + i * 78f, 96f, 70f, 34f);
+                DshMobile.Ugui.SetRectBottomLeft(button.GetComponent<RectTransform>(), 16f + i * 78f, 18f, 70f, 34f);
                 button.onClick.AddListener(() => OnBladeColor(index));
                 _bladeColorLabels.Add(button.GetComponentInChildren<Text>());
             }

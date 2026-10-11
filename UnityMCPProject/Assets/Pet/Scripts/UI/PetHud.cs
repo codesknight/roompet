@@ -4273,15 +4273,8 @@ namespace DshPet
                     btnRt.anchoredPosition = new Vector2(12f, -(34f + i * 24f));
                     btnRt.sizeDelta = new Vector2(rect.width - 24f, 22f);
                 }
-                if (rig.View == CameraViewMode.Free)
-                {
-                    _viewHint.gameObject.SetActive(true);
-                    _viewHint.text = "右键拖动转视角　滚轮缩放　中键平移";
-                    _viewHint.rectTransform.anchorMin = _viewHint.rectTransform.anchorMax = new Vector2(1f, 1f);
-                    _viewHint.rectTransform.pivot = new Vector2(1f, 1f);
-                    _viewHint.rectTransform.anchoredPosition = new Vector2(-layout.Switcher.x, -(layout.Switcher.yMax + 6f));
-                    _viewHint.rectTransform.sizeDelta = new Vector2(340f, 24f);
-                }
+                // Free mode no longer shows the "右键拖动转视角 滚轮缩放 中键平移" hint — it
+                // read as clutter rather than help (feedback: 删掉自由视角提示文本).
             }
 
             // Throw meter (desktop) + aim guide (both).
@@ -5243,14 +5236,6 @@ namespace DshPet
             }
 
             GUILayout.EndArea();
-
-            // Free mode is not discoverable without telling the player which buttons it uses.
-            if (rig.View == CameraViewMode.Free)
-            {
-                var hint = new Rect(rect.x - 200f, rect.yMax + 6f, rect.width + 200f, 24f);
-                var style = new GUIStyle(_small) { alignment = TextAnchor.UpperRight };
-                GUI.Label(hint, "右键拖动转视角　滚轮缩放　中键平移", style);
-            }
         }
 
         /// <summary>

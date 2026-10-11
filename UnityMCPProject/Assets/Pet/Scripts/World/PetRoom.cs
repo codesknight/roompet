@@ -1352,12 +1352,18 @@ namespace DshPet
         }
 
         /// <summary>
-        /// The litter tray. Deliberately in a corner: a pet that has to cross the room to
-        /// reach it is a pet that sometimes does not make it, which is where the mess system
-        /// comes from.
+        /// The pet's toilet — a Kenney toilet model now, not a litter tray (feedback: 猫砂盆换成
+        /// 马桶模组). Still deliberately in a corner: a pet that has to cross the room to reach it
+        /// is a pet that sometimes does not make it, which is where the mess system comes from.
         /// </summary>
         private Interactable BuildToilet(Vector2 at)
         {
+            // Kenney Furniture's toilet replaces the hand-built tray.
+            var prop = SpawnInteractableProp("Kenney/Furniture/toilet", new Vector3(at.x, 0f, at.y), 1.4f,
+                InteractableKind.Toilet, "猫砂盆", new Vector3(0f, 1.3f), "litter_box");
+            if (prop != null) return prop;
+
+            // Fallback (model missing): the old procedural tray, so the room still has a toilet.
             var go = new GameObject("Toilet");
             go.transform.SetParent(_root, false);
             go.transform.position = new Vector3(at.x, 0f, at.y);
@@ -1660,7 +1666,7 @@ namespace DshPet
 
             var interactable = go.AddComponent<Interactable>();
             interactable.Kind = InteractableKind.Mess;
-            interactable.Label = "便便（按 E 清理）";
+            interactable.Label = "便便";
             interactable.ApproachPoint = new Vector3(position.x, 0f, position.z - 1.1f);
             Messes.Add(interactable);
             Interactables.Add(interactable);

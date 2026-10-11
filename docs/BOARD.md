@@ -280,6 +280,20 @@
 - [x] 文档：本文件 + CHANGELOG 第 57 轮 + DEVLOG 坑 183 + README 计数
 - [ ] ⏳ **真机确认**：① 底部小字不压按钮、各面板无重叠错位；② 情景面板颜色区分明显、能选「自定义情景」自定对话；③ 词典能切高中/大学且词数正确；④ 检索输入英文/中文能出列表、点开看词卡、长列表可滚动
 
+## 这一轮（第 58 轮）的验收清单
+
+- [x] **换主宠宠物位置闪回**：`MakePrimary` 先 `CapturePetPositions()`、换完 `SpawnCompanionsAt(positions)` 按原位置放回（主宠↔同伴位置互换不散落）
+- [x] **弹弓猪头朝屏幕**：`BuildPig` 补 `Euler(0,180,0)`（猪头在 +Z 侧），play-mode 探针 `BodyModel_animal-pig localRot=(0,180,0)`
+- [x] **接果子魔球灯背景**：`BuildDiscoScene`（自转镜面球 `FacetTexture` + 24 颗五彩光点 `TickDisco` 呼吸脉动），替换小狗头
+- [x] **切水果刀刃颜色不压字**：颜色选择器移到左下角，play-mode 探针 `BladeColor0 vs Info/LivesMode overlap=False`
+- [x] **猫砂盆换马桶**：`BuildToilet` 用 `Kenney/Furniture/toilet`（保留交互/文案 + 程序化回退），toilet prefab 加载验证 OK
+- [x] **删便便提示**：`Mess` 标签「便便（按 E 清理）」→「便便」
+- [x] **删自由视角提示**：移除「右键拖动转视角 滚轮缩放 中键平移」（uGUI `_viewHint` 显示块 + 死代码 IMGUI 提示）
+- [x] **下崽核查**：功能在（`PetBreeding`）——≥2 宠物正面互动（依偎/玩耍）+ 冷却 ≥10 分钟 + 好感度 ≥0.25，基础 7% 概率自动下崽，幼崽进仓库、宠物面板领进房间
+- [x] **验证**：412/412 通过（无新增）+ 三个小游戏 + PetRoom play-mode 冒烟无 error
+- [x] 文档：本文件 + CHANGELOG 第 58 轮 + DEVLOG 坑 184 + README 计数
+- [ ] ⏳ **真机确认**：① 点宠物/切主宠宠物原地不动、只切状态栏；② 猪头朝屏幕；③ 接果子是五彩魔球灯；④ 刀刃颜色按钮不压字；⑤ 房间是马桶不是猫砂盆；⑥ 无「按 E 清理」提示；⑦ 自由视角无滚轮/中键提示
+
 ## 明确推迟或不做
 
 | 项 | 状态 | 原因 |

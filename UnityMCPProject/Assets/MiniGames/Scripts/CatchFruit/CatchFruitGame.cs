@@ -124,149 +124,138 @@ namespace DshMiniGames
             RenderSettings.ambientLight = new Color(0.32f, 0.28f, 0.44f);
 
             _basket = BuildBasket();
-            BuildDogHead();
+            BuildDiscoScene();
+        }
+
+        private Transform _discoBall;
+        private readonly List<DiscoDot> _discoDots = new List<DiscoDot>();
+
+        private class DiscoDot
+        {
+            public Transform T;
+            public float BaseScale;
+            public float Phase;
+            public float PulseSpeed;
         }
 
         /// <summary>
-        /// The roompet's dog head as a glowing backdrop, replacing the plain neon light beams.
-        /// It is a flat, unlit silhouette drawn onto a transparent quad behind the play area, so it
-        /// reads as a "background pattern" rather than a game object that could be mistaken for fruit.
+        /// 蹦迪魔球灯: a spinning silver mirror ball near the top of the play area, throwing a
+        /// cloud of colourful glowing light dots across the dark club background. The dots are the
+        /// "五颜六色" the earlier plain backdrop lacked — soft round glows in a rainbow palette,
+        /// gently pulsing so the scene reads as lit rather than pasted on.
         /// </summary>
-        private void BuildDogHead()
+        private void BuildDiscoScene()
         {
             if (_camera == null) return;
-            float height = _camera.orthographicSize * 2f;
-            float width = height * _camera.aspect;
+            float top = _camera.orthographicSize;
+            float span = _camera.orthographicSize * _camera.aspect;
 
-            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            quad.name = "DogHeadBackdrop";
-            quad.transform.SetParent(transform, false);
-            quad.transform.localPosition = new Vector3(0f, 0f, 3f);
-            quad.transform.localScale = new Vector3(width * 0.72f, height * 0.72f, 1f);
+            var ball = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            ball.name = "DiscoBall";
+            ball.transform.SetParent(transform, false);
+            ball.transform.position = new Vector3(0f, top - 0.9f, 1f);
+            ball.transform.localScale = Vector3.one * 1.6f;
+            var ballRenderer = ball.GetComponent<Renderer>();
+            var ballMat = new Material(Shader.Find("Standard"));
+            ballMat.mainTexture = FacetTexture();
+            ballMat.color = new Color(0.88f, 0.88f, 0.95f);
+            ballMat.SetFloat("_Metallic", 1f);
+            ballMat.SetFloat("_Glossiness", 0.95f);
+            ballRenderer.material = ballMat;
+            ballRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            ballRenderer.receiveShadows = false;
+            Destroy(ball.GetComponent<Collider>());
+            _discoBall = ball.transform;
 
-            var renderer = quad.GetComponent<Renderer>();
-            var material = new Material(Shader.Find("Unlit/Transparent") ?? Shader.Find("Standard"));
-            material.mainTexture = DogHeadTexture();
-            material.color = Color.white;
-            // Background queue: it renders before the fruit so the fruit always occludes it.
-            material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Background;
-            renderer.material = material;
-            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            renderer.receiveShadows = false;
+            var palette = new[]
+            {
+                new Color(1f, 0.30f, 0.75f),   // pink
+                new Color(0.25f, 0.85f, 1f),   // cyan
+                new Color(0.65f, 0.35f, 1f),   // purple
+                new Color(1f, 0.45f, 0.30f),   // orange
+                new Color(0.35f, 1f, 0.75f),   // mint
+                new Color(0.30f, 0.55f, 1f),   // blue
+                new Color(1f, 0.85f, 0.25f),   // yellow
+                new Color(1f, 0.40f, 0.45f),   // red
+            };
 
-            Destroy(quad.GetComponent<Collider>());
+            int count = 24;
+            for (int i = 0; i < count; i++)
+            {
+                var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                go.name = "DiscoDot" + i;
+                go.transform.SetParent(transform, false);
+
+                float t = i / (float)count;
+                float angle = t * Mathf.PI * 2f;
+                float radius = 2.4f + (i % 3) * 1.1f + 0.4f * Mathf.Sin(i * 1.7f);
+                float x = Mathf.Cos(angle) * radius * (span / Mathf.Max(1f, top) * 0.75f + 0.25f);
+                float y = top - 1.1f + Mathf.Sin(angle) * radius;
+                go.transform.position = new Vector3(x, y, 1.5f);
+
+                float size = 0.30f + 0.35f * (i % 4) / 3f;
+                go.transform.localScale = Vector3.one * size;
+
+                var renderer = go.GetComponent<Renderer>();
+                var mat = new Material(Shader.Find("Sprites/Default") ?? Shader.Find("Standard"));
+                mat.mainTexture = DshMobile.SoftShadow.Gradient;
+                mat.color = palette[i % palette.Length];
+                // Behind the fruit: the disco lights are part of the backdrop.
+                mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Background;
+                renderer.material = mat;
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+
+                Destroy(go.GetComponent<Collider>());
+                _discoDots.Add(new DiscoDot
+                {
+                    T = go.transform,
+                    BaseScale = size,
+                    Phase = i * 0.62f,
+                    PulseSpeed = 1.2f + (i % 3) * 0.7f
+                });
+            }
         }
 
-        /// <summary>
-        /// A small dog head (rounded head + two triangular ears + two eyes), drawn into a soft neon
-        /// glow. The silhouette is rasterised to a mask and then box-blurred a few times, which gives
-        /// the "炫光" halo without needing a second render pass.
-        /// </summary>
-        private Texture2D DogHeadTexture()
+        /// <summary>Spins the mirror ball and pulses the light dots, once per frame.</summary>
+        private void TickDisco()
         {
-            const int size = 128;
+            if (_discoBall != null) _discoBall.Rotate(0f, 40f * Time.deltaTime, 0f, Space.World);
+
+            for (int i = 0; i < _discoDots.Count; i++)
+            {
+                var dot = _discoDots[i];
+                if (dot == null || dot.T == null) continue;
+                float pulse = 1f + 0.25f * Mathf.Sin(Time.time * dot.PulseSpeed + dot.Phase);
+                dot.T.localScale = Vector3.one * (dot.BaseScale * pulse);
+            }
+        }
+
+        /// <summary>A grid of small mirror facets, so the ball reads as a disco ball, not a grey moon.</summary>
+        private Texture2D FacetTexture()
+        {
+            const int size = 64;
             var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-            tex.wrapMode = TextureWrapMode.Clamp;
+            tex.wrapMode = TextureWrapMode.Repeat;
             tex.filterMode = FilterMode.Bilinear;
             tex.hideFlags = HideFlags.HideAndDontSave;
 
-            var mask = new float[size * size];
-
+            const int grid = 8;
             for (int y = 0; y < size; y++)
             {
                 for (int x = 0; x < size; x++)
                 {
-                    float u = (x + 0.5f) / size;
-                    float v = (y + 0.5f) / size;
-
-                    bool head = InCircle(u, v, 0.5f, 0.44f, 0.24f);
-                    bool earL = InTriangle(u, v, 0.34f, 0.52f, 0.20f, 0.78f, 0.52f, 0.60f);
-                    bool earR = InTriangle(u, v, 0.66f, 0.52f, 0.80f, 0.78f, 0.48f, 0.60f);
-                    if (head || earL || earR) mask[y * size + x] = 1f;
+                    int gx = x / (size / grid);
+                    int gy = y / (size / grid);
+                    float shade = 0.75f + 0.5f * Mathf.PerlinNoise(gx * 1.9f, gy * 1.9f);
+                    // Thin darker seams between facets.
+                    bool seam = (x % (size / grid) == 0) || (y % (size / grid) == 0);
+                    float grey = seam ? 0.35f : shade;
+                    tex.SetPixel(x, y, new Color(grey, grey, grey, 1f));
                 }
             }
-
-            Blur(mask, size, 3);
-            Blur(mask, size, 3);
-
-            var glow = new Color(0.30f, 0.86f, 1f, 1f);   // cyan neon
-            var eye = new Color(0.05f, 0.08f, 0.12f, 1f);
-
-            for (int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    float u = (x + 0.5f) / size;
-                    float v = (y + 0.5f) / size;
-                    float a = Mathf.Clamp01(mask[y * size + x]);
-
-                    // Darken the two eyes back in over the glow so the head still reads as a dog.
-                    if (InCircle(u, v, 0.42f, 0.46f, 0.035f) || InCircle(u, v, 0.58f, 0.46f, 0.035f))
-                    {
-                        tex.SetPixel(x, y, new Color(eye.r, eye.g, eye.b, Mathf.Max(a, 0.9f)));
-                        continue;
-                    }
-
-                    tex.SetPixel(x, y, new Color(glow.r, glow.g, glow.b, a * 0.75f));
-                }
-            }
-
             tex.Apply();
             return tex;
-        }
-
-        private static bool InCircle(float u, float v, float cx, float cy, float r)
-        {
-            float dx = u - cx, dy = v - cy;
-            return dx * dx + dy * dy <= r * r;
-        }
-
-        private static bool InTriangle(float u, float v, float ax, float ay, float bx, float by,
-            float cx, float cy)
-        {
-            // Barycentric sign test against a CCW triangle.
-            float d1 = Sign(u, v, ax, ay, bx, by);
-            float d2 = Sign(u, v, bx, by, cx, cy);
-            float d3 = Sign(u, v, cx, cy, ax, ay);
-            bool neg = d1 < 0f || d2 < 0f || d3 < 0f;
-            bool pos = d1 > 0f || d2 > 0f || d3 > 0f;
-            return !(neg && pos);
-        }
-
-        private static float Sign(float px, float py, float ax, float ay, float bx, float by)
-            => (px - bx) * (ay - by) - (ax - bx) * (py - by);
-
-        /// <summary>Box blur in place. A few passes of a 3x3 kernel turn a hard mask into a halo.</summary>
-        private static void Blur(float[] m, int size, int passes)
-        {
-            var src = m;
-            var dst = new float[size * size];
-            for (int p = 0; p < passes; p++)
-            {
-                for (int y = 0; y < size; y++)
-                {
-                    for (int x = 0; x < size; x++)
-                    {
-                        float sum = 0f;
-                        int count = 0;
-                        for (int dy = -1; dy <= 1; dy++)
-                        {
-                            for (int dx = -1; dx <= 1; dx++)
-                            {
-                                int nx = x + dx, ny = y + dy;
-                                if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
-                                sum += src[ny * size + nx];
-                                count++;
-                            }
-                        }
-                        dst[y * size + x] = sum / count;
-                    }
-                }
-                var tmp = src;
-                src = dst;
-                dst = tmp;
-            }
-            if (src != m) System.Array.Copy(src, m, m.Length);
         }
 
         private Transform BuildBasket()
@@ -374,6 +363,7 @@ namespace DshMiniGames
         private void Update()
         {
             if (_camera != null && !Mathf.Approximately(_lastAspect, _camera.aspect)) FitCamera();
+            TickDisco();
 
             float keyboard = 0f;
             if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) keyboard -= 1f;

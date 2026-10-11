@@ -151,7 +151,7 @@ namespace DshPet
                 Journal.Add(MemoryKind.Milestone, "今天见到主人了", "", 0.5f, true);
             }
 
-            PetCollection.Changed += SpawnCompanions;
+            PetCollection.Changed += OnRoomCollectionChanged;
             SpawnCompanions();
 
             // 情景对话 handoff：英语角场景把"开始对话"的提示词存在 PlayerPrefs 里，这里消费它、
@@ -394,6 +394,18 @@ namespace DshPet
         /// </summary>
         public void SpawnCompanions()
         {
+            SpawnCompanionsAt(null);
+        }
+
+        /// <summary>
+        /// Rebuilds the companions, reusing each pet's previous position when one is supplied.
+        ///
+        /// A hand-over (换主宠) must not teleport anyone: the promoted pet takes the spot it was
+        /// already standing in and the demoted pet keeps the spot it had as the primary. Other
+        /// callers (room rebuild / travel) pass null and get the usual scatter.
+        /// </summary>
+        private void SpawnCompanionsAt(Dictionary<string, Vector3> positions)
+        {
             DespawnCompanions();
 
             var companions = PetCollection.Companions();
@@ -416,9 +428,14 @@ namespace DshPet
                 var go = new GameObject("Companion_" + record.Name);
                 go.transform.SetParent(transform, false);
 
-                // Scattered around the middle of the room so they do not stack on spawn.
-                float angle = (_companions.Count + 1) * 2.1f;
-                go.transform.position = new Vector3(Mathf.Cos(angle) * 3.4f, 0f, Mathf.Sin(angle) * 3.4f);
+                Vector3 pos;
+                if (positions == null || !positions.TryGetValue(record.Id, out pos))
+                {
+                    // Scattered around the middle of the room so they do not stack on spawn.
+                    float angle = (_companions.Count + 1) * 2.1f;
+                    pos = new Vector3(Mathf.Cos(angle) * 3.4f, 0f, Mathf.Sin(angle) * 3.4f);
+                }
+                go.transform.position = pos;
 
                 var avatar = go.AddComponent<PetAvatar>();
                 avatar.Build(species, false);
@@ -438,6 +455,38 @@ namespace DshPet
             }
             // The pet that was selected may no longer exist, or may be a different animal now.
             ResetSelection();
+        }
+
+        private bool _suppressRoomRebuild;
+
+        private void OnRoomCollectionChanged()
+        {
+            if (_suppressRoomRebuild) return;
+            SpawnCompanions();
+        }
+
+        /// <summary>
+        /// Every pet's current world position, keyed by collection record id (the primary avatar
+        /// under the primary's id, each companion under its own). Captured before a hand-over so the
+        /// swap can put everyone back exactly where they were.
+        /// </summary>
+        private Dictionary<string, Vector3> CapturePetPositions()
+        {
+            var positions = new Dictionary<string, Vector3>();
+
+            var primary = PetCollection.Primary;
+            if (primary != null && !string.IsNullOrEmpty(primary.Id) && Avatar != null)
+                positions[primary.Id] = Avatar.transform.position;
+
+            for (int i = 0; i < _companions.Count; i++)
+            {
+                var companion = _companions[i];
+                if (companion == null) continue;
+                var target = companion.GetComponent<PetClickTarget>();
+                if (target != null && !string.IsNullOrEmpty(target.RecordId))
+                    positions[target.RecordId] = companion.transform.position;
+            }
+            return positions;
         }
 
         public void DespawnCompanions()
@@ -646,12 +695,18 @@ namespace DshPet
             var current = PetCollection.Primary;
             if (current != null && current.Id == recordId) return false;
 
+            // Capture everyone's position BEFORE the hand-over, so no pet teleports: the promoted
+            // pet keeps the spot it was standing in and the demoted pet keeps the primary's spot.
+            var positions = CapturePetPositions();
+
             // Flush before anything moves: memory and needs belong to the pet that is leaving.
             SaveNeeds();
             Memory.Save(PetKey);
             Journal.Save();
 
-            PetCollection.SetPrimary(recordId);
+            _suppressRoomRebuild = true;
+            try { PetCollection.SetPrimary(recordId); }
+            finally { _suppressRoomRebuild = false; }
 
             Species = PetSpecies.Copy(record.SpeciesId);
             PetName = record.Name;
@@ -661,6 +716,8 @@ namespace DshPet
             BindPersonality();
             LoadNeeds();
             Avatar.Build(Species, false);
+            Vector3 promotedPos;
+            if (positions.TryGetValue(recordId, out promotedPos)) Avatar.transform.position = promotedPos;
             EnsurePokeTarget(Avatar.gameObject, true);
             Memory.Load(PetKey);
             Journal.Bind(PetKey);
@@ -672,11 +729,11 @@ namespace DshPet
                 "现在陪着你的换成了它。", 0.4f);
 
             // The room is rebuilt around the new pet: the one that had the brain becomes a companion.
-            // Deliberately no RecentrePet() here — snapping the pet and the player back to the room's
-            // origin is the "回闪" the player sees when tapping a companion; a hand-over should keep
-            // everyone where they are.
+            // Deliberately no RecentrePet() here, and companions reuse their captured positions —
+            // snapping pets to the origin (or re-scattering them) is the "回闪" the player sees when
+            // switching primary. Only the status bar (which pet has the brain) changes; nobody moves.
             ResetSelection();
-            SpawnCompanions();
+            SpawnCompanionsAt(positions);
             RebuildBrain();
 
             Memory.AddSystem($"（现在主要照顾的是{record.Name}，它的记忆和记事本会跟着它）");
@@ -890,7 +947,7 @@ namespace DshPet
         private void OnDestroy()
         {
             if (Instance == this) Instance = null;
-            PetCollection.Changed -= SpawnCompanions;
+            PetCollection.Changed -= OnRoomCollectionChanged;
             DespawnCompanions();
 
             // The room is going away (usually because the player left for a mini game), and a
