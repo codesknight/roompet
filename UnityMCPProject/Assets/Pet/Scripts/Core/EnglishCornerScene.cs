@@ -371,12 +371,24 @@ namespace DshPet
         {
             switch (_dict)
             {
-                case 1: return EnglishCorner.WordsForCategory("高中");
-                case 2: return EnglishCorner.WordsForCategory("大学");
+                case 1: return UnlearnedOnly(EnglishCorner.WordsForCategory("高中"));
+                case 2: return UnlearnedOnly(EnglishCorner.WordsForCategory("大学"));
                 case 3: return WordsFrom(EnglishProgress.NewWordList());
                 case 4: return WordsFrom(EnglishProgress.Favorites());
-                default: return EnglishCorner.WordsForCategory("初中");
+                default: return UnlearnedOnly(EnglishCorner.WordsForCategory("初中"));
             }
+        }
+
+        /// <summary>Filters out words the player has already marked 会 — learned words stop showing
+        /// in the dictionary rotation and only come back after a reset (feedback: 已会词不再重复).</summary>
+        private EnglishWord[] UnlearnedOnly(EnglishWord[] words)
+        {
+            var list = new List<EnglishWord>();
+            foreach (var w in words)
+            {
+                if (!EnglishProgress.IsLearned(w.Word)) list.Add(w);
+            }
+            return list.ToArray();
         }
 
         private EnglishWord[] WordsFrom(List<string> wordStrings)
@@ -523,10 +535,11 @@ namespace DshPet
             _searchPanel.gameObject.SetActive(_searchOpen);
 
             var w = Current();
-            _word.text = w.Word;
-            _meaning.text = w.Meaning;
-            _example.text = w.Example;
-            _translation.text = w.ExampleTranslation;
+            bool empty = CurrentWords().Length == 0;
+            _word.text = empty ? "🎉 都学会啦" : w.Word;
+            _meaning.text = empty ? "这个词典的词你都标成「会」了。" : w.Meaning;
+            _example.text = empty ? "点「重置」清零学习记录，它们就会重新出现。" : w.Example;
+            _translation.text = empty ? "" : w.ExampleTranslation;
 
             _dictLabel.text = "词典：" + DictName(_dict) + "（" + CurrentWords().Length + " 词）";
             _orderLabel.text = _mode == 0 ? "顺序" : "随机";

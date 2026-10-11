@@ -28,6 +28,7 @@ namespace DshPet
 
         private Transform _body;
         private Material _eyeMat;
+        private Transform _alert;
         private float _nextServiceAt;
         private float _nextCleanAt;
 
@@ -71,6 +72,21 @@ namespace DshPet
             // Antenna.
             Part(body, PrimitiveType.Cylinder, new Vector3(0f, 0.70f, 0f), new Vector3(0.02f, 0.07f, 0.02f), dark);
             Part(body, PrimitiveType.Sphere, new Vector3(0f, 0.78f, 0f), Vector3.one * 0.05f, accent);
+
+            // A red "!" alert that pops up above the head when the pantry runs dry (feedback: 缺粮
+            // 头顶冒感叹号提醒购买). Parented to the root so it never tilts with the facing.
+            var alert = new GameObject("Alert");
+            alert.transform.SetParent(transform, false);
+            alert.transform.localPosition = new Vector3(0f, 0.90f, 0f);
+            var tm = alert.AddComponent<TextMesh>();
+            tm.text = "!";
+            tm.fontSize = 72;
+            tm.characterSize = 0.07f;
+            tm.anchor = TextAnchor.MiddleCenter;
+            tm.color = new Color(1f, 0.25f, 0.18f);
+            tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            _alert = alert.transform;
+            _alert.gameObject.SetActive(false);
 
             // Eyes: one shared material so the on/off colour change lights both at once.
             var eyeMat = new Material(Shader.Find("Standard"));
@@ -134,7 +150,18 @@ namespace DshPet
                 _eyeMat.color = EyeOff;
                 _eyeMat.DisableKeyword("_EMISSION");
                 _eyeMat.SetColor("_EmissionColor", Color.black);
+                HideAlert();
             }
+        }
+
+        private void ShowAlert()
+        {
+            if (_alert != null) _alert.gameObject.SetActive(true);
+        }
+
+        private void HideAlert()
+        {
+            if (_alert != null) _alert.gameObject.SetActive(false);
         }
 
         private void Update()
@@ -204,14 +231,39 @@ namespace DshPet
             if (needs == null) return;
             if (Vector3.Distance(transform.position, target.transform.position) > ServiceRange) return;
 
-            switch (needs.DominantNeed)
+            string dominant = needs.DominantNeed;
+            if (dominant == "饿了")
             {
-                case "饿了": needs.Feed(0.35f); break;
-                case "想上厕所": needs.Relieve(); break;
-                case "困了": needs.Sleep(1.8f); break;
-                case "想玩": needs.Play(0.28f, false); break;
-                case "想洗澡": needs.Clean(0.4f); break;
-                default: needs.Pet(0.06f); break;
+                // The butler feeds from the warehouse only; an empty pantry shows the "!" and it does
+                // NOT magically conjure a meal (feedback: 只用仓库粮/水喂食，不够就提醒购买).
+                if (PetInventory.TryConsumeMeal())
+                {
+                    needs.Feed(0.35f);
+                    HideAlert();
+                }
+                else if (PetInventory.TryConsumeWater())
+                {
+                    needs.GiveWater(0.3f);
+                    HideAlert();
+                }
+                else
+                {
+                    ShowAlert();
+                    _nextServiceAt = Time.time + ServiceInterval;
+                    return;
+                }
+            }
+            else
+            {
+                HideAlert();
+                switch (dominant)
+                {
+                    case "想上厕所": needs.Relieve(); break;
+                    case "困了": needs.Sleep(1.8f); break;
+                    case "想玩": needs.Play(0.28f, false); break;
+                    case "想洗澡": needs.Clean(0.4f); break;
+                    default: needs.Pet(0.06f); break;
+                }
             }
 
             _nextServiceAt = Time.time + ServiceInterval;

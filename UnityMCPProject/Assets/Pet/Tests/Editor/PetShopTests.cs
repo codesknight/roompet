@@ -100,8 +100,9 @@ namespace DshPet.Tests
             Assert.IsTrue(PetShop.Get("rocking_chair").AllowedIn(RoomTheme.Terrace));
             Assert.IsFalse(PetShop.Get("telescope").AllowedIn(RoomTheme.Garden));
 
-            Assert.IsTrue(PetShop.Get("bed").AllowedIn(RoomTheme.Garden), "a bed goes anywhere");
-            Assert.IsTrue(PetShop.Get("bed").AllowedIn(RoomTheme.Terrace));
+            Assert.IsTrue(PetShop.Get("bed").AllowedIn(RoomTheme.Cabin), "a bed is indoor furniture");
+            Assert.IsTrue(PetShop.Get("bed").AllowedIn(RoomTheme.Terrace), "indoor furniture fits the terrace too");
+            Assert.IsFalse(PetShop.Get("bed").AllowedIn(RoomTheme.Garden), "indoor furniture does not go in the garden");
         }
 
         [Test]

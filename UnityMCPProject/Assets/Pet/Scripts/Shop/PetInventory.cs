@@ -224,6 +224,7 @@ namespace DshPet
                 var item = PetShop.All[i];
                 if (item == null || !item.Starter) continue;
                 if (!item.AllowedIn(theme)) continue;
+                if (item.HomeTheme.HasValue && theme != item.HomeTheme.Value) continue;
                 if (stored.Contains(item.Id)) continue;
                 if (map.ContainsKey(item.Id)) continue;
                 map[item.Id] = item.DefaultPosition;
@@ -483,7 +484,7 @@ namespace DshPet
             switch (scene)
             {
                 case ItemScene.Garden: return "花园";
-                case ItemScene.Terrace: return "夜晚露台";
+                case ItemScene.Indoor: return "室内（小屋或露台）";
                 case ItemScene.Cabin: return "小屋";
                 default: return "任何地方";
             }

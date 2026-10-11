@@ -313,6 +313,9 @@ namespace DshPet
             Journal.Add(MemoryKind.Milestone, "搬到了新地方",
                 info.DisplayName + "　" + info.Effects(), 0.5f);
             ChatChanged?.Invoke();
+
+            // 切换完场景后，地图 UI 自动关闭 (feedback)。
+            CloseDoorPrompt();
             return true;
         }
 

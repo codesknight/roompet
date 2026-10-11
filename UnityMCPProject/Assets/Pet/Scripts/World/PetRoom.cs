@@ -1286,9 +1286,10 @@ namespace DshPet
 
         private Interactable BuildBed(Vector2 at)
         {
-            // Kenney Furniture's single bed replaces the old three-box bed.
-            return SpawnInteractableProp("Kenney/Furniture/bedSingle", new Vector3(at.x, 0f, at.y), 2.2f,
-                InteractableKind.Bed, "小床", new Vector3(0f, 1.5f), "bed");
+            // Kenney Furniture's single bed replaces the old three-box bed. Scaled up a touch so it
+            // reads as a bed next to the character (feedback: 床和人物比偏小).
+            return SpawnInteractableProp("Kenney/Furniture/bedSingle", new Vector3(at.x, 0f, at.y), 2.6f,
+                InteractableKind.Bed, "小床", new Vector3(0f, 1.6f), "bed");
         }
 
         private Interactable BuildBall(Vector2 at)
@@ -1360,10 +1361,10 @@ namespace DshPet
         private Interactable BuildToilet(Vector2 at)
         {
             // Kenney Furniture's toilet replaces the hand-built tray. The toilet prefab's raw mesh is
-            // roughly cubic (~4.8 units), so scaling its largest side to 1.4 made a ~3 m-wide toilet —
-            // bigger than the bed. 0.8 gives a ~0.8×0.76×0.57 m toilet, clearly smaller than the bed
-            // (feedback: 马桶比床还大，改小).
-            var prop = SpawnInteractableProp("Kenney/Furniture/toilet", new Vector3(at.x, 0f, at.y), 0.8f,
+            // roughly cubic (~4.8 units), so scaling its largest side to 1.4 made a ~3 m-wide toilet.
+            // 0.68 gives a ~0.68×0.64×0.48 m toilet — comfortably smaller than the character
+            // (feedback: 马桶和人物比偏大，再调小).
+            var prop = SpawnInteractableProp("Kenney/Furniture/toilet", new Vector3(at.x, 0f, at.y), 0.68f,
                 InteractableKind.Toilet, "猫砂盆", new Vector3(0f, 0.9f), "litter_box");
             if (prop != null) return prop;
 

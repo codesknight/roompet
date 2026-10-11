@@ -29,8 +29,8 @@ namespace DshPet
         /// <summary>Only in the garden.</summary>
         Garden = 1,
 
-        /// <summary>Only on the night terrace.</summary>
-        Terrace = 2,
+        /// <summary>Indoor furniture: the cabin and the night terrace, mutually placeable.</summary>
+        Indoor = 2,
 
         /// <summary>Only in the cabin.</summary>
         Cabin = 3
@@ -78,6 +78,11 @@ namespace DshPet
         /// <summary>Which place this furniture belongs to. Food and tools are scene-free.</summary>
         public ItemScene Scene = ItemScene.Anywhere;
 
+        /// <summary>For starter furniture: the one scene it is auto-placed in by default. Null means
+        /// "every scene it is allowed in" (used by the indoor starter furniture so the terrace sofa
+        /// does not also appear in the cabin on its own).</summary>
+        public RoomTheme? HomeTheme = null;
+
         /// <summary>True for food the world produces rather than the shop (apple, fish).</summary>
         public bool Produced;
 
@@ -106,7 +111,7 @@ namespace DshPet
             switch (Scene)
             {
                 case ItemScene.Garden: return theme == RoomTheme.Garden;
-                case ItemScene.Terrace: return theme == RoomTheme.Terrace;
+                case ItemScene.Indoor: return theme == RoomTheme.Cabin || theme == RoomTheme.Terrace;
                 case ItemScene.Cabin: return theme == RoomTheme.Cabin;
                 default: return true;
             }
@@ -170,21 +175,21 @@ namespace DshPet
             new ShopItem
             {
                 Id = "litter_box", Name = "猫砂盆", Emoji = "🚽", Price = 150, Category = ShopCategory.Furniture,
-                Kind = InteractableKind.Toilet,
+                Kind = InteractableKind.Toilet, Scene = ItemScene.Indoor,
                 Blurb = "有了它宠物会自己去上厕所，每用一次还自动给你赚金币；没有它……你就得擦地板了。",
                 DefaultPosition = new Vector2(5.1f, -5.0f), ApproachOffset = new Vector2(0f, 1.4f)
             },
             new ShopItem
             {
                 Id = "bed", Name = "小床", Emoji = "🛏️", Price = 120, Category = ShopCategory.Furniture,
-                Kind = InteractableKind.Bed,
+                Kind = InteractableKind.Bed, Scene = ItemScene.Indoor,
                 Blurb = "困了会自己爬上去睡，睡醒精力满满。",
                 DefaultPosition = new Vector2(-4.4f, -4.4f), ApproachOffset = new Vector2(0f, 1.5f)
             },
             new ShopItem
             {
                 Id = "ball", Name = "皮球", Emoji = "⚽", Price = 60, Category = ShopCategory.Furniture,
-                Kind = InteractableKind.Ball,
+                Kind = InteractableKind.Ball, Scene = ItemScene.Indoor,
                 Blurb = "扔出去宠物会追着捡回来，是最快的陪玩。",
                 DefaultPosition = new Vector2(1.8f, 4.2f), ApproachOffset = new Vector2(0f, -1.2f)
             },
@@ -196,14 +201,14 @@ namespace DshPet
             new ShopItem
             {
                 Id = "toy", Name = "玩具", Emoji = "🧸", Price = 80, Category = ShopCategory.Furniture,
-                Kind = InteractableKind.Toy,
+                Kind = InteractableKind.Toy, Scene = ItemScene.Indoor,
                 Blurb = "一个小玩具，宠物会自己扑过去玩。",
                 DefaultPosition = new Vector2(0f, -2.5f), ApproachOffset = new Vector2(0f, 1.2f)
             },
             new ShopItem
             {
                 Id = "bath", Name = "澡盆", Emoji = "🛁", Price = 180, Category = ShopCategory.Furniture,
-                Kind = InteractableKind.Bath,
+                Kind = InteractableKind.Bath, Scene = ItemScene.Indoor,
                 Blurb = "彻底洗个澡，脏东西一次冲干净。",
                 DefaultPosition = new Vector2(-5.2f, 4.6f), ApproachOffset = new Vector2(0f, -1.2f)
             },
@@ -249,14 +254,14 @@ namespace DshPet
             new ShopItem
             {
                 Id = "telescope", Name = "天文望远镜", Emoji = "🔭", Price = 220, Category = ShopCategory.Furniture,
-                Kind = InteractableKind.Telescope, Scene = ItemScene.Terrace,
+                Kind = InteractableKind.Telescope, Scene = ItemScene.Indoor,
                 Blurb = "露台看得见星星，宠物会凑过去看。",
                 DefaultPosition = new Vector2(4.6f, 4.2f), ApproachOffset = new Vector2(0f, -1.3f)
             },
             new ShopItem
             {
                 Id = "rocking_chair", Name = "摇椅", Emoji = "🪑", Price = 160, Category = ShopCategory.Furniture,
-                Kind = InteractableKind.RockingChair, Scene = ItemScene.Terrace,
+                Kind = InteractableKind.RockingChair, Scene = ItemScene.Indoor,
                 Blurb = "露台上摇啊摇，宠物会蜷上去打盹。",
                 DefaultPosition = new Vector2(-4.4f, -4.0f), ApproachOffset = new Vector2(0f, 1.4f)
             },
@@ -265,35 +270,35 @@ namespace DshPet
             new ShopItem
             {
                 Id = "sofa", Name = "沙发", Emoji = "🛋️", Price = 160, Category = ShopCategory.Furniture,
-                Kind = InteractableKind.Sofa, Scene = ItemScene.Terrace, Starter = true, Footprint = 1.0f,
+                Kind = InteractableKind.Sofa, Scene = ItemScene.Indoor, HomeTheme = RoomTheme.Terrace, Starter = true, Footprint = 1.0f,
                 Blurb = "露台自带的沙发，宠物会坐上去休息。",
                 DefaultPosition = new Vector2(-2.8f, 1.9f), ApproachOffset = new Vector2(0f, -1.3f)
             },
             new ShopItem
             {
                 Id = "sofa_long", Name = "长沙发", Emoji = "🛋️", Price = 180, Category = ShopCategory.Furniture,
-                Kind = InteractableKind.Sofa, Scene = ItemScene.Terrace, Starter = true, Footprint = 1.1f,
+                Kind = InteractableKind.Sofa, Scene = ItemScene.Indoor, HomeTheme = RoomTheme.Terrace, Starter = true, Footprint = 1.1f,
                 Blurb = "露台自带的长沙发，宠物会坐上去休息。",
                 DefaultPosition = new Vector2(2.9f, 1.9f), ApproachOffset = new Vector2(0f, -1.3f)
             },
             new ShopItem
             {
                 Id = "lamp", Name = "落地灯", Emoji = "💡", Price = 100, Category = ShopCategory.Furniture,
-                Kind = InteractableKind.Lamp, Scene = ItemScene.Terrace, Starter = true, Footprint = 0.5f,
+                Kind = InteractableKind.Lamp, Scene = ItemScene.Indoor, HomeTheme = RoomTheme.Terrace, Starter = true, Footprint = 0.5f,
                 Blurb = "露台自带的落地灯，点一下开、再点一下关。",
                 DefaultPosition = new Vector2(-5.6f, 4.6f), ApproachOffset = new Vector2(0f, -0.6f)
             },
             new ShopItem
             {
                 Id = "bench", Name = "长椅", Emoji = "🪑", Price = 90, Category = ShopCategory.Furniture,
-                Kind = InteractableKind.Sofa, Scene = ItemScene.Terrace, Starter = true, Footprint = 0.9f,
+                Kind = InteractableKind.Sofa, Scene = ItemScene.Indoor, HomeTheme = RoomTheme.Terrace, Starter = true, Footprint = 0.9f,
                 Blurb = "露台自带的长椅，宠物会坐上去休息。",
                 DefaultPosition = new Vector2(4.6f, -3.4f), ApproachOffset = new Vector2(0f, -1.2f)
             },
             new ShopItem
             {
                 Id = "warehouse_cabinet", Name = "仓库柜", Emoji = "🗄️", Price = 140, Category = ShopCategory.Furniture,
-                Kind = InteractableKind.Warehouse, Scene = ItemScene.Cabin, Starter = true, Footprint = 0.9f,
+                Kind = InteractableKind.Warehouse, Scene = ItemScene.Indoor, HomeTheme = RoomTheme.Cabin, Starter = true, Footprint = 0.9f,
                 Blurb = "小屋自带的仓库柜，点它直接打开仓库页。",
                 DefaultPosition = new Vector2(-3.4f, 6.0f), ApproachOffset = new Vector2(0f, -1.7f)
             }
