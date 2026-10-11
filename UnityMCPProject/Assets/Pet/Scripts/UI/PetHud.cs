@@ -1724,8 +1724,31 @@ namespace DshPet
                 () => { gm.CloseDoorPrompt(); OpenPuzzle(gm); });
             y = BuildMapGame(_mapContent, y, "🃏 记忆配对", "翻开两张一样的卡片就留下，全配完给宠物币。",
                 () => { gm.CloseDoorPrompt(); OpenMemoryMatch(gm); });
-            y = BuildMapGame(_mapContent, y, "🌍 英语角", "背单词、做测试、练口语，还能和宠物用英文聊天。",
-                () => { gm.CloseDoorPrompt(); OpenEnglish(gm); });
+
+            // 英语角是"花宠物币解锁的独立学英语场景"，不在"在屋里玩"里。
+            y += 4f;
+            y = BuildMapLabel(_mapContent, y, "学习");
+            y = BuildMapGame(_mapContent, y,
+                EnglishCornerAccess.IsUnlocked
+                    ? "🌍 英语角"
+                    : "🌍 英语角（解锁 " + EnglishCornerAccess.Cost + " 币）",
+                EnglishCornerAccess.IsUnlocked
+                    ? "独立的学英语场景：初中词库背单词、做测验、练口语。"
+                    : "独立的学英语场景，需要花宠物币解锁。",
+                () =>
+                {
+                    gm.CloseDoorPrompt();
+                    string msg;
+                    if (EnglishCornerAccess.TryUnlock(out msg))
+                    {
+                        SetToast(msg);
+                        gm.LaunchEnglishCorner();
+                    }
+                    else
+                    {
+                        SetToast(msg);
+                    }
+                });
 
             _mapContent.sizeDelta = new Vector2(-8f, y + 12f);
         }
@@ -3550,7 +3573,8 @@ namespace DshPet
         private int _englishTab;               // 0=背单词 1=测验 2=口语
         private int _englishIndex;             // index into the CURRENT dictionary list
         private int _englishMode;              // 0=顺序 1=随机
-        private int _englishDict;              // 0=全部 1..4=分类 5=生词表
+        private int _englishDict;              // 0=初中词库 1=生词表
+        private EnglishWord[] _englishShuffled; // cached shuffle, so 随机 mode is stable (no per-frame flicker)
         private int _englishScore;
         private int _englishTotal;
         private EnglishWord[] _englishOptions;
@@ -3642,18 +3666,18 @@ namespace DshPet
             _englishTranslationText.rectTransform.anchoredPosition = new Vector2(18f, -248f);
             _englishTranslationText.rectTransform.sizeDelta = new Vector2(-36f, 40f);
 
-            // 会 / 不会 / 收藏（百词斩式标记）。
+            // 会 / 不会 / 收藏（百词斩式标记）。SetRect 的 y 是"离顶部的距离"，必须为正，负值会把按钮甩到面板外。
             _englishKnowBtn = DshMobile.Ugui.Button("Know", p, "会", 15, new Color(0.30f, 0.55f, 0.35f));
-            DshMobile.Ugui.SetRect(_englishKnowBtn.GetComponent<RectTransform>(), 18f, -296f, 96f, 36f);
+            DshMobile.Ugui.SetRect(_englishKnowBtn.GetComponent<RectTransform>(), 18f, 296f, 96f, 36f);
             _englishKnowLabel = _englishKnowBtn.GetComponentInChildren<UnityEngine.UI.Text>();
             _englishKnowBtn.onClick.AddListener(OnEnglishMarkLearned);
 
             _englishDontKnowBtn = DshMobile.Ugui.Button("DontKnow", p, "不会", 15, new Color(0.85f, 0.55f, 0.22f));
-            DshMobile.Ugui.SetRect(_englishDontKnowBtn.GetComponent<RectTransform>(), 122f, -296f, 96f, 36f);
+            DshMobile.Ugui.SetRect(_englishDontKnowBtn.GetComponent<RectTransform>(), 122f, 296f, 96f, 36f);
             _englishDontKnowBtn.onClick.AddListener(OnEnglishMarkUnlearned);
 
             _englishFavoriteBtn = DshMobile.Ugui.Button("Favorite", p, "☆ 收藏", 15, new Color(0.30f, 0.40f, 0.58f));
-            DshMobile.Ugui.SetRect(_englishFavoriteBtn.GetComponent<RectTransform>(), 226f, -296f, 130f, 36f);
+            DshMobile.Ugui.SetRect(_englishFavoriteBtn.GetComponent<RectTransform>(), 226f, 296f, 130f, 36f);
             _englishFavoriteLabel = _englishFavoriteBtn.GetComponentInChildren<UnityEngine.UI.Text>();
             _englishFavoriteBtn.onClick.AddListener(OnEnglishToggleFavorite);
 
@@ -3709,52 +3733,41 @@ namespace DshPet
         // ------------------------------------------------------------------ dictionary / mode
 
         private static string EnglishDictName(int dict)
-        {
-            switch (dict)
-            {
-                case 1: return "动物";
-                case 2: return "食物";
-                case 3: return "动作";
-                case 4: return "日常";
-                case 5: return "生词表";
-                default: return "全部";
-            }
-        }
+            => dict == 1 ? "生词表" : "初中词库";
 
-        /// <summary>The words of the current dictionary, ordered by the study mode (顺序 = table
-        /// order, 随机 = shuffled copy).</summary>
-        private EnglishWord[] CurrentEnglishWords()
+        /// <summary>The current dictionary's words in table order (no shuffle).</summary>
+        private EnglishWord[] BaseEnglishWords()
         {
-            List<EnglishWord> list;
-            if (_englishDict == 5)
+            if (_englishDict == 1)
             {
-                list = new List<EnglishWord>();
+                var list = new List<EnglishWord>();
                 foreach (string w in EnglishProgress.NewWordList())
                 {
                     var found = EnglishCorner.FindWord(w);
                     if (found != null) list.Add(found);
                 }
+                return list.ToArray();
             }
-            else if (_englishDict >= 1 && _englishDict <= 4)
-            {
-                list = new List<EnglishWord>(EnglishCorner.WordsInCategory(EnglishCorner.Categories[_englishDict - 1]));
-            }
-            else
-            {
-                list = new List<EnglishWord>(EnglishCorner.Words);
-            }
+            return EnglishCorner.Words;
+        }
 
-            if (_englishMode == 1 && list.Count > 1)
+        /// <summary>The words of the current dictionary, ordered by the study mode. 随机 shuffles
+        /// ONCE and caches the order — re-shuffling every frame made the word flash non-stop.</summary>
+        private EnglishWord[] CurrentEnglishWords()
+        {
+            var baseWords = BaseEnglishWords();
+            if (_englishMode == 0) return baseWords;
+
+            if (_englishShuffled == null || _englishShuffled.Length != baseWords.Length)
             {
-                var shuffled = new List<EnglishWord>(list);
-                for (int i = shuffled.Count - 1; i > 0; i--)
+                _englishShuffled = new List<EnglishWord>(baseWords).ToArray();
+                for (int i = _englishShuffled.Length - 1; i > 0; i--)
                 {
                     int j = _englishRng.Next(i + 1);
-                    var t = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = t;
+                    var t = _englishShuffled[i]; _englishShuffled[i] = _englishShuffled[j]; _englishShuffled[j] = t;
                 }
-                return shuffled.ToArray();
             }
-            return list.ToArray();
+            return _englishShuffled;
         }
 
         private EnglishWord CurrentEnglishWord()
@@ -3767,10 +3780,8 @@ namespace DshPet
 
         private void ResetEnglishIndex()
         {
-            var words = CurrentEnglishWords();
-            _englishIndex = _englishMode == 1
-                ? (words.Length > 0 ? _englishRng.Next(words.Length) : 0)
-                : 0;
+            _englishShuffled = null;   // dictionary / mode changed → rebuild the shuffle
+            _englishIndex = 0;
             if (_englishTab == 1) AskEnglishQuiz();
         }
 
@@ -3778,14 +3789,13 @@ namespace DshPet
         {
             var words = CurrentEnglishWords();
             if (words.Length == 0) return;
-            if (_englishMode == 1) _englishIndex = _englishRng.Next(words.Length);
-            else _englishIndex = ((_englishIndex + delta) % words.Length + words.Length) % words.Length;
+            _englishIndex = ((_englishIndex + delta) % words.Length + words.Length) % words.Length;
             if (_englishTab == 1) AskEnglishQuiz();
         }
 
         private void CycleEnglishDictionary()
         {
-            _englishDict = (_englishDict + 1) % 6;
+            _englishDict = (_englishDict + 1) % 2;   // 0=初中词库 1=生词表
             ResetEnglishIndex();
         }
 

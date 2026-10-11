@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **404/404 通过**（虚拟宠物 227 + 跑酷 15 + 手机端 56 + 小游戏 99，另有少量跨程序集计数），EditMode |
+| 测试 | **405/405 通过**（虚拟宠物 228 + 跑酷 15 + 手机端 56 + 小游戏 99，另有少量跨程序集计数），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -1162,6 +1162,12 @@
       但布局里它的热区是 124×50 的"胶囊条"，`ApplyDesignRect` 直接把这个矩形塞给圆形 Image，圆就被压成横椭圆，看起来
       又不像圆、又和下面的蓄力按钮挤在一起。修法：把聊天按钮热区改成和互动/蓄力一样的**正方形**（84×84），并留出间隙，
       再补一条"三按钮互不重叠"的单测。**给圆形控件做布局时，热区宽高要相等；不然圆的 Sprite 也会被拉扁。**
+178. **"随机"列表必须缓存一次洗牌顺序，别每帧重洗。** 英语角随机出词原来在 `CurrentEnglishWords()` 里每帧重新 shuffle，
+      "当前下标"每帧指向不同单词，UI 就闪个不停（还连带测验选项每帧变）。修法：洗牌结果缓存到字段，只在词典/模式变化时重建；
+      "下一个"改成在缓存的洗牌序里顺序走。**凡是"随机展示"，先把随机序固化一次，再用下标遍历，而不是每次取都重新随机。**
+179. **`SetRect(x, y, w, h)` 的 `y` 是"离顶部距离"，传负数会把控件甩到面板外。** 英语角「会/不会/收藏」三个按钮写成了
+      `SetRect(18, -296, ...)`，`anchoredPosition.y = -(-296) = +296`，正好跑到面板上方看不见——功能其实写好了，但按钮
+      不存在，玩家就以为"没有学会/生词表功能"。**凡是布局 helper 的参数，先确认它的坐标系和正负约定，别把"往下 296"写成 -296。**
 
 ## 八、一分钟速查
 

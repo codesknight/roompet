@@ -9,17 +9,17 @@ namespace DshPet.Tests
     public class EnglishCornerTests
     {
         [Test]
-        public void Words_AreCompleteAndUniqueByMeaning()
+        public void Words_AreCompleteAndUnique()
         {
-            Assert.Greater(EnglishCorner.WordCount, 30, "the vocabulary has to be big enough to quiz");
+            Assert.Greater(EnglishCorner.WordCount, 200, "the vocabulary has to be big enough to actually learn from");
 
-            var meanings = new System.Collections.Generic.HashSet<string>();
+            var words = new System.Collections.Generic.HashSet<string>();
             foreach (var w in EnglishCorner.Words)
             {
                 Assert.IsFalse(string.IsNullOrEmpty(w.Word), "every entry needs an English word");
                 Assert.IsFalse(string.IsNullOrEmpty(w.Meaning), "every entry needs a Chinese meaning");
                 Assert.IsFalse(string.IsNullOrEmpty(w.Example), "every entry needs an example to read out");
-                Assert.IsTrue(meanings.Add(w.Meaning), $"duplicate meaning: {w.Meaning}");
+                Assert.IsTrue(words.Add(w.Word), $"duplicate word: {w.Word}");
             }
         }
 
@@ -83,16 +83,10 @@ namespace DshPet.Tests
         }
 
         [Test]
-        public void WordsInCategoryAndFindWord_AgreeWithTheTable()
+        public void FindWord_LooksUpBySpelling()
         {
-            foreach (string category in EnglishCorner.Categories)
-            {
-                var words = EnglishCorner.WordsInCategory(category);
-                Assert.Greater(words.Length, 0, "each category has words");
-                foreach (var w in words) Assert.AreEqual(category, w.Category);
-            }
             Assert.AreEqual("cat", EnglishCorner.FindWord("cat").Word);
-            Assert.IsNull(EnglishCorner.FindWord("nonsense"));
+            Assert.IsNull(EnglishCorner.FindWord("nonsenseword"));
         }
 
         [Test]
@@ -159,6 +153,35 @@ namespace DshPet.Tests
             finally
             {
                 EnglishProgress.ResetAll();
+            }
+        }
+
+        [Test]
+        public void EnglishCornerAccess_UnlockSpendsCoinsOnce()
+        {
+            int original = DshMobile.PetWallet.Coins;
+            try
+            {
+                EnglishCornerAccess.ResetAll();
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(EnglishCornerAccess.Cost - 1);
+                string msg;
+                Assert.IsFalse(EnglishCornerAccess.TryUnlock(out msg), "cannot afford");
+                Assert.IsTrue(msg.Contains("还差"), "it says how much is missing");
+
+                DshMobile.PetWallet.Add(1);
+                Assert.IsTrue(EnglishCornerAccess.TryUnlock(out msg));
+                Assert.IsTrue(EnglishCornerAccess.IsUnlocked);
+                Assert.AreEqual(0, DshMobile.PetWallet.Coins, "the unlock spends the cost");
+
+                Assert.IsTrue(EnglishCornerAccess.TryUnlock(out msg), "already unlocked is a success no-op");
+                Assert.AreEqual(0, DshMobile.PetWallet.Coins, "no double charge");
+            }
+            finally
+            {
+                EnglishCornerAccess.ResetAll();
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(original);
             }
         }
     }

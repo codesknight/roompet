@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace DshPet
 {
@@ -2003,6 +2004,18 @@ namespace DshPet
             {
                 LastError = "场景 " + game.SceneName + " 不在 Build Settings 里";
             }
+        }
+
+        /// <summary>Enters the English corner scene (unlocked with pet coins), flushing pet state first.</summary>
+        public void LaunchEnglishCorner()
+        {
+            DoorPromptOpen = false;
+            Memory.AddPet("（去英语角学英语了）");
+            Journal.Add(MemoryKind.Play, "去英语角学英语", "", 0.6f);
+            FlushToDisk();
+            PlayerPrefs.SetInt("dshpet.away", 1);
+            PlayerPrefs.Save();
+            SceneManager.LoadScene("EnglishCorner");
         }
 
         /// <summary>
