@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **408/408 通过**（虚拟宠物 230 + 跑酷 15 + 手机端 56 + 小游戏 100，另有少量跨程序集计数），EditMode |
+| 测试 | **412/412 通过**（虚拟宠物 234 + 跑酷 15 + 手机端 56 + 小游戏 100，另有少量跨程序集计数），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -1182,6 +1182,11 @@
       于是同一根手指既拖了滑杆、又拖了篮子。修法：手动 `EventSystem.RaycastAll`（`PointerEventData.position` 用底左原点屏幕坐标，
       自建触控层给的是顶左原点，要先翻 Y）。**拖拽玩法里给 uGUI 控件做"挡手指"判断，别用无参的 IsPointerOverGameObject。**
 
+183. **"分词典"不是事后查字典，是生成时就给每个词打上等级标签。** 英语角原来只有一份"初中+高中"合并词表，用户问"高中和大学的呢"——
+      分不开，因为数据里根本没有等级字段。修法：重新从 KyleBing 源 jsonl 生成，逐词打 `Category`（初中 / 高中 / 大学，大学 = 四级 + 六级），
+      跨源去重按"先到先得"（初中 > 高中 > 大学），`WordsForCategory` 做成缓存过滤；生成脚本 `scripts/gen_english_words.js` 进仓库保可复现。
+      **凡是"同一份数据要按维度切分"，切分键必须在生成时落进数据，而不是事后反推。**
+
 ## 八、一分钟速查
 
 ```powershell
@@ -1226,7 +1231,10 @@ Tools/DSH Mobile/Preview/Report Current Viewport    # 打印当前视口 / 方�
 Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
-EditMode，期望 408/408
+EditMode，期望 412/412
+
+# 重新生成英语角词库（改词库等级/来源后）
+node scripts/gen_english_words.js
 
 # 存档
 %USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\

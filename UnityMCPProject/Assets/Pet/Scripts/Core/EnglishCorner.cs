@@ -59,8 +59,13 @@ namespace DshPet
             new EnglishScenario { Name = "谈爱好", DefaultPrompt =
                 "现在和主人做「谈爱好」的情景对话。全程用英语聊兴趣爱好：问主人喜欢做什么，说说你自己的爱好（画画、唱歌、运动），再问问主人周末怎么过。句子简短适合初学者，每句英文后面附一句中文解释；主人说错了就温柔纠正再示范。" },
             new EnglishScenario { Name = "看病", DefaultPrompt =
-                "现在和主人做「看病」的情景对话，你是医生，主人来看病。全程用英语：问主人哪里不舒服，问几句症状（头疼、发烧、咳嗽），给出建议（多喝水、多休息），最后叮嘱按时吃药。句子简短适合初学者，每句英文后面附一句中文解释；主人说错了就温柔纠正再示范。" }
+                "现在和主人做「看病」的情景对话，你是医生，主人来看病。全程用英语：问主人哪里不舒服，问几句症状（头疼、发烧、咳嗽），给出建议（多喝水、多休息），最后叮嘱按时吃药。句子简短适合初学者，每句英文后面附一句中文解释；主人说错了就温柔纠正再示范。" },
+            new EnglishScenario { Name = "自定义情景", DefaultPrompt =
+                "现在和主人做一段英语情景对话，具体情景由主人来定（主人会在下面写清楚想练什么：面试、旅游、医院、机场、点外卖……以及各自扮演谁）。你按主人写的场景和角色来，全程用英语，句子简短适合初学者，每句英文后面附一句中文解释；主人说错了就温柔纠正再示范。" }
         };
+
+        /// <summary>The index of the 自定义情景 in <see cref="Scenarios"/>.</summary>
+        public static int CustomScenarioIndex => Scenarios.Length - 1;
 
         /// <summary>The default prompt for a scenario, or "" when the index is out of range.</summary>
         public static string ScenarioPrompt(int index)
@@ -116,6 +121,57 @@ namespace DshPet
 
         /// <summary>Picks a random word index, for "next word" and quiz seeding.</summary>
         public static int RandomIndex(System.Random rng) => rng.Next(WordCount);
+
+        // ------------------------------------------------------------------ dictionaries & search
+
+        private static readonly Dictionary<string, EnglishWord[]> _categoryCache = new Dictionary<string, EnglishWord[]>();
+
+        /// <summary>
+        /// The words in one level's dictionary (Category == "初中" / "高中" / "大学"). Cached because
+        /// the word list is a few thousand entries and the UI asks for it every frame.
+        /// </summary>
+        public static EnglishWord[] WordsForCategory(string category)
+        {
+            if (string.IsNullOrEmpty(category)) return Words;
+
+            EnglishWord[] cached;
+            if (_categoryCache.TryGetValue(category, out cached)) return cached;
+
+            var list = new List<EnglishWord>();
+            foreach (var w in Words)
+            {
+                if (w.Category == category) list.Add(w);
+            }
+            cached = list.ToArray();
+            _categoryCache[category] = cached;
+            return cached;
+        }
+
+        /// <summary>How many words a level's dictionary holds.</summary>
+        public static int CategoryCount(string category) => WordsForCategory(category).Length;
+
+        /// <summary>
+        /// 词语检索: matches a word by its English spelling OR by a Chinese substring in its meaning.
+        /// The English side is case-insensitive; results keep dictionary order (alphabetical) so a
+        /// prefix like "cat" returns cat, catarrh, catch… in a stable list.
+        /// </summary>
+        public static EnglishWord[] Search(string query, int maxResults = 120)
+        {
+            if (string.IsNullOrWhiteSpace(query)) return new EnglishWord[0];
+            string q = query.Trim();
+            string lower = q.ToLowerInvariant();
+
+            var list = new List<EnglishWord>();
+            foreach (var w in Words)
+            {
+                if (w.Word.ToLowerInvariant().Contains(lower) || w.Meaning.Contains(q))
+                {
+                    list.Add(w);
+                    if (list.Count >= maxResults) break;
+                }
+            }
+            return list.ToArray();
+        }
 
         private static void Shuffle<T>(List<T> list, System.Random rng)
         {

@@ -221,5 +221,68 @@ namespace DshPet.Tests
             Assert.IsFalse(string.IsNullOrEmpty(EnglishCorner.ScenarioPrompt(0)));
             Assert.AreEqual("", EnglishCorner.ScenarioPrompt(999), "out of range returns empty");
         }
+
+        [Test]
+        public void Scenarios_HaveACustomScenarioAsTheLastOne()
+        {
+            // 反馈: 新增一个"其他情景"，玩家可自主定义场景对话。
+            Assert.GreaterOrEqual(EnglishCorner.Scenarios.Length, 7, "six fixed scenarios plus 自定义");
+            Assert.AreEqual(EnglishCorner.Scenarios.Length - 1, EnglishCorner.CustomScenarioIndex);
+            Assert.IsFalse(string.IsNullOrEmpty(EnglishCorner.Scenarios[EnglishCorner.CustomScenarioIndex].Name),
+                "the custom scenario needs a name");
+        }
+
+        [Test]
+        public void Dictionaries_HaveJuniorSeniorAndCollegeWords()
+        {
+            // 反馈: 词典只有一个初中，高中和大学的呢？
+            string[] levels = { "初中", "高中", "大学" };
+            foreach (string level in levels)
+            {
+                var words = EnglishCorner.WordsForCategory(level);
+                Assert.Greater(words.Length, 200, level + " dictionary has to be a real word list");
+
+                foreach (var w in words)
+                {
+                    Assert.AreEqual(level, w.Category, "every word in the " + level + " list must be tagged " + level);
+                }
+            }
+        }
+
+        [Test]
+        public void Search_FindsByEnglishAndChinese()
+        {
+            Assert.Greater(EnglishCorner.Search("cat").Length, 0, "an English spelling finds the word");
+            Assert.IsTrue(ContainsWord(EnglishCorner.Search("cat"), "cat"));
+
+            // 中文释义也能反查（"猫" matches the meaning of "cat"）。
+            Assert.IsTrue(ContainsWord(EnglishCorner.Search("猫"), "cat"), "a Chinese meaning finds the word");
+
+            Assert.AreEqual(0, EnglishCorner.Search("").Length, "an empty query finds nothing");
+            Assert.AreEqual(0, EnglishCorner.Search("zzzzzzqq").Length, "gibberish finds nothing");
+        }
+
+        [Test]
+        public void Search_ReturnsAUniqueListWhenAmbiguous()
+        {
+            // "ab" is a shared prefix (abandon / ability / able / about …), so it must return several.
+            var results = EnglishCorner.Search("ab", 50);
+            Assert.GreaterOrEqual(results.Length, 3, "an ambiguous prefix returns multiple cards");
+
+            var seen = new System.Collections.Generic.HashSet<string>();
+            foreach (var w in results)
+            {
+                Assert.IsTrue(seen.Add(w.Word), "search results must not duplicate: " + w.Word);
+            }
+        }
+
+        private static bool ContainsWord(EnglishWord[] words, string word)
+        {
+            foreach (var w in words)
+            {
+                if (w.Word == word) return true;
+            }
+            return false;
+        }
     }
 }
