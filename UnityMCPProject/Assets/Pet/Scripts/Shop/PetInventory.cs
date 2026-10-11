@@ -122,6 +122,14 @@ namespace DshPet
             return true;
         }
 
+        /// <summary>Spends one bottle of water, or fails and leaves the warehouse alone.</summary>
+        public static bool TryConsumeWater()
+        {
+            if (Count("water") <= 0) return false;
+            SetCount("water", Count("water") - 1);
+            return true;
+        }
+
         /// <summary>True when the player holds at least one of a food item.</summary>
         public static bool Has(string id) => Count(id) > 0;
 

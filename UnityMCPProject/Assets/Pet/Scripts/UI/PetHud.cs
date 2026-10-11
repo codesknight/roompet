@@ -1273,8 +1273,11 @@ namespace DshPet
                 new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.UpperLeft);
             _headerSummary.horizontalOverflow = HorizontalWrapMode.Wrap;
 
-            // Rename field for the primary pet.
+            // Rename field for the primary pet. The uGUI migration dropped the "改名" button, so
+            // the field never committed its text — wire onEndEdit so finishing the edit renames.
             _renameField = DshMobile.Ugui.InputField("Rename", p);
+            _renameField.characterLimit = PetGameManager.MaxPetNameLength;
+            _renameField.onEndEdit.AddListener(OnRenameEndEdit);
 
             // Detail scroll.
             var viewport = new GameObject("Viewport", typeof(RectTransform));
@@ -2442,6 +2445,16 @@ namespace DshPet
             _builtCollectionTab = -1;
         }
 
+        /// <summary>Commits the rename field when the player finishes editing the primary pet's name.</summary>
+        private void OnRenameEndEdit(string value)
+        {
+            var gm = PetGameManager.Instance;
+            if (gm == null) return;
+            gm.RenamePet(value);
+            _editPetName = gm.PetName;
+            if (_renameField != null && !_renameField.isFocused) _renameField.text = gm.PetName;
+        }
+
         private void SyncCollectionPanel()
         {
             var gm = PetGameManager.Instance;
@@ -3535,7 +3548,9 @@ namespace DshPet
 
         private bool _showEnglish;
         private int _englishTab;               // 0=背单词 1=测验 2=口语
-        private int _englishIndex;
+        private int _englishIndex;             // index into the CURRENT dictionary list
+        private int _englishMode;              // 0=顺序 1=随机
+        private int _englishDict;              // 0=全部 1..4=分类 5=生词表
         private int _englishScore;
         private int _englishTotal;
         private EnglishWord[] _englishOptions;
@@ -3547,7 +3562,18 @@ namespace DshPet
         private UnityEngine.UI.Text _englishWordText;
         private UnityEngine.UI.Text _englishMeaningText;
         private UnityEngine.UI.Text _englishExampleText;
+        private UnityEngine.UI.Text _englishTranslationText;
         private UnityEngine.UI.Text _englishStatusText;
+        private UnityEngine.UI.Text _englishProgressText;
+        private UnityEngine.UI.Button _englishOrderBtn;
+        private UnityEngine.UI.Text _englishOrderLabel;
+        private UnityEngine.UI.Button _englishDictBtn;
+        private UnityEngine.UI.Text _englishDictLabel;
+        private UnityEngine.UI.Button _englishKnowBtn;
+        private UnityEngine.UI.Text _englishKnowLabel;
+        private UnityEngine.UI.Button _englishDontKnowBtn;
+        private UnityEngine.UI.Button _englishFavoriteBtn;
+        private UnityEngine.UI.Text _englishFavoriteLabel;
         private readonly List<UnityEngine.UI.Text> _englishTabLabels = new List<UnityEngine.UI.Text>();
         private readonly List<UnityEngine.UI.Button> _englishOptionButtons = new List<UnityEngine.UI.Button>();
         private UnityEngine.UI.Button _englishPrevBtn;
@@ -3579,31 +3605,64 @@ namespace DshPet
                 tab.onClick.AddListener(() => SetEnglishTab(captured));
             }
 
+            // 词典选择 + 顺序/随机 模式，都写在按钮上（"标注当前词典"）。
+            _englishDictBtn = DshMobile.Ugui.Button("Dict", p, "", 14, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRect(_englishDictBtn.GetComponent<RectTransform>(), 18f, 88f, 320f, 32f);
+            _englishDictLabel = _englishDictBtn.GetComponentInChildren<UnityEngine.UI.Text>();
+            _englishDictBtn.onClick.AddListener(CycleEnglishDictionary);
+
+            _englishOrderBtn = DshMobile.Ugui.Button("Mode", p, "", 14, new Color(0.55f, 0.40f, 0.78f));
+            DshMobile.Ugui.SetRectRight(_englishOrderBtn.GetComponent<RectTransform>(), 18f, 88f, 130f, 32f);
+            _englishOrderLabel = _englishOrderBtn.GetComponentInChildren<UnityEngine.UI.Text>();
+            _englishOrderBtn.onClick.AddListener(() => { _englishMode = 1 - _englishMode; ResetEnglishIndex(); });
+
             _englishWordText = DshMobile.Ugui.Text("Word", p, "", 30, Color.white, UnityEngine.TextAnchor.MiddleCenter, true);
             _englishWordText.rectTransform.anchorMin = _englishWordText.rectTransform.anchorMax = new Vector2(0f, 1f);
             _englishWordText.rectTransform.pivot = new Vector2(0f, 1f);
-            _englishWordText.rectTransform.anchoredPosition = new Vector2(18f, -96f);
+            _englishWordText.rectTransform.anchoredPosition = new Vector2(18f, -128f);
             _englishWordText.rectTransform.sizeDelta = new Vector2(-36f, 40f);
 
             _englishMeaningText = DshMobile.Ugui.Text("Meaning", p, "", 20, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleCenter);
             _englishMeaningText.rectTransform.anchorMin = _englishMeaningText.rectTransform.anchorMax = new Vector2(0f, 1f);
             _englishMeaningText.rectTransform.pivot = new Vector2(0f, 1f);
-            _englishMeaningText.rectTransform.anchoredPosition = new Vector2(18f, -144f);
+            _englishMeaningText.rectTransform.anchoredPosition = new Vector2(18f, -168f);
             _englishMeaningText.rectTransform.sizeDelta = new Vector2(-36f, 30f);
 
             _englishExampleText = DshMobile.Ugui.Text("Example", p, "", 16, new Color(0.7f, 0.82f, 0.95f), UnityEngine.TextAnchor.UpperLeft);
             _englishExampleText.horizontalOverflow = HorizontalWrapMode.Wrap;
             _englishExampleText.rectTransform.anchorMin = _englishExampleText.rectTransform.anchorMax = new Vector2(0f, 1f);
             _englishExampleText.rectTransform.pivot = new Vector2(0f, 1f);
-            _englishExampleText.rectTransform.anchoredPosition = new Vector2(18f, -184f);
-            _englishExampleText.rectTransform.sizeDelta = new Vector2(-36f, 60f);
+            _englishExampleText.rectTransform.anchoredPosition = new Vector2(18f, -204f);
+            _englishExampleText.rectTransform.sizeDelta = new Vector2(-36f, 40f);
+
+            _englishTranslationText = DshMobile.Ugui.Text("Translation", p, "", 15, new Color(0.90f, 0.88f, 0.80f), UnityEngine.TextAnchor.UpperLeft);
+            _englishTranslationText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            _englishTranslationText.rectTransform.anchorMin = _englishTranslationText.rectTransform.anchorMax = new Vector2(0f, 1f);
+            _englishTranslationText.rectTransform.pivot = new Vector2(0f, 1f);
+            _englishTranslationText.rectTransform.anchoredPosition = new Vector2(18f, -248f);
+            _englishTranslationText.rectTransform.sizeDelta = new Vector2(-36f, 40f);
+
+            // 会 / 不会 / 收藏（百词斩式标记）。
+            _englishKnowBtn = DshMobile.Ugui.Button("Know", p, "会", 15, new Color(0.30f, 0.55f, 0.35f));
+            DshMobile.Ugui.SetRect(_englishKnowBtn.GetComponent<RectTransform>(), 18f, -296f, 96f, 36f);
+            _englishKnowLabel = _englishKnowBtn.GetComponentInChildren<UnityEngine.UI.Text>();
+            _englishKnowBtn.onClick.AddListener(OnEnglishMarkLearned);
+
+            _englishDontKnowBtn = DshMobile.Ugui.Button("DontKnow", p, "不会", 15, new Color(0.85f, 0.55f, 0.22f));
+            DshMobile.Ugui.SetRect(_englishDontKnowBtn.GetComponent<RectTransform>(), 122f, -296f, 96f, 36f);
+            _englishDontKnowBtn.onClick.AddListener(OnEnglishMarkUnlearned);
+
+            _englishFavoriteBtn = DshMobile.Ugui.Button("Favorite", p, "☆ 收藏", 15, new Color(0.30f, 0.40f, 0.58f));
+            DshMobile.Ugui.SetRect(_englishFavoriteBtn.GetComponent<RectTransform>(), 226f, -296f, 130f, 36f);
+            _englishFavoriteLabel = _englishFavoriteBtn.GetComponentInChildren<UnityEngine.UI.Text>();
+            _englishFavoriteBtn.onClick.AddListener(OnEnglishToggleFavorite);
 
             for (int i = 0; i < 4; i++)
             {
                 var opt = DshMobile.Ugui.Button("Opt" + i, p, "", 15, new Color(0.28f, 0.36f, 0.55f));
                 opt.GetComponent<RectTransform>().anchorMin = opt.GetComponent<RectTransform>().anchorMax = new Vector2(0f, 1f);
                 opt.GetComponent<RectTransform>().pivot = new Vector2(0f, 1f);
-                opt.GetComponent<RectTransform>().anchoredPosition = new Vector2(18f, -(252f + i * 48f));
+                opt.GetComponent<RectTransform>().anchoredPosition = new Vector2(18f, -(204f + i * 48f));
                 opt.GetComponent<RectTransform>().sizeDelta = new Vector2(-36f, 42f);
                 int captured = i;
                 opt.onClick.AddListener(() => OnEnglishOption(captured));
@@ -3612,18 +3671,18 @@ namespace DshPet
 
             _englishPrevBtn = DshMobile.Ugui.Button("Prev", p, "上一个", 16, new Color(0.30f, 0.40f, 0.58f));
             DshMobile.Ugui.SetRectBottomLeft(_englishPrevBtn.GetComponent<RectTransform>(), 18f, 48f, 120f, 36f);
-            _englishPrevBtn.onClick.AddListener(() => { _englishIndex = (_englishIndex - 1 + EnglishCorner.WordCount) % EnglishCorner.WordCount; });
+            _englishPrevBtn.onClick.AddListener(() => StepEnglishIndex(-1));
 
             _englishNextBtn = DshMobile.Ugui.Button("Next", p, "下一个", 16, new Color(0.30f, 0.55f, 0.35f));
             DshMobile.Ugui.SetRectBottomLeft(_englishNextBtn.GetComponent<RectTransform>(), 148f, 48f, 120f, 36f);
-            _englishNextBtn.onClick.AddListener(() => { _englishIndex = (_englishIndex + 1) % EnglishCorner.WordCount; if (_englishTab == 1) AskEnglishQuiz(); });
+            _englishNextBtn.onClick.AddListener(() => StepEnglishIndex(1));
 
             _englishSpeakBtn = DshMobile.Ugui.Button("Speak", p, "🔊 朗读", 16, new Color(0.30f, 0.55f, 0.35f));
             DshMobile.Ugui.SetRectBottomLeft(_englishSpeakBtn.GetComponent<RectTransform>(), 278f, 48f, 120f, 36f);
             _englishSpeakBtn.onClick.AddListener(EnglishSpeak);
 
             _englishStatusText = DshMobile.Ugui.Text("Status", p, "", 15, new Color(0.7f, 0.95f, 0.75f), UnityEngine.TextAnchor.MiddleLeft);
-            DshMobile.Ugui.SetRectBottomLeft(_englishStatusText.rectTransform, 18f, 8f, 300f, 30f);
+            DshMobile.Ugui.SetRectBottomLeft(_englishStatusText.rectTransform, 18f, 8f, 380f, 30f);
 
             var chat = DshMobile.Ugui.Button("Chat", p, "和宠物英文聊天", 16, new Color(0.80f, 0.42f, 0.22f));
             DshMobile.Ugui.SetRectBottomRight(chat.GetComponent<RectTransform>(), 18f, 8f, 190f, 36f);
@@ -3634,10 +3693,10 @@ namespace DshPet
         {
             _showEnglish = !_showEnglish;
             if (!_showEnglish) return;
-            _englishIndex = EnglishCorner.RandomIndex(_englishRng);
             _englishScore = 0;
             _englishTotal = 0;
             _englishFeedback = "先背几个单词，再来测一测。";
+            ResetEnglishIndex();
             SetEnglishTab(0);
         }
 
@@ -3647,12 +3706,130 @@ namespace DshPet
             if (tab == 1) AskEnglishQuiz();
         }
 
+        // ------------------------------------------------------------------ dictionary / mode
+
+        private static string EnglishDictName(int dict)
+        {
+            switch (dict)
+            {
+                case 1: return "动物";
+                case 2: return "食物";
+                case 3: return "动作";
+                case 4: return "日常";
+                case 5: return "生词表";
+                default: return "全部";
+            }
+        }
+
+        /// <summary>The words of the current dictionary, ordered by the study mode (顺序 = table
+        /// order, 随机 = shuffled copy).</summary>
+        private EnglishWord[] CurrentEnglishWords()
+        {
+            List<EnglishWord> list;
+            if (_englishDict == 5)
+            {
+                list = new List<EnglishWord>();
+                foreach (string w in EnglishProgress.NewWordList())
+                {
+                    var found = EnglishCorner.FindWord(w);
+                    if (found != null) list.Add(found);
+                }
+            }
+            else if (_englishDict >= 1 && _englishDict <= 4)
+            {
+                list = new List<EnglishWord>(EnglishCorner.WordsInCategory(EnglishCorner.Categories[_englishDict - 1]));
+            }
+            else
+            {
+                list = new List<EnglishWord>(EnglishCorner.Words);
+            }
+
+            if (_englishMode == 1 && list.Count > 1)
+            {
+                var shuffled = new List<EnglishWord>(list);
+                for (int i = shuffled.Count - 1; i > 0; i--)
+                {
+                    int j = _englishRng.Next(i + 1);
+                    var t = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = t;
+                }
+                return shuffled.ToArray();
+            }
+            return list.ToArray();
+        }
+
+        private EnglishWord CurrentEnglishWord()
+        {
+            var words = CurrentEnglishWords();
+            if (words.Length == 0) return EnglishCorner.Words[0];
+            int i = ((_englishIndex % words.Length) + words.Length) % words.Length;
+            return words[i];
+        }
+
+        private void ResetEnglishIndex()
+        {
+            var words = CurrentEnglishWords();
+            _englishIndex = _englishMode == 1
+                ? (words.Length > 0 ? _englishRng.Next(words.Length) : 0)
+                : 0;
+            if (_englishTab == 1) AskEnglishQuiz();
+        }
+
+        private void StepEnglishIndex(int delta)
+        {
+            var words = CurrentEnglishWords();
+            if (words.Length == 0) return;
+            if (_englishMode == 1) _englishIndex = _englishRng.Next(words.Length);
+            else _englishIndex = ((_englishIndex + delta) % words.Length + words.Length) % words.Length;
+            if (_englishTab == 1) AskEnglishQuiz();
+        }
+
+        private void CycleEnglishDictionary()
+        {
+            _englishDict = (_englishDict + 1) % 6;
+            ResetEnglishIndex();
+        }
+
+        // ------------------------------------------------------------------ 百词斩 marking
+
+        private void OnEnglishMarkLearned()
+        {
+            var word = CurrentEnglishWord();
+            if (EnglishProgress.MarkLearned(word.Word))
+            {
+                _englishFeedback = $"学会了「{word.Word}」，+{EnglishProgress.CoinPerWord} 宠物币";
+                SetToast(_englishFeedback);
+            }
+            else
+            {
+                _englishFeedback = $"「{word.Word}」已经会了";
+            }
+            StepEnglishIndex(1);
+        }
+
+        private void OnEnglishMarkUnlearned()
+        {
+            var word = CurrentEnglishWord();
+            EnglishProgress.MarkUnlearned(word.Word);
+            _englishFeedback = $"「{word.Word}」加进了生词表，多复习几遍";
+            StepEnglishIndex(1);
+        }
+
+        private void OnEnglishToggleFavorite()
+        {
+            var word = CurrentEnglishWord();
+            bool added = EnglishProgress.ToggleFavorite(word.Word);
+            _englishFeedback = added ? $"已收藏「{word.Word}」" : $"取消了「{word.Word}」的收藏";
+        }
+
+        // ------------------------------------------------------------------ quiz / speak
+
         private void AskEnglishQuiz()
         {
-            _englishOptions = EnglishCorner.QuizOptions(_englishIndex, _englishRng, 4);
+            var answer = CurrentEnglishWord();
+            _englishOptions = EnglishCorner.QuizOptionsFor(answer, _englishRng, 4);
             _englishAnswerIndex = -1;
             for (int i = 0; i < _englishOptions.Length; i++)
-                if (_englishOptions[i].Meaning == EnglishCorner.WordAt(_englishIndex).Meaning) _englishAnswerIndex = i;
+                if (_englishOptions[i].Meaning == answer.Meaning) _englishAnswerIndex = i;
             _englishFeedback = "";
         }
 
@@ -3667,15 +3844,14 @@ namespace DshPet
             }
             else
             {
-                _englishFeedback = "✗ 答案是「" + EnglishCorner.WordAt(_englishIndex).Meaning + "」";
+                _englishFeedback = "✗ 答案是「" + CurrentEnglishWord().Meaning + "」";
             }
-            _englishIndex = EnglishCorner.RandomIndex(_englishRng);
-            AskEnglishQuiz();
+            StepEnglishIndex(1);
         }
 
         private void EnglishSpeak()
         {
-            var w = EnglishCorner.WordAt(_englishIndex);
+            var w = CurrentEnglishWord();
             DshMobile.MobileTts.Speak(w.Example, 1f, 1f);
         }
 
@@ -3707,13 +3883,12 @@ namespace DshPet
             _englishPanel.rectTransform.anchoredPosition = Vector2.zero;
             _englishPanel.rectTransform.sizeDelta = new Vector2(w, h);
 
-            // The word/meaning/example/option rects were built with a negative width (-36): a
-            // rect whose anchorMin == anchorMax treats sizeDelta as its literal size, so a negative
-            // width made the word invisible. Fix the width here now that the panel width is known.
+            // The text rects were built with a negative width (-36); fix them now that w is known.
             float contentW = Mathf.Max(200f, w - 36f);
             _englishWordText.rectTransform.sizeDelta = new Vector2(contentW, 40f);
             _englishMeaningText.rectTransform.sizeDelta = new Vector2(contentW, 30f);
-            _englishExampleText.rectTransform.sizeDelta = new Vector2(contentW, 60f);
+            _englishExampleText.rectTransform.sizeDelta = new Vector2(contentW, 40f);
+            _englishTranslationText.rectTransform.sizeDelta = new Vector2(contentW, 40f);
             for (int i = 0; i < _englishOptionButtons.Count; i++)
                 _englishOptionButtons[i].GetComponent<RectTransform>().sizeDelta = new Vector2(contentW, 42f);
 
@@ -3724,19 +3899,35 @@ namespace DshPet
                     i == _englishTab ? new Color(0.36f, 0.66f, 0.44f, 0.6f) : new Color(0.24f, 0.26f, 0.34f, 0.6f);
             }
 
-            var word = EnglishCorner.WordAt(_englishIndex);
+            var word = CurrentEnglishWord();
 
             bool quiz = _englishTab == 1;
-            bool speak = _englishTab == 2;
+            bool learn = _englishTab == 0;
 
             _englishWordText.text = word.Word;
             _englishMeaningText.text = word.Meaning;
             _englishExampleText.text = word.Example;
-            _englishStatusText.text = quiz
-                ? $"答对 {_englishScore}/{_englishTotal}　{_englishFeedback}"
-                : _englishFeedback;
+            _englishTranslationText.text = word.ExampleTranslation;
 
-            // Option buttons only exist for the quiz; learn/speak show the nav buttons instead.
+            _englishDictLabel.text = "词典：" + EnglishDictName(_englishDict) + "（" + CurrentEnglishWords().Length + " 词）";
+            _englishOrderLabel.text = _englishMode == 0 ? "顺序" : "随机";
+
+            // 会 / 不会 / 收藏 belong to the 背单词 tab; the quiz shows its four options instead.
+            _englishKnowBtn.gameObject.SetActive(learn);
+            _englishDontKnowBtn.gameObject.SetActive(learn);
+            _englishFavoriteBtn.gameObject.SetActive(learn);
+            _englishTranslationText.gameObject.SetActive(!quiz);
+            _englishExampleText.gameObject.SetActive(!quiz);
+
+            if (learn)
+            {
+                _englishKnowLabel.text = EnglishProgress.IsLearned(word.Word) ? "✓ 会" : "会";
+                _englishFavoriteLabel.text = EnglishProgress.IsFavorite(word.Word) ? "★ 已收藏" : "☆ 收藏";
+            }
+
+            _englishStatusText.text =
+                $"已会 {EnglishProgress.LearnedCount} · 生词 {EnglishProgress.NewWordCount} · 收藏 {EnglishProgress.FavoriteCount}　{_englishFeedback}";
+
             for (int i = 0; i < _englishOptionButtons.Count; i++)
             {
                 var btn = _englishOptionButtons[i];

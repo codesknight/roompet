@@ -33,7 +33,6 @@ namespace DshMiniGames
         private Text _generatingLine;
 
         private GameObject _readyPanel;
-        private Text _readyLine1;
 
         private GameObject _resultPanel;
         private Text _resultTitle;
@@ -47,7 +46,6 @@ namespace DshMiniGames
         private Text _pausedLine1;
 
         private bool _built;
-        private float _aimStartedAt = -1f;
 
         private static readonly Color Gold = new Color(1f, 0.97f, 0.82f);
         private static readonly Color Cream = new Color(1f, 0.98f, 0.9f);
@@ -152,9 +150,6 @@ namespace DshMiniGames
                 TextAnchor.MiddleCenter, true);
             DshMobile.Ugui.SetRect(title.rectTransform, 18f, 10f, 464f, 30f);
 
-            _readyLine1 = DshMobile.Ugui.Text("Line1", go.transform, "", 15, White, TextAnchor.MiddleCenter);
-            DshMobile.Ugui.SetRect(_readyLine1.rectTransform, 18f, 44f, 464f, 24f);
-
             var line2 = DshMobile.Ugui.Text("Line2", go.transform,
                 "每一关都是随机搭的，但都验证过一定打得通。", 15, White, TextAnchor.MiddleCenter);
             DshMobile.Ugui.SetRect(line2.rectTransform, 18f, 70f, 464f, 24f);
@@ -254,35 +249,17 @@ namespace DshMiniGames
 
             bool generating = _game.Generating;
             bool paused = _game.Paused;
-            // The level intro auto-dismisses: it stays through the Ready phase, then for ~2.5s of
-            // Aiming, so the player gets a look at the level instead of having the panel sit there
-            // until launch. It shows only for the FIRST bird of a level — once a bird has been
-            // launched, the ready panel would otherwise come back between every shot and sit over
-            // the sling.
-            if (_game.State == AngryBirdsGame.Phase.Aiming && _aimStartedAt < 0f) _aimStartedAt = Time.unscaledTime;
-            if (_game.State != AngryBirdsGame.Phase.Aiming) _aimStartedAt = -1f;
-            bool firstBird = level != null && _game.BirdsLeft >= level.Birds;
-            bool introActive = firstBird && (
-                _game.State == AngryBirdsGame.Phase.Ready ||
-                (_game.State == AngryBirdsGame.Phase.Aiming && Time.unscaledTime - _aimStartedAt < 2.5f));
-            bool ready = !generating && !paused && introActive;
             bool result = !generating && !paused && (_game.State == AngryBirdsGame.Phase.Cleared || _game.State == AngryBirdsGame.Phase.Failed);
 
             _generatingPanel.SetActive(generating);
-            _readyPanel.SetActive(ready);
+            // The level intro never shows: it sat over the sling and the player asked for it gone.
+            _readyPanel.SetActive(false);
             _resultPanel.SetActive(result);
             _pausedPanel.SetActive(paused);
 
             if (generating)
             {
                 _generatingLine.text = "正在搭关卡并验证…（第 " + Mathf.Max(1, _game.GenerationAttempt) + " 次尝试）";
-            }
-
-            if (ready && level != null)
-            {
-                var title = _readyPanel.transform.Find("Title").GetComponent<Text>();
-                title.text = "第 " + _game.Stage + " 关";
-                _readyLine1.text = BirdLevels.Blurb(level);
             }
 
             if (result)

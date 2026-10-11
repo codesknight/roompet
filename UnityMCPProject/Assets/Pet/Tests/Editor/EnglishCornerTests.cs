@@ -71,5 +71,95 @@ namespace DshPet.Tests
                 Assert.AreEqual(1, matches, "exactly one option is the answer");
             }
         }
+
+        [Test]
+        public void Words_EveryExampleHasATranslation()
+        {
+            foreach (var w in EnglishCorner.Words)
+            {
+                Assert.IsFalse(string.IsNullOrEmpty(w.ExampleTranslation),
+                    $"word {w.Word} needs a Chinese translation of its example");
+            }
+        }
+
+        [Test]
+        public void WordsInCategoryAndFindWord_AgreeWithTheTable()
+        {
+            foreach (string category in EnglishCorner.Categories)
+            {
+                var words = EnglishCorner.WordsInCategory(category);
+                Assert.Greater(words.Length, 0, "each category has words");
+                foreach (var w in words) Assert.AreEqual(category, w.Category);
+            }
+            Assert.AreEqual("cat", EnglishCorner.FindWord("cat").Word);
+            Assert.IsNull(EnglishCorner.FindWord("nonsense"));
+        }
+
+        [Test]
+        public void Progress_MarkLearnedPaysOnceAndOnlyOnce()
+        {
+            int original = DshMobile.PetWallet.Coins;
+            try
+            {
+                EnglishProgress.ResetAll();
+                DshMobile.PetWallet.Reset();
+
+                Assert.IsTrue(EnglishProgress.MarkLearned("cat"), "first time learning pays");
+                Assert.AreEqual(EnglishProgress.CoinPerWord, DshMobile.PetWallet.Coins);
+                Assert.IsFalse(EnglishProgress.MarkLearned("cat"), "already learned pays nothing");
+                Assert.AreEqual(EnglishProgress.CoinPerWord, DshMobile.PetWallet.Coins);
+
+                // 不会 then 会 again: it leaves the learned set, so learning it again pays once more.
+                EnglishProgress.MarkUnlearned("cat");
+                Assert.IsFalse(EnglishProgress.IsLearned("cat"));
+                Assert.IsTrue(EnglishProgress.MarkLearned("cat"));
+                Assert.AreEqual(EnglishProgress.CoinPerWord * 2, DshMobile.PetWallet.Coins);
+            }
+            finally
+            {
+                EnglishProgress.ResetAll();
+                DshMobile.PetWallet.Reset();
+                DshMobile.PetWallet.Add(original);
+            }
+        }
+
+        [Test]
+        public void Progress_UnlearnedJoinsTheNewWordListAndLearnedLeavesIt()
+        {
+            try
+            {
+                EnglishProgress.ResetAll();
+                EnglishProgress.MarkUnlearned("cat");
+                Assert.IsTrue(EnglishProgress.IsInNewWords("cat"), "不会 lands in the 生词表");
+
+                EnglishProgress.MarkLearned("cat");
+                Assert.IsFalse(EnglishProgress.IsInNewWords("cat"), "learned leaves the 生词表");
+                Assert.AreEqual(0, EnglishProgress.NewWordCount);
+            }
+            finally
+            {
+                EnglishProgress.ResetAll();
+            }
+        }
+
+        [Test]
+        public void Progress_FavoritesToggleAndExplicitAdd()
+        {
+            try
+            {
+                EnglishProgress.ResetAll();
+                Assert.IsTrue(EnglishProgress.ToggleFavorite("cat"), "first toggle favourites");
+                Assert.IsTrue(EnglishProgress.IsFavorite("cat"));
+                Assert.IsFalse(EnglishProgress.ToggleFavorite("cat"), "second toggle unfavourites");
+
+                Assert.IsTrue(EnglishProgress.AddToNewWords("dog"), "explicit add to 生词表");
+                Assert.IsFalse(EnglishProgress.AddToNewWords("dog"), "adding twice is a no-op");
+                Assert.AreEqual(1, EnglishProgress.NewWordCount);
+            }
+            finally
+            {
+                EnglishProgress.ResetAll();
+            }
+        }
     }
 }

@@ -179,6 +179,18 @@ namespace DshPet.Tests
         }
 
         [Test]
+        public void WaterRunsOutAndDrinkingConsumesIt()
+        {
+            Assert.IsFalse(PetInventory.TryConsumeWater(), "no water in the warehouse at first");
+
+            PetInventory.Add("water", 2);
+            Assert.IsTrue(PetInventory.TryConsumeWater());
+            Assert.IsTrue(PetInventory.TryConsumeWater());
+            Assert.AreEqual(0, PetInventory.Count("water"));
+            Assert.IsFalse(PetInventory.TryConsumeWater(), "an empty warehouse serves no water");
+        }
+
+        [Test]
         public void StackableFoodSellsOneUnitAtATime()
         {
             PetInventory.Add("apple", 3);

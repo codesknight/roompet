@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **397/397 通过**（虚拟宠物 220 + 跑酷 15 + 手机端 56 + 小游戏 99，另有少量跨程序集计数），EditMode |
+| 测试 | **403/403 通过**（虚拟宠物 226 + 跑酷 15 + 手机端 56 + 小游戏 99，另有少量跨程序集计数），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -1154,6 +1154,10 @@
       落地反弹后滚动）干脆不判碰撞，视觉上就是"穿过障碍没破坏、穿过小猪没消灭"。修法两条：① **扫掠检测**——拿本帧起止点做
       线段，对猪用"线段到圆心距离 ≤ 半径和"、对块用"沿线段按 ≤ 半径间距采样"；② **去掉早退**——慢速也要撞停/反弹，只是不
       给伤害（`hard = speed >= MinImpactSpeed`）。**"检测碰撞"和"造成伤害"是两个门槛，前者永远要做，后者才看速度。**
+176. **"UI 控件建好了"≠"功能能用"——没接提交/点击事件的控件只是画上去的。** 宠物改名在 uGUI 迁移时留了 InputField，
+      却没有接 `onEndEdit`，也没有「改名」按钮，于是打字只改了一个本地缓存 `_editPetName`，永远不落盘，玩家视角就是
+      "改不了名字"。修法：`InputField.onEndEdit` 接到 `RenamePet`，并且改名还要**同步回 `PetCollection` 记录的名字**，
+      否则宠物面板仍显示旧名。**迁移控件时逐项核对"显示、输入、提交"三段是不是都接上了；缺最后一段的控件是无声的坑。**
 
 ## 八、一分钟速查
 

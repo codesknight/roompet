@@ -757,8 +757,19 @@ namespace DshPet
                     }
                     break;
                 case InteractableKind.Water:
-                    Needs.GiveWater();
-                    Avatar.PlayAction(PetAction.Drink, 2.2f);
+                    // The water basin only works while the warehouse holds water — an empty basin
+                    // is an empty basin, exactly like the food bowl.
+                    if (PetInventory.TryConsumeWater())
+                    {
+                        Needs.GiveWater();
+                        Avatar.PlayAction(PetAction.Drink, 2.2f);
+                    }
+                    else
+                    {
+                        Needs.Pet(0.05f);
+                        Avatar.PlayAction(PetAction.Sad, 2.2f);
+                        BowlsEmpty?.Invoke();
+                    }
                     break;
                 case InteractableKind.Ball:
                     Needs.Play(0.35f, !_selfInitiated);

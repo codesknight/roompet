@@ -2211,6 +2211,14 @@ namespace DshPet
             PlayerPrefs.SetString(NameKey + "." + PetKey, PetName);
             PlayerPrefs.Save();
 
+            // Keep the collection record in step, or the pet panel keeps showing the old name.
+            var record = PetCollection.Primary;
+            if (record != null)
+            {
+                record.Name = cleaned;
+                PetCollection.SaveNow();
+            }
+
             Memory.Remember("我的名字是" + PetName + "，是主人给我起的。");
             Memory.AddPet(previous == Species.DisplayName
                 ? "（主人给我起了名字：" + PetName + "）"
