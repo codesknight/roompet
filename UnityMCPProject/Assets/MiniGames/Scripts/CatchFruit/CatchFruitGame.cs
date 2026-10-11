@@ -128,6 +128,7 @@ namespace DshMiniGames
         }
 
         private Transform _discoBall;
+        private Transform _discoBeams;
         private readonly List<DiscoDot> _discoDots = new List<DiscoDot>();
 
         private class DiscoDot
@@ -139,10 +140,10 @@ namespace DshMiniGames
         }
 
         /// <summary>
-        /// 蹦迪魔球灯: a spinning silver mirror ball near the top of the play area, throwing a
-        /// cloud of colourful glowing light dots across the dark club background. The dots are the
-        /// "五颜六色" the earlier plain backdrop lacked — soft round glows in a rainbow palette,
-        /// gently pulsing so the scene reads as lit rather than pasted on.
+        /// 蹦迪魔球灯: a spinning silver mirror ball near the top of the play area, throwing
+        /// rotating coloured light beams plus a dense cloud of glowing, additive-blended light dots
+        /// across the dark club background. Beams + more dots + additive glow is what makes it read
+        /// as a real disco ("再绚丽些") rather than a few pasted lights.
         /// </summary>
         private void BuildDiscoScene()
         {
@@ -179,7 +180,35 @@ namespace DshMiniGames
                 new Color(1f, 0.40f, 0.45f),   // red
             };
 
-            int count = 24;
+            // Rotating light beams radiating from the ball — the classic disco-bar rays.
+            var beamRing = new GameObject("BeamRing").transform;
+            beamRing.SetParent(transform, false);
+            beamRing.position = new Vector3(0f, top - 0.9f, 1.4f);
+            _discoBeams = beamRing;
+
+            int beams = 14;
+            for (int i = 0; i < beams; i++)
+            {
+                var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                go.name = "Beam" + i;
+                go.transform.SetParent(beamRing, false);
+
+                float angle = i / (float)beams * Mathf.PI * 2f;
+                float length = 4.2f + (i % 3) * 1.3f;
+                go.transform.localPosition = new Vector3(Mathf.Cos(angle) * length * 0.5f, Mathf.Sin(angle) * length * 0.5f, 0f);
+                go.transform.localRotation = Quaternion.Euler(0f, 0f, angle * Mathf.Rad2Deg - 90f);
+                go.transform.localScale = new Vector3(0.16f + 0.10f * (i % 2), length, 1f);
+
+                var renderer = go.GetComponent<Renderer>();
+                var mat = NewDiscoMaterial(palette[i % palette.Length]);
+                renderer.material = mat;
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+                Destroy(go.GetComponent<Collider>());
+            }
+
+            // Denser, brighter dots: additive blending + more of them + a wider size spread.
+            int count = 34;
             for (int i = 0; i < count; i++)
             {
                 var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
@@ -188,20 +217,16 @@ namespace DshMiniGames
 
                 float t = i / (float)count;
                 float angle = t * Mathf.PI * 2f;
-                float radius = 2.4f + (i % 3) * 1.1f + 0.4f * Mathf.Sin(i * 1.7f);
-                float x = Mathf.Cos(angle) * radius * (span / Mathf.Max(1f, top) * 0.75f + 0.25f);
+                float radius = 2.0f + (i % 4) * 1.25f + 0.5f * Mathf.Sin(i * 1.7f);
+                float x = Mathf.Cos(angle) * radius * (span / Mathf.Max(1f, top) * 0.80f + 0.20f);
                 float y = top - 1.1f + Mathf.Sin(angle) * radius;
                 go.transform.position = new Vector3(x, y, 1.5f);
 
-                float size = 0.30f + 0.35f * (i % 4) / 3f;
+                float size = 0.26f + 0.55f * (i % 5) / 4f;
                 go.transform.localScale = Vector3.one * size;
 
                 var renderer = go.GetComponent<Renderer>();
-                var mat = new Material(Shader.Find("Sprites/Default") ?? Shader.Find("Standard"));
-                mat.mainTexture = DshMobile.SoftShadow.Gradient;
-                mat.color = palette[i % palette.Length];
-                // Behind the fruit: the disco lights are part of the backdrop.
-                mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Background;
+                var mat = NewDiscoMaterial(palette[i % palette.Length]);
                 renderer.material = mat;
                 renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 renderer.receiveShadows = false;
@@ -211,22 +236,35 @@ namespace DshMiniGames
                 {
                     T = go.transform,
                     BaseScale = size,
-                    Phase = i * 0.62f,
-                    PulseSpeed = 1.2f + (i % 3) * 0.7f
+                    Phase = i * 0.53f,
+                    PulseSpeed = 1.0f + (i % 4) * 0.6f
                 });
             }
         }
 
-        /// <summary>Spins the mirror ball and pulses the light dots, once per frame.</summary>
+        /// <summary>An additive-blended soft glow material, so the lights bloom instead of sitting flat.</summary>
+        private static Material NewDiscoMaterial(Color color)
+        {
+            var shader = Shader.Find("Legacy Shaders/Particles/Additive") ?? Shader.Find("Sprites/Default");
+            var mat = new Material(shader);
+            mat.mainTexture = DshMobile.SoftShadow.Gradient;
+            mat.color = color;
+            // Behind the fruit: the disco lights are part of the backdrop.
+            mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Background;
+            return mat;
+        }
+
+        /// <summary>Spins the mirror ball, rotates the light beams and pulses the dots.</summary>
         private void TickDisco()
         {
             if (_discoBall != null) _discoBall.Rotate(0f, 40f * Time.deltaTime, 0f, Space.World);
+            if (_discoBeams != null) _discoBeams.Rotate(0f, 0f, 18f * Time.deltaTime, Space.Self);
 
             for (int i = 0; i < _discoDots.Count; i++)
             {
                 var dot = _discoDots[i];
                 if (dot == null || dot.T == null) continue;
-                float pulse = 1f + 0.25f * Mathf.Sin(Time.time * dot.PulseSpeed + dot.Phase);
+                float pulse = 1f + 0.30f * Mathf.Sin(Time.time * dot.PulseSpeed + dot.Phase);
                 dot.T.localScale = Vector3.one * (dot.BaseScale * pulse);
             }
         }

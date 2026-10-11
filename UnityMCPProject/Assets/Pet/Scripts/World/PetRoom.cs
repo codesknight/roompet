@@ -1358,9 +1358,12 @@ namespace DshPet
         /// </summary>
         private Interactable BuildToilet(Vector2 at)
         {
-            // Kenney Furniture's toilet replaces the hand-built tray.
-            var prop = SpawnInteractableProp("Kenney/Furniture/toilet", new Vector3(at.x, 0f, at.y), 1.4f,
-                InteractableKind.Toilet, "猫砂盆", new Vector3(0f, 1.3f), "litter_box");
+            // Kenney Furniture's toilet replaces the hand-built tray. The toilet prefab's raw mesh is
+            // roughly cubic (~4.8 units), so scaling its largest side to 1.4 made a ~3 m-wide toilet —
+            // bigger than the bed. 0.8 gives a ~0.8×0.76×0.57 m toilet, clearly smaller than the bed
+            // (feedback: 马桶比床还大，改小).
+            var prop = SpawnInteractableProp("Kenney/Furniture/toilet", new Vector3(at.x, 0f, at.y), 0.8f,
+                InteractableKind.Toilet, "猫砂盆", new Vector3(0f, 0.9f), "litter_box");
             if (prop != null) return prop;
 
             // Fallback (model missing): the old procedural tray, so the room still has a toilet.

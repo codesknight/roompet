@@ -987,7 +987,11 @@ namespace DshPet
             _chatThinking.gameObject.SetActive(gm.IsThinking);
             _chatThinking.rectTransform.anchorMin = _chatThinking.rectTransform.anchorMax = new Vector2(1f, 1f);
             _chatThinking.rectTransform.pivot = new Vector2(1f, 1f);
-            _chatThinking.rectTransform.anchoredPosition = new Vector2(-12f, -12f);
+            // The "正在想…" indicator sits in the header's top-right, but on mobile the 收起 button
+            // owns that corner — shift it left so the two never overlap (feedback: 想一想的提示
+            // 位置错位了).
+            float thinkingRight = Mobile ? 110f : 12f;
+            _chatThinking.rectTransform.anchoredPosition = new Vector2(-thinkingRight, -12f);
             _chatThinking.rectTransform.sizeDelta = new Vector2(90f, 22f);
 
             _closeButton.gameObject.SetActive(Mobile);
