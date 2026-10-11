@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **403/403 通过**（虚拟宠物 226 + 跑酷 15 + 手机端 56 + 小游戏 99，另有少量跨程序集计数），EditMode |
+| 测试 | **404/404 通过**（虚拟宠物 227 + 跑酷 15 + 手机端 56 + 小游戏 99，另有少量跨程序集计数），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -1158,6 +1158,10 @@
       却没有接 `onEndEdit`，也没有「改名」按钮，于是打字只改了一个本地缓存 `_editPetName`，永远不落盘，玩家视角就是
       "改不了名字"。修法：`InputField.onEndEdit` 接到 `RenamePet`，并且改名还要**同步回 `PetCollection` 记录的名字**，
       否则宠物面板仍显示旧名。**迁移控件时逐项核对"显示、输入、提交"三段是不是都接上了；缺最后一段的控件是无声的坑。**
+177. **圆形 Sprite 放进非正方形 Rect 会被拉成椭圆——控件的热区矩形必须和 Sprite 形状一致。** 聊天按钮 Sprite 是圆，
+      但布局里它的热区是 124×50 的"胶囊条"，`ApplyDesignRect` 直接把这个矩形塞给圆形 Image，圆就被压成横椭圆，看起来
+      又不像圆、又和下面的蓄力按钮挤在一起。修法：把聊天按钮热区改成和互动/蓄力一样的**正方形**（84×84），并留出间隙，
+      再补一条"三按钮互不重叠"的单测。**给圆形控件做布局时，热区宽高要相等；不然圆的 Sprite 也会被拉扁。**
 
 ## 八、一分钟速查
 

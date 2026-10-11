@@ -42,8 +42,8 @@ namespace DshMiniGames
             // 0.28 was a ball; a fruit built out of a body, a stem, a leaf and a calyx needs to be
             // bigger than that before any of it reads on a phone. The catch rule adds half of this
             // to the basket's reach, so making it bigger is also a little more forgiving — which a
-            // game about catching things can afford.
-            FruitHalfWidth = 0.34f,
+            // game about catching things can afford. 0.40 reads clearly on a phone.
+            FruitHalfWidth = 0.40f,
             FallSpeed = 3.1f,
             FallSpeedPerPoint = 0.075f,
             MaxFallSpeed = 8.2f,

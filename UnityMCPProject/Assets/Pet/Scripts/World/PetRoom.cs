@@ -1610,6 +1610,19 @@ namespace DshPet
 
         private Transform _messRoot;
 
+        /// <summary>One blob of the poop swirl: a collider-less sphere tinted brown.</summary>
+        private void MessBlob(Transform parent, Vector3 localPos, Vector3 localScale, Color color)
+        {
+            var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            sphere.name = "Blob";
+            sphere.transform.SetParent(parent, false);
+            sphere.transform.localScale = localScale;
+            sphere.transform.localPosition = localPos;
+            SetColor(sphere, color, 0f);
+            if (Application.isPlaying) Destroy(sphere.GetComponent<Collider>());
+            else DestroyImmediate(sphere.GetComponent<Collider>());
+        }
+
         /// <summary>
         /// Leaves a mess at a position. Idempotent per position: a pet that has two accidents
         /// in the same corner should not stack up overlapping puddles.
@@ -1629,35 +1642,25 @@ namespace DshPet
                 if (Vector3.Distance(Messes[i].transform.position, position) < 1.2f) return Messes[i];
             }
 
-            var go = new GameObject("Puddle");
+            var go = new GameObject("Poop");
             go.transform.SetParent(_messRoot, false);
             go.transform.position = new Vector3(position.x, 0f, position.z);
 
-            // A flattened disc reads as a puddle at this camera angle where a sphere would
-            // read as an object the pet could pick up.
-            var disc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            disc.name = "Stain";
-            disc.transform.SetParent(go.transform, false);
-            disc.transform.localScale = new Vector3(0.86f, 0.012f, 0.62f);
-            disc.transform.localPosition = new Vector3(0f, 0.02f, 0f);
-            SetColor(disc, new Color(0.78f, 0.72f, 0.42f), 0f);
-            Destroy(disc.GetComponent<Collider>());
-
-            var drop = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            drop.name = "Drop";
-            drop.transform.SetParent(go.transform, false);
-            drop.transform.localScale = Vector3.one * 0.16f;
-            drop.transform.localPosition = new Vector3(0.28f, 0.05f, -0.16f);
-            SetColor(drop, new Color(0.72f, 0.66f, 0.38f), 0f);
-            Destroy(drop.GetComponent<Collider>());
+            // 便便：一圈一圈往上收的软冰淇淋形状，比扁扁的"污渍圆盘"更像一回事。
+            Color brown = new Color(0.42f, 0.29f, 0.17f);
+            Color tip = new Color(0.30f, 0.20f, 0.12f);
+            MessBlob(go.transform, new Vector3(0f, 0.14f, 0f), new Vector3(0.62f, 0.30f, 0.62f), brown);
+            MessBlob(go.transform, new Vector3(0.10f, 0.32f, -0.04f), new Vector3(0.46f, 0.30f, 0.46f), brown);
+            MessBlob(go.transform, new Vector3(0f, 0.48f, -0.06f), new Vector3(0.30f, 0.26f, 0.30f), brown);
+            MessBlob(go.transform, new Vector3(-0.05f, 0.62f, -0.09f), new Vector3(0.16f, 0.20f, 0.16f), tip);
 
             var hit = go.AddComponent<BoxCollider>();
-            hit.size = new Vector3(1.1f, 0.35f, 0.9f);
-            hit.center = new Vector3(0f, 0.15f, 0f);
+            hit.size = new Vector3(1.0f, 0.62f, 1.0f);
+            hit.center = new Vector3(0f, 0.35f, 0f);
 
             var interactable = go.AddComponent<Interactable>();
             interactable.Kind = InteractableKind.Mess;
-            interactable.Label = "地上的污渍（按 E 擦掉）";
+            interactable.Label = "便便（按 E 清理）";
             interactable.ApproachPoint = new Vector3(position.x, 0f, position.z - 1.1f);
             Messes.Add(interactable);
             Interactables.Add(interactable);

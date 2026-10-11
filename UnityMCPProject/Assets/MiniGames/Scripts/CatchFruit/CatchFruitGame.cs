@@ -168,18 +168,25 @@ namespace DshMiniGames
             var root = new GameObject("Basket").transform;
             root.SetParent(transform, false);
 
-            // A woven basket: a box floor, two sloping sides, and a rim. Primitives only.
+            // 编筐果篮：底板 + 左右侧板 + 顶部一圈收口边（Kenney 家具包里没有篮子，就用手工程序化做细一点）。
+            Color weave = new Color(0.72f, 0.52f, 0.30f);
+            Color weaveLight = new Color(0.86f, 0.66f, 0.40f);
+
             var floor = Shape("Floor", PrimitiveType.Cube, new Vector3(0f, 0f, 0f),
-                new Vector3(_settings.BasketHalfWidth * 2f, 0.18f, 0.9f), new Color(0.72f, 0.52f, 0.30f));
+                new Vector3(_settings.BasketHalfWidth * 2f, 0.16f, 0.9f), weave);
             floor.SetParent(root, false);
 
-            var left = Shape("Left", PrimitiveType.Cube, new Vector3(-_settings.BasketHalfWidth, 0.30f, 0f),
-                new Vector3(0.14f, 0.7f, 0.9f), new Color(0.82f, 0.62f, 0.36f));
+            var left = Shape("Left", PrimitiveType.Cube, new Vector3(-_settings.BasketHalfWidth, 0.28f, 0f),
+                new Vector3(0.13f, 0.60f, 0.9f), weave);
             left.SetParent(root, false);
 
-            var right = Shape("Right", PrimitiveType.Cube, new Vector3(_settings.BasketHalfWidth, 0.30f, 0f),
-                new Vector3(0.14f, 0.7f, 0.9f), new Color(0.82f, 0.62f, 0.36f));
+            var right = Shape("Right", PrimitiveType.Cube, new Vector3(_settings.BasketHalfWidth, 0.28f, 0f),
+                new Vector3(0.13f, 0.60f, 0.9f), weave);
             right.SetParent(root, false);
+
+            var rim = Shape("Rim", PrimitiveType.Cube, new Vector3(0f, 0.58f, 0f),
+                new Vector3(_settings.BasketHalfWidth * 2f + 0.20f, 0.09f, 0.98f), weaveLight);
+            rim.SetParent(root, false);
 
             return root;
         }

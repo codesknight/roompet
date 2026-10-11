@@ -5452,11 +5452,9 @@ namespace DshPet
             var action = new Rect(right - primary, bottom - primary, primary, primary);
             var throwRect = new Rect(right - secondary, action.y - gap - secondary, secondary, secondary);
 
-            // The chat pill above the stack, wide enough to read as "say something" rather than as
-            // another action button.
-            var chat = new Rect(right - MobileUi.Touchable(124f),
-                throwRect.y - gap - MobileUi.Touchable(50f),
-                MobileUi.Touchable(124f), MobileUi.Touchable(50f));
+            // 聊天按钮：和互动/蓄力一样的圆形（方形热区），排在蓄力按钮正上方、留出间隙不重叠。
+            float chatSize = MobileUi.Touchable(84f);
+            var chat = new Rect(right - chatSize, throwRect.y - gap - chatSize, chatSize, chatSize);
 
             // The mic lives in the chat bar itself (see DrawMobileChat): a thumb reaching for
             // "talk to the pet" is already there, and a separate button in the corner would be a

@@ -260,6 +260,22 @@ namespace DshPet.Tests
         }
 
         [Test]
+        public void Hud_MobileButtonsDoNotOverlap()
+        {
+            // The chat button is a round (square) target stacked above the throw button, and the
+            // throw above the action — a thumb resting on one must never cover another.
+            var sizes = new[] { new Vector2(654f, 1455f), new Vector2(1455f, 654f) };
+            foreach (var size in sizes)
+            {
+                var layout = PetHud.ComputeLayout(size.x, size.y, PetSpecies.Count, false);
+                var controls = PetHud.ComputeMobileControls(layout);
+                Assert.IsFalse(controls.Chat.Overlaps(controls.Throw), $"chat covers throw at {size.x}x{size.y}");
+                Assert.IsFalse(controls.Chat.Overlaps(controls.Action), $"chat covers action at {size.x}x{size.y}");
+                Assert.IsFalse(controls.Throw.Overlaps(controls.Action), $"throw covers action at {size.x}x{size.y}");
+            }
+        }
+
+        [Test]
         public void Hud_ChatIsASidebarWhenThereIsRoomForOne()
         {
             // The transcript is the point of the game, so on a wide screen it gets a column of
