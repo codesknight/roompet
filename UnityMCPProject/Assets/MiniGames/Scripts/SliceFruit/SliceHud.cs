@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.UI;
 
 namespace DshMiniGames
@@ -29,6 +30,8 @@ namespace DshMiniGames
         private Text _pauseLabel;
         private Button _mode;
         private Text _modeLabel;
+
+        private readonly List<Text> _bladeColorLabels = new List<Text>();
 
         private GameObject _pausedPanel;
         private Text _pausedInfo;
@@ -112,6 +115,8 @@ namespace DshMiniGames
             _modeLabel = _mode.GetComponentInChildren<Text>();
             _mode.onClick.AddListener(OnMode);
 
+            BuildBladeColorPicker();
+
             BuildPausedPanel();
             BuildReadyPanel();
             BuildLevelDonePanel();
@@ -119,6 +124,30 @@ namespace DshMiniGames
 
             _built = true;
         }
+
+        /// <summary>
+        /// 刀刃颜色: a row of coloured swatches under the mode button. Each swatch is tinted with its
+        /// blade colour and, when tapped, recolours the blade, its tip and its particle trail
+        /// (feedback: 切水果刀刃可选颜色).
+        /// </summary>
+        private void BuildBladeColorPicker()
+        {
+            var label = DshMobile.Ugui.Text("BladeColorLabel", _root, "刀刃颜色", 15, Pale, TextAnchor.MiddleLeft);
+            DshMobile.Ugui.SetRect(label.rectTransform, 16f, 70f, 90f, 22f);
+
+            for (int i = 0; i < SliceGame.BladeColorNames.Length; i++)
+            {
+                int index = i;
+                var color = SliceGame.BladeColorFor(i);
+                var button = DshMobile.Ugui.Button("BladeColor" + i, _root, SliceGame.BladeColorNames[i], 14,
+                    new Color(color.r, color.g, color.b, 0.85f));
+                DshMobile.Ugui.SetRect(button.GetComponent<RectTransform>(), 16f + i * 78f, 96f, 70f, 34f);
+                button.onClick.AddListener(() => OnBladeColor(index));
+                _bladeColorLabels.Add(button.GetComponentInChildren<Text>());
+            }
+        }
+
+        private void OnBladeColor(int index) => _game?.SetBladeColor(index);
 
         private GameObject PanelContainer(string name, float w, float h, out Image panelImage)
         {
@@ -269,6 +298,13 @@ namespace DshMiniGames
             _modeLabel.text = _game.Mode == SliceMode.Endless ? "无尽模式" : "闯关模式";
             bool modeVisible = _game.State != SliceGame.Phase.Dead && _game.State != SliceGame.Phase.LevelDone;
             _mode.gameObject.SetActive(modeVisible);
+
+            // Highlight the blade colour currently in use.
+            for (int i = 0; i < _bladeColorLabels.Count; i++)
+            {
+                if (_bladeColorLabels[i] == null) continue;
+                _bladeColorLabels[i].color = i == _game.BladeColorIndex ? Gold : new Color(1f, 1f, 1f, 0.85f);
+            }
 
             // Panels.
             _pausedPanel.SetActive(_game.Paused);

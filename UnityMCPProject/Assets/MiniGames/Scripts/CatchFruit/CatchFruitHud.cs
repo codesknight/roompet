@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace DshMiniGames
@@ -20,6 +22,9 @@ namespace DshMiniGames
         private Text _score;
         private Text _livesBest;
         private Text _hint;
+
+        private Slider _sensitivity;
+        private Text _sensitivityValue;
 
         private GameObject _readyPanel;
         private Text _readyLine1;
@@ -68,6 +73,7 @@ namespace DshMiniGames
 
             BuildReadyPanel();
             BuildDeadPanel();
+            BuildSensitivity();
 
             _hint = DshMobile.Ugui.Text("Hint", _root, "◀ 左右滑动屏幕移动篮子 ▶", 20,
                 new Color(1f, 1f, 1f, 0.75f), TextAnchor.MiddleCenter);
@@ -76,6 +82,34 @@ namespace DshMiniGames
 
             _built = true;
         }
+
+        /// <summary>
+        /// 灵敏度: a slider in the top-left that scales how far the basket travels per unit of
+        /// finger drag. It is a uGUI control, so <see cref="ReadDrag"/> skips basket movement while
+        /// the pointer is over it — otherwise adjusting the slider would also fling the basket.
+        /// </summary>
+        private void BuildSensitivity()
+        {
+            var label = DshMobile.Ugui.Text("SensLabel", _root, "灵敏度", 16, Pale, TextAnchor.MiddleLeft);
+            DshMobile.Ugui.SetRect(label.rectTransform, 16f, 16f, 80f, 24f);
+
+            _sensitivity = DshMobile.Ugui.Slider("Sensitivity", _root, 0.5f, 2.0f, _game.Sensitivity,
+                new Color(0.30f, 0.85f, 1f), new Color(1f, 1f, 1f, 0.9f));
+            DshMobile.Ugui.SetRect(_sensitivity.GetComponent<RectTransform>(), 16f, 46f, 190f, 24f);
+            _sensitivity.onValueChanged.AddListener(OnSensitivityChanged);
+
+            _sensitivityValue = DshMobile.Ugui.Text("SensValue", _root, FormatSensitivity(_game.Sensitivity),
+                15, Pale, TextAnchor.MiddleLeft);
+            DshMobile.Ugui.SetRect(_sensitivityValue.rectTransform, 214f, 46f, 60f, 24f);
+        }
+
+        private void OnSensitivityChanged(float value)
+        {
+            _game.SetSensitivity(value);
+            if (_sensitivityValue != null) _sensitivityValue.text = FormatSensitivity(value);
+        }
+
+        private static string FormatSensitivity(float value) => value.ToString("0.0") + "x";
 
         private void BuildReadyPanel()
         {
@@ -152,11 +186,24 @@ namespace DshMiniGames
             var gesture = DshMobile.MobileTouch.Gesture;
             if (gesture.IsActive)
             {
+                // A finger on the sensitivity slider (or any uGUI control) belongs to that control.
+                // Without this the slider works but also flings the basket underneath it. The touch
+                // layer reports y from the top, uGUI from the bottom, so flip it here.
+                if (OverUi(new Vector2(gesture.Position.x, Screen.height - gesture.Position.y)))
+                {
+                    gesture.ConsumeFrameDelta();
+                    return;
+                }
                 dx = gesture.FrameDelta.x;
                 gesture.ConsumeFrameDelta();
             }
             else if (Input.GetMouseButton(0))
             {
+                if (OverUi(Input.mousePosition))
+                {
+                    _lastMouseX = float.NaN;
+                    return;
+                }
                 float x = Input.mousePosition.x;
                 if (!Input.GetMouseButtonDown(0) && !float.IsNaN(_lastMouseX)) dx = x - _lastMouseX;
                 _lastMouseX = x;
@@ -206,5 +253,22 @@ namespace DshMiniGames
 
         private void OnBack() => _game?.ReturnToRoom();
         private void OnRetry() => _game?.ResetRun();
+
+        /// <summary>
+        /// Whether a screen point (bottom-left origin, like <c>Input.mousePosition</c>) sits on top
+        /// of any uGUI raycast target. A manual raycast through the canvas's GraphicRaycaster, so it
+        /// is correct for touch as well as mouse — unlike the parameterless
+        /// <c>IsPointerOverGameObject</c>, which only looks at the mouse.
+        /// </summary>
+        private static bool OverUi(Vector2 bottomLeft)
+        {
+            var es = EventSystem.current;
+            if (es == null) return false;
+
+            var pointer = new PointerEventData(es) { position = bottomLeft };
+            var results = new List<RaycastResult>();
+            es.RaycastAll(pointer, results);
+            return results.Count > 0;
+        }
     }
 }

@@ -121,6 +121,7 @@ namespace DshMiniGames
         private void Awake()
         {
             Application.targetFrameRate = 60;
+            _bladeColorIndex = Mathf.Clamp(PlayerPrefs.GetInt(BladeColorKey, 0), 0, BladeColors.Length - 1);
             BuildWorld();
             _plan = SliceRules.LevelPlan(Level, _settings);
             ResetRun(Mode);
@@ -141,7 +142,7 @@ namespace DshMiniGames
             camera.transform.position = new Vector3(0f, 0f, -12f);
             camera.transform.rotation = Quaternion.identity;
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.16f, 0.12f, 0.22f);
+            camera.backgroundColor = new Color(0.30f, 0.20f, 0.13f);   // warm wood fallback
             camera.nearClipPlane = 0.1f;
             camera.farClipPlane = 60f;
             _camera = camera;
@@ -162,7 +163,63 @@ namespace DshMiniGames
             _slicedRoot = new GameObject("Sliced").transform;
             _slicedRoot.SetParent(transform, false);
 
+            BuildBoardBackground();
             BuildBlade();
+        }
+
+        /// <summary>
+        /// 木质菜板: a full-screen wooden cutting board behind the play area, replacing the old flat
+        /// dark-purple clear colour (feedback: 切水果背景换成木质菜板纹理). The wood grain is
+        /// procedural and the quad sits in the Background render queue so the fruit always draws on
+        /// top of it.
+        /// </summary>
+        private void BuildBoardBackground()
+        {
+            if (_camera == null) return;
+            float height = _camera.orthographicSize * 2f;
+            float width = height * _camera.aspect;
+
+            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            quad.name = "CuttingBoard";
+            quad.transform.SetParent(transform, false);
+            quad.transform.localPosition = new Vector3(0f, 0f, 3f);
+            quad.transform.localScale = new Vector3(width, height, 1f);
+
+            var renderer = quad.GetComponent<Renderer>();
+            var material = new Material(Shader.Find("Unlit/Texture") ?? Shader.Find("Standard"));
+            material.mainTexture = WoodTexture();
+            material.color = Color.white;
+            material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Background;
+            renderer.material = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+
+            Destroy(quad.GetComponent<Collider>());
+        }
+
+        private Texture2D WoodTexture()
+        {
+            const int size = 128;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            tex.wrapMode = TextureWrapMode.Repeat;
+            tex.filterMode = FilterMode.Bilinear;
+            tex.hideFlags = HideFlags.HideAndDontSave;
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float u = x / (float)size;
+                    float v = y / (float)size;
+                    float rings = Mathf.Sin((v + Mathf.PerlinNoise(u * 3f, v * 8f) * 0.05f) * 40f);
+                    rings = rings * 0.5f + 0.5f;
+                    float fibres = Mathf.PerlinNoise(u * 20f, v * 3f);
+                    float grain = 0.72f + rings * 0.24f + fibres * 0.10f;
+                    tex.SetPixel(x, y, new Color(0.80f, 0.58f, 0.35f) * grain);
+                }
+            }
+            tex.Apply();
+            return tex;
         }
 
         /// <summary>
@@ -220,7 +277,7 @@ namespace DshMiniGames
             {
                 var tipMaterial = new Material(shader) { name = "Dsh_BladeTip" };
                 tipMaterial.mainTexture = DshMobile.SoftShadow.Gradient;
-                tipMaterial.color = new Color(1f, 1f, 0.95f, 0.9f);
+                tipMaterial.color = new Color(BladeColor.r, BladeColor.g, BladeColor.b, 0.9f);
                 renderer.sharedMaterial = tipMaterial;
                 renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 renderer.receiveShadows = false;
@@ -228,16 +285,19 @@ namespace DshMiniGames
 
             _bladeTip = tip.transform;
             _bladeTip.gameObject.SetActive(false);
+
+            BuildBladeTrail();
         }
 
-        private static Gradient BladeGradient()
+        private Gradient BladeGradient()
         {
+            Color c = BladeColor;
             var gradient = new Gradient();
             gradient.SetKeys(
                 new[]
                 {
-                    new GradientColorKey(new Color(1f, 0.99f, 0.9f), 0f),
-                    new GradientColorKey(Color.white, 1f)
+                    new GradientColorKey(c * 0.9f, 0f),
+                    new GradientColorKey(c, 1f)
                 },
                 new[]
                 {
@@ -250,6 +310,167 @@ namespace DshMiniGames
 
         private LineRenderer _blade;
         private Transform _bladeTip;
+        private ParticleSystem _bladeTrail;
+
+        // ------------------------------------------------------------------ blade colour
+
+        /// <summary>Preset blade colours, so the player can pick a knife they can see (feedback: 刀刃可选颜色).</summary>
+        private static readonly Color[] BladeColors =
+        {
+            new Color(1f, 0.99f, 0.90f),   // 银白
+            new Color(1f, 0.45f, 0.35f),   // 红
+            new Color(0.30f, 0.85f, 1f),   // 蓝
+            new Color(0.45f, 1f, 0.55f),   // 绿
+            new Color(1f, 0.80f, 0.30f),   // 金
+        };
+
+        public static readonly string[] BladeColorNames = { "银白", "红", "蓝", "绿", "金" };
+
+        private const string BladeColorKey = "dshpet.slice.bladecolor";
+
+        private int _bladeColorIndex;
+
+        public Color BladeColor => BladeColors[_bladeColorIndex];
+        public int BladeColorIndex => _bladeColorIndex;
+        public int BladeColorCount => BladeColors.Length;
+
+        /// <summary>The preset colour at <paramref name="index"/>, clamped into range.</summary>
+        public static Color BladeColorFor(int index)
+            => BladeColors[Mathf.Clamp(index, 0, BladeColors.Length - 1)];
+
+        public void SetBladeColor(int index)
+        {
+            _bladeColorIndex = Mathf.Clamp(index, 0, BladeColors.Length - 1);
+            PlayerPrefs.SetInt(BladeColorKey, _bladeColorIndex);
+            PlayerPrefs.Save();
+            ApplyBladeColor();
+        }
+
+        private void ApplyBladeColor()
+        {
+            Color c = BladeColor;
+            if (_blade != null) _blade.colorGradient = BladeGradient();
+            if (_bladeTip != null)
+            {
+                var renderer = _bladeTip.GetComponent<Renderer>();
+                if (renderer != null) renderer.sharedMaterial.color = new Color(c.r, c.g, c.b, 0.9f);
+            }
+            if (_bladeTrail != null)
+            {
+                var main = _bladeTrail.main;
+                main.startColor = new Color(c.r, c.g, c.b, 1f);
+                var psr = _bladeTrail.GetComponent<ParticleSystemRenderer>();
+                if (psr != null) psr.material = ParticleMaterial(c);
+            }
+        }
+
+        // ------------------------------------------------------------------ particles
+
+        private static Material ParticleMaterial(Color color)
+        {
+            var shader = Shader.Find("Legacy Shaders/Particles/Alpha Blended")
+                         ?? Shader.Find("Sprites/Default");
+            var material = new Material(shader) { name = "Dsh_Particle" };
+            material.mainTexture = DshMobile.SoftShadow.Gradient;
+            material.color = color;
+            return material;
+        }
+
+        /// <summary>
+        /// A soft round trail that follows the blade (feedback: 刀刃粒子特效). It emits while the
+        /// finger is down and fades as it ages, so a fast swipe leaves a fading ribbon of sparks.
+        /// </summary>
+        private void BuildBladeTrail()
+        {
+            var go = new GameObject("BladeTrail");
+            go.transform.SetParent(transform, false);
+
+            _bladeTrail = go.AddComponent<ParticleSystem>();
+
+            var main = _bladeTrail.main;
+            main.startSpeed = 0.25f;
+            main.startLifetime = 0.4f;
+            main.startSize = new ParticleSystem.MinMaxCurve(0.30f, 0.55f);
+            main.startColor = new Color(BladeColor.r, BladeColor.g, BladeColor.b, 1f);
+            main.maxParticles = 256;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.playOnAwake = false;
+            main.loop = true;
+
+            var emission = _bladeTrail.emission;
+            emission.enabled = true;
+            emission.rateOverTime = 140f;
+
+            var shape = _bladeTrail.shape;
+            shape.enabled = false;
+
+            var colorOverLifetime = _bladeTrail.colorOverLifetime;
+            colorOverLifetime.enabled = true;
+            var fade = new Gradient();
+            fade.SetKeys(
+                new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                new[] { new GradientAlphaKey(0.85f, 0f), new GradientAlphaKey(0f, 1f) });
+            colorOverLifetime.color = fade;
+
+            var psr = _bladeTrail.GetComponent<ParticleSystemRenderer>();
+            psr.renderMode = ParticleSystemRenderMode.Billboard;
+            psr.material = ParticleMaterial(BladeColor);
+            psr.sortingOrder = 50;
+
+            _bladeTrail.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        }
+
+        private void UpdateBladeTrail()
+        {
+            if (_bladeTrail == null) return;
+
+            bool emitting = _pointerDown && !Paused && _trail.Count >= 2;
+            if (emitting)
+            {
+                _bladeTrail.transform.position = new Vector3(_pointerWorld.x, _pointerWorld.y, -0.55f);
+                if (!_bladeTrail.isEmitting) _bladeTrail.Play();
+            }
+            else if (_bladeTrail.isEmitting)
+            {
+                _bladeTrail.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+            }
+        }
+
+        /// <summary>A short burst of juice droplets when a fruit is cut or a bomb blows.</summary>
+        private void EmitJuice(Vector2 at, Color color)
+        {
+            var go = new GameObject("JuiceBurst");
+            go.transform.SetParent(_slicedRoot, false);
+            go.transform.position = new Vector3(at.x, at.y, 0.4f);
+
+            var ps = go.AddComponent<ParticleSystem>();
+            var main = ps.main;
+            main.startSpeed = new ParticleSystem.MinMaxCurve(1.5f, 4.5f);
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.35f, 0.7f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.12f, 0.34f);
+            main.startColor = color;
+            main.maxParticles = 64;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.playOnAwake = false;
+            main.loop = false;
+            main.gravityModifier = 1.2f;
+            main.stopAction = ParticleSystemStopAction.Destroy;
+
+            var emission = ps.emission;
+            emission.enabled = true;
+            emission.rateOverTime = 0f;
+
+            var shape = ps.shape;
+            shape.enabled = true;
+            shape.shapeType = ParticleSystemShapeType.Sphere;
+            shape.radius = 0.2f;
+
+            var psr = go.GetComponent<ParticleSystemRenderer>();
+            psr.renderMode = ParticleSystemRenderMode.Billboard;
+            psr.material = ParticleMaterial(color);
+
+            ps.Emit(18);
+        }
 
         /// <summary>Pushes the swipe's recent history into the world-space blade.</summary>
         private void UpdateBlade()
@@ -376,12 +597,14 @@ namespace DshMiniGames
             if (Paused)
             {
                 UpdateBlade();
+                UpdateBladeTrail();
                 return;
             }
 
             ReadBlade();
             AgeTrail(Time.deltaTime);
             UpdateBlade();
+            UpdateBladeTrail();
 
             if (State == Phase.Dead)
             {
@@ -697,6 +920,7 @@ namespace DshMiniGames
             piece.Sliced = true;
             Score += SliceRules.ScoreFor(piece.Kind);
             SlicePieces(piece);
+            EmitJuice(piece.Position, FruitArt.Skin(piece.Kind));
 
             _comboCount++;
             _comboUntil = Time.time + 0.45f;
@@ -731,6 +955,8 @@ namespace DshMiniGames
             {
                 SpawnShard(bomb.Position, FruitArt.BombDark, 0.22f, 6f);
             }
+
+            EmitJuice(bomb.Position, new Color(1f, 0.55f, 0.25f));
 
             if (bomb.Transform != null) Destroy(bomb.Transform.gameObject);
             _pieces.Remove(bomb);

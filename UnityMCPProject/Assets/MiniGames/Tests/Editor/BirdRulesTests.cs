@@ -170,6 +170,48 @@ namespace DshMiniGames.Tests
         }
 
         [Test]
+        public void Physics_ABlockFallingOnAPigCrushesIt()
+        {
+            // 反馈: 猪可被障碍物砸死. A block dropped onto a stationary pig has to kill it. The subtlety is
+            // that the pig's own ImpactSpeed is zero here (it is standing still), so the crush must come
+            // from the *block's* speed and weight, not the pig's fall — which is exactly what the
+            // previous version of the rule got wrong.
+            var level = new BirdLevel
+            {
+                Stage = 1,
+                GroundY = Settings.GroundY,
+                SlingX = Settings.SlingX,
+                SlingY = Settings.GroundY + Settings.SlingHeight,
+                Birds = 1
+            };
+
+            level.Pigs.Add(new BirdPig
+            {
+                X = 0f,
+                Y = Settings.GroundY + 0.26f,
+                Radius = 0.26f,
+                Alive = true
+            });
+
+            // A stone block directly above the pig, high enough that its landing speed clears
+            // PigCrushSpeed before it touches down.
+            level.Blocks.Add(new BirdBlock
+            {
+                X = 0f,
+                Y = Settings.GroundY + 2.0f,
+                HalfW = 0.4f,
+                HalfH = 0.4f,
+                Kind = BlockKind.Stone,
+                Health = 4,
+                Alive = true
+            });
+
+            BirdRules.Settle(level, Settings);
+
+            Assert.AreEqual(0, level.PigsAlive, "a block dropped onto a pig has to kill it");
+        }
+
+        [Test]
         public void Physics_AShotTopplesTheStructureInsteadOfFilingItAway()
         {
             // What the player asked for, stated as a test: wood, stone and ice are objects now, so a

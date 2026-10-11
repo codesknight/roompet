@@ -345,7 +345,7 @@ namespace DshMiniGames
             SleepSeconds = 0.45f,
             MaxBlockSpeed = 16f,
             PigCrushSpeed = 4.6f,
-            PigSquashMass = 1.1f,
+            PigSquashMass = 0.3f,
             PigSquashSeconds = 0.35f,
             GroundBreakSpeed = 4.2f,
             BirdPush = 0.85f,
@@ -1683,6 +1683,26 @@ namespace DshMiniGames
                 // measured *before* the contacts were resolved, because after them the pig is stopped
                 // and every landing would look like a gentle one.
                 if (pig.ImpactSpeed > sim.S.PigCrushSpeed)
+                {
+                    KillPig(sim, p, pig.P);
+                    continue;
+                }
+
+                // A block landing ON the pig at speed crushes it. The pig's own ImpactSpeed is 0 here
+                // (it was standing still), so the block's speed is the thing to check — otherwise a
+                // falling block can bounce off a pig without killing it.
+                bool crushed = false;
+                for (int i = 0; i < sim.Blocks.Length; i++)
+                {
+                    var block = sim.Blocks[i];
+                    if (!block.Alive || !block.Awake) continue;
+                    if (block.ImpactSpeed < sim.S.PigCrushSpeed) continue;
+                    if (block.P.y < pig.P.y + pig.R * 0.25f) continue;   // only from above
+                    if (!BlockOverlapsPig(block, pig)) continue;
+                    crushed = true;
+                    break;
+                }
+                if (crushed)
                 {
                     KillPig(sim, p, pig.P);
                     continue;

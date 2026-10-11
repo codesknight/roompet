@@ -168,7 +168,7 @@ namespace DshMiniGames
             ground.transform.SetParent(transform, false);
             ground.transform.localScale = new Vector3(40f, 1f, 4f);
             ground.transform.position = new Vector3(2f, _settings.GroundY - 0.5f, 0f);
-            Paint(ground, new Color(0.42f, 0.68f, 0.34f));
+            PaintTextured(ground, GroundTexture(), 0.2f);
             Destroy(ground.GetComponent<Collider>());
         }
 
@@ -189,23 +189,24 @@ namespace DshMiniGames
             float baseY = _settings.GroundY;
             float forkY = baseY + _settings.SlingHeight;
 
-            var post = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            post.name = "Post";
-            post.transform.SetParent(_slingRoot, false);
-            post.transform.localScale = new Vector3(0.17f, _settings.SlingHeight * 0.5f, 0.17f);
-            post.transform.localPosition = new Vector3(_settings.SlingX, baseY + _settings.SlingHeight * 0.5f, 0.3f);
-            Paint(post, wood);
-            Destroy(post.GetComponent<Collider>());
+            // Y 字型弹弓：一根竖杆（stem）+ 两根从竖杆顶端向左右张开的叉臂，不再是一根长杆加两根小棍的"三叉"。
+            var stem = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            stem.name = "Stem";
+            stem.transform.SetParent(_slingRoot, false);
+            stem.transform.localScale = new Vector3(0.14f, 1.4f * 0.5f, 0.14f);
+            stem.transform.localPosition = new Vector3(_settings.SlingX, baseY + 0.7f, 0.3f);
+            Paint(stem, wood);
+            Destroy(stem.GetComponent<Collider>());
 
             for (int side = -1; side <= 1; side += 2)
             {
                 var prong = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
                 prong.name = side < 0 ? "ProngL" : "ProngR";
                 prong.transform.SetParent(_slingRoot, false);
-                prong.transform.localScale = new Vector3(0.11f, 0.42f, 0.11f);
+                prong.transform.localScale = new Vector3(0.10f, 1.5f * 0.5f, 0.10f);
                 prong.transform.localPosition = new Vector3(
-                    _settings.SlingX + side * 0.20f, forkY - 0.30f, 0.3f);
-                prong.transform.localRotation = Quaternion.Euler(0f, 0f, side * -16f);
+                    _settings.SlingX + side * 0.22f, forkY - 0.50f, 0.3f);
+                prong.transform.localRotation = Quaternion.Euler(0f, 0f, side * -32f);
                 Paint(prong, wood);
                 Destroy(prong.GetComponent<Collider>());
             }
@@ -650,7 +651,7 @@ namespace DshMiniGames
                 view.transform.localScale = new Vector3(block.HalfW * 2f, block.HalfH * 2f, 1.1f);
                 view.transform.position = new Vector3(block.X, block.Y, 0f);
                 view.transform.localRotation = Quaternion.Euler(0f, 0f, block.Angle * Mathf.Rad2Deg);
-                Paint(view, ColourFor(block.Kind));
+                PaintTextured(view, BlockTexture(block.Kind), 0.25f);
                 Destroy(view.GetComponent<Collider>());
                 _blockViews.Add(view.transform);
             }
@@ -670,24 +671,134 @@ namespace DshMiniGames
             FitCamera();
         }
 
-        private static Color ColourFor(BlockKind kind)
+        private static readonly Dictionary<BlockKind, Texture2D> _blockTextures = new Dictionary<BlockKind, Texture2D>();
+        private static Texture2D _groundTexture;
+
+        /// <summary>Flat material colour for a block kind, used by the debris burst.</summary>
+        private static Color BaseColour(BlockKind kind)
         {
             switch (kind)
             {
-                case BlockKind.Ice: return new Color(0.62f, 0.86f, 0.95f);
-                case BlockKind.Stone: return new Color(0.56f, 0.56f, 0.58f);
-                default: return new Color(0.76f, 0.56f, 0.32f);
+                case BlockKind.Ice: return new Color(0.60f, 0.85f, 0.96f);
+                case BlockKind.Stone: return new Color(0.55f, 0.55f, 0.57f);
+                default: return new Color(0.72f, 0.50f, 0.27f);
             }
+        }
+
+        private static Texture2D BlockTexture(BlockKind kind)
+        {
+            if (_blockTextures.TryGetValue(kind, out var cached)) return cached;
+            var tex = GenerateBlockTexture(kind);
+            _blockTextures[kind] = tex;
+            return tex;
+        }
+
+        private static Texture2D GroundTexture()
+        {
+            if (_groundTexture != null) return _groundTexture;
+            _groundTexture = GenerateGroundTexture();
+            return _groundTexture;
+        }
+
+        /// <summary>Applies a procedural texture as a flat, unlit-looking Standard material.</summary>
+        private static void PaintTextured(GameObject go, Texture2D texture, float gloss)
+        {
+            var renderer = go.GetComponent<Renderer>();
+            if (renderer == null) return;
+
+            var material = new Material(Shader.Find("Standard"));
+            material.color = Color.white;
+            material.mainTexture = texture;
+            material.SetFloat("_Glossiness", gloss);
+            renderer.material = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+        }
+
+        private static Texture2D NewNoiseTexture()
+        {
+            var tex = new Texture2D(64, 64, TextureFormat.RGBA32, false);
+            tex.wrapMode = TextureWrapMode.Repeat;
+            tex.filterMode = FilterMode.Bilinear;
+            tex.hideFlags = HideFlags.HideAndDontSave;
+            return tex;
+        }
+
+        /// <summary>Procedural grain so wood/stone/ice read as materials, not flat colour.</summary>
+        private static Texture2D GenerateBlockTexture(BlockKind kind)
+        {
+            var tex = NewNoiseTexture();
+            for (int y = 0; y < 64; y++)
+            {
+                for (int x = 0; x < 64; x++)
+                {
+                    float u = x / 64f;
+                    float v = y / 64f;
+                    Color c;
+                    switch (kind)
+                    {
+                        case BlockKind.Wood:
+                        {
+                            // Horizontal rings plus fine fibres and faint speckle.
+                            float rings = Mathf.Sin((v + Mathf.PerlinNoise(u * 2f, v * 6f) * 0.06f) * 28f);
+                            rings = rings * 0.5f + 0.5f;
+                            float fibres = Mathf.PerlinNoise(u * 16f, v * 2f);
+                            float grain = 0.62f + rings * 0.30f + fibres * 0.10f;
+                            c = new Color(0.72f, 0.50f, 0.27f) * grain;
+                            break;
+                        }
+                        case BlockKind.Stone:
+                        {
+                            float n1 = Mathf.PerlinNoise(u * 6f, v * 6f);
+                            float n2 = Mathf.PerlinNoise(u * 12f + 40f, v * 12f + 40f);
+                            float speckle = Mathf.PerlinNoise(u * 30f, v * 30f);
+                            float grain = 0.72f + n1 * 0.25f + n2 * 0.10f + (speckle - 0.5f) * 0.10f;
+                            c = new Color(0.55f, 0.55f, 0.57f) * grain;
+                            break;
+                        }
+                        default: // Ice
+                        {
+                            float n1 = Mathf.PerlinNoise(u * 7f, v * 7f);
+                            float streak = Mathf.PerlinNoise(u * 3f, v * 20f);
+                            float grain = 0.88f + n1 * 0.14f + (streak - 0.5f) * 0.18f;
+                            c = new Color(0.60f, 0.85f, 0.96f) * grain;
+                            break;
+                        }
+                    }
+                    tex.SetPixel(x, y, c);
+                }
+            }
+            tex.Apply();
+            return tex;
+        }
+
+        private static Texture2D GenerateGroundTexture()
+        {
+            var tex = NewNoiseTexture();
+            for (int y = 0; y < 64; y++)
+            {
+                for (int x = 0; x < 64; x++)
+                {
+                    float u = x / 64f;
+                    float v = y / 64f;
+                    float n = Mathf.PerlinNoise(u * 8f, v * 8f);
+                    float blades = Mathf.PerlinNoise(u * 24f, v * 3f);
+                    float grain = 0.85f + n * 0.22f + (blades - 0.5f) * 0.18f;
+                    tex.SetPixel(x, y, new Color(0.36f, 0.62f, 0.28f) * grain);
+                }
+            }
+            tex.Apply();
+            return tex;
         }
 
         private void BuildPig(Transform root, float radius)
         {
-            // Prefer the Kenney pig over the green sphere. +90° Y turns its -Z face toward -X (the
-            // sling, where the bird is coming from); the death pop still scales the whole view.
+            // Prefer the Kenney pig over the green sphere. Identity keeps its -Z face toward the
+            // camera (z=-14), so the pig faces the screen rather than the sling.
             var model = DshMobile.KenneyModel.Load("animal-pig", root, radius * 2f, centerVertically: true);
             if (model != null)
             {
-                model.localRotation = Quaternion.Euler(0f, 90f, 0f);
+                model.localRotation = Quaternion.Euler(0f, 0f, 0f);
                 return;
             }
 
@@ -1100,7 +1211,7 @@ namespace DshMiniGames
         {
             var view = index >= 0 && index < _blockViews.Count ? _blockViews[index] : null;
             Vector3 pos = view != null ? view.position : new Vector3(_level.Blocks[index].X, _level.Blocks[index].Y, 0f);
-            Color color = ColourFor(_level.Blocks[index].Kind);
+            Color color = BaseColour(_level.Blocks[index].Kind);
             HideView(_blockViews, index);
 
             int pieces = 7;

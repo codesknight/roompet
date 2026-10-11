@@ -43,7 +43,10 @@ namespace DshMiniGames
             HalfWidth = 5.4f,
             BottomY = -8.6f,
             TopY = 8.2f,
-            FruitRadius = 0.46f,
+            // 0.46 read as "the fruit are too small to hit" on a phone; 0.56 makes each fruit a
+            // comfortably thumb-sized target, and because the hit test adds this radius the swipe
+            // is proportionally more forgiving too (feedback: 切水果水果调大).
+            FruitRadius = 0.56f,
             MinAirSeconds = 1.55f,
             BladeHalfWidth = 0.30f,
             MaxSimultaneous = 5

@@ -253,6 +253,22 @@
 - [x] 文档：本文件 + CHANGELOG 第 55 轮 + DEVLOG 坑 180 + README 计数
 - [ ] ⏳ **真机确认**：① UI 不超界不重叠；② 收藏词表可查看/移除；③ 词库几千词；④ 重置清零；⑤ 情景对话可编辑提示词并和宠物用英文练
 
+## 这一轮（第 56 轮）的验收清单
+
+- [x] **弹弓 Y 型**：`BuildSling` 一根主干 + 两根叉臂向内收拢，去掉三叉
+- [x] **障碍砸死猪 + 物理平衡**：`NudgeUnsupported` 失衡倾倒已有；`PigDamage` 用**方块** `ImpactSpeed` 判砸死（猪自身为 0）；`PigSquashMass` 1.1 → 0.3
+- [x] **猪面向屏幕**：`BuildPig` 模型 `Euler(0,0,0)`（-Z 面朝相机）
+- [x] **真实纹理**：木 / 石 / 冰 / 地面程序化纹理（`BlockTexture` / `GroundTexture`，Built-in RP 兼容）
+- [x] **接果子灵敏度**：`Sensitivity`（0.5–2.0×，持久化）+ uGUI 滑杆 + `OverUi` 手动 `RaycastAll` 挡 UI 手指
+- [x] **接果子小狗头背景**：`BuildDogHead` 程序化发光小狗头剪影替换霓虹竖条
+- [x] **切水果调大**：`FruitRadius` 0.46 → 0.56
+- [x] **切水果刀刃配色 + 粒子**：五档颜色持久化 + 刀光粒子拖尾 + 切中果汁飞溅
+- [x] **切水果木菜板背景**：`BuildBoardBackground` + `WoodTexture`
+- [x] **换主宠回闪修复**：`PetGameManager.MakePrimary` 移除 `RecentrePet()`
+- [x] **验证**：408/408 通过（407 + 1 落块砸死猪）+ 三个小游戏 play-mode 冒烟无 error
+- [x] 文档：本文件 + CHANGELOG 第 56 轮 + DEVLOG 坑 181–182 + README 计数
+- [ ] ⏳ **真机确认**：① 弹弓是 Y 型、障碍会失衡掉落、猪面向屏幕、木石冰地纹理清楚；② 接果子灵敏度滑杆可调且不误动篮子、背景是小狗头；③ 切水果水果更大、刀刃可换色带粒子、背景是木菜板；④ 点宠物/换主宠人物不再回闪
+
 ## 明确推迟或不做
 
 | 项 | 状态 | 原因 |

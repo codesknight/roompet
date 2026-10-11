@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **407/407 通过**（虚拟宠物 230 + 跑酷 15 + 手机端 56 + 小游戏 99，另有少量跨程序集计数），EditMode |
+| 测试 | **408/408 通过**（虚拟宠物 230 + 跑酷 15 + 手机端 56 + 小游戏 100，另有少量跨程序集计数），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -1172,6 +1172,16 @@
       （如 "cancel" 两行），直接生成会让 `Words` 里同一单词出现两次，`FindWord` 只返回第一个、测验干扰项也可能撞车。修法：生成脚本
       用 `HashSet` 按 `word.ToLowerInvariant()` 去重，只留第一行。**凡是"词条 = 唯一键"的数据，落库前都先去重并断言唯一。**
 
+181. **"被砸死"要看砸下来的那个东西，而不是被砸的那个。** 弹弓小鸟的"猪被障碍物砸死"第一版查的是猪自己的 `ImpactSpeed`——
+      猪站在地上是静止的，速度恒为 0，于是再重的方块砸到头上都不死。修法：在 `PigDamage` 里遍历方块，**用方块的 `ImpactSpeed`**
+      判断（且要求方块在猪上方、与猪重叠），再叠加一条"压在身上的方块够重（`PigSquashMass`）就活埋"的慢速通道。
+      **凡是"A 作用到 B"的伤害，先分清该读 A 的状态还是 B 的状态。**
+
+182. **uGUI 的 `IsPointerOverGameObject()`（无参）只查鼠标，不查手指。** 接果子是"整屏拖动"，又把灵敏度做成 uGUI `Slider`：
+      手机上拖滑杆时，`StandaloneInputModule` 会驱动滑杆，但无参 `IsPointerOverGameObject()` 永远只回答鼠标在不在 UI 上，
+      于是同一根手指既拖了滑杆、又拖了篮子。修法：手动 `EventSystem.RaycastAll`（`PointerEventData.position` 用底左原点屏幕坐标，
+      自建触控层给的是顶左原点，要先翻 Y）。**拖拽玩法里给 uGUI 控件做"挡手指"判断，别用无参的 IsPointerOverGameObject。**
+
 ## 八、一分钟速查
 
 ```powershell
@@ -1216,7 +1226,7 @@ Tools/DSH Mobile/Preview/Report Current Viewport    # 打印当前视口 / 方�
 Tools/DSH Mobile/Build APK                     # → UnityMCPProject\Builds\Android\RoomPet.apk
 
 # 跑测试（命令行风格，实际用 MCP 的 run_tests）
-EditMode，期望 351/351
+EditMode，期望 408/408
 
 # 存档
 %USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\

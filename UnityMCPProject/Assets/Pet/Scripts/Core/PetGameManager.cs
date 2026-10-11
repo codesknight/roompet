@@ -672,10 +672,12 @@ namespace DshPet
                 "现在陪着你的换成了它。", 0.4f);
 
             // The room is rebuilt around the new pet: the one that had the brain becomes a companion.
+            // Deliberately no RecentrePet() here — snapping the pet and the player back to the room's
+            // origin is the "回闪" the player sees when tapping a companion; a hand-over should keep
+            // everyone where they are.
             ResetSelection();
             SpawnCompanions();
             RebuildBrain();
-            RecentrePet();
 
             Memory.AddSystem($"（现在主要照顾的是{record.Name}，它的记忆和记事本会跟着它）");
             ChatChanged?.Invoke();
