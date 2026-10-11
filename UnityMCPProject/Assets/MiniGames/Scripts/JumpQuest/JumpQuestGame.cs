@@ -113,7 +113,7 @@ namespace DshMiniGames
         private const float MinViewSize = 3.5f;
         private const float MaxViewSize = 11f;
         private const float EyeDistance = 26f;
-        private const float BoxHeight = 0.85f;
+        private const float BoxHeight = 1.1f;
         private const float AnimalHeight = 1.05f;
 
         private readonly List<Vector3> _viewPoints = new List<Vector3>(8);
@@ -246,37 +246,18 @@ namespace DshMiniGames
 
         // ------------------------------------------------------------------ boxes
 
-        /// <summary>The nature models used as hopping platforms, in rotation (feedback: 平台换成树墩/石头模组).</summary>
-        private static readonly string[] PlatformModels =
-        {
-            "Runner/Nature/stump_round",
-            "Runner/Nature/rock_largeA",
-            "Runner/Nature/stump_square",
-        };
-
-        private Box SpawnBox(Vector2 centre, float size, float height, Color tint, int variant)
+        private Box SpawnBox(Vector2 centre, float size, float height, Color tint)
         {
             var root = new GameObject("Box").transform;
             root.SetParent(transform, false);
 
-            int idx = ((variant % PlatformModels.Length) + PlatformModels.Length) % PlatformModels.Length;
-            var model = DshMobile.KenneyModel.LoadPath(PlatformModels[idx], root, height, false);
+            var cube = ShapeParented(root, "Block", new Vector3(size * 2f, height, size * 2f), tint);
+            cube.localPosition = new Vector3(0f, height * 0.5f, 0f);
 
-            if (model == null)
-            {
-                // Fallback: the old procedural cube, for a build missing the nature models.
-                var cube = ShapeParented(root, "Block", new Vector3(size * 2f, height, size * 2f), tint);
-                cube.localPosition = new Vector3(0f, height * 0.5f, 0f);
-                var top = ShapeParented(root, "Top", new Vector3(size * 2f, 0.06f, size * 2f),
-                    Color.Lerp(tint, Color.white, 0.28f));
-                top.localPosition = new Vector3(0f, height + 0.03f, 0f);
-            }
-
-            // A flat cap on top of the model so the animal always lands on a level surface — a
-            // rounded rock would otherwise let the animal's feet sink into it (feedback: 穿模).
-            var cap = ShapeParented(root, "Cap", new Vector3(size * 2f, 0.05f, size * 2f),
-                new Color(0.68f, 0.55f, 0.40f));
-            cap.localPosition = new Vector3(0f, height + 0.02f, 0f);
+            // A lighter top face, so the box reads as a box from a three-quarter camera.
+            var top = ShapeParented(root, "Top", new Vector3(size * 2f, 0.06f, size * 2f),
+                Color.Lerp(tint, Color.white, 0.28f));
+            top.localPosition = new Vector3(0f, height + 0.03f, 0f);
 
             root.position = new Vector3(centre.x, 0f, centre.y);
             return new Box { Transform = root, Centre = centre, Size = size, Height = height };
@@ -316,7 +297,7 @@ namespace DshMiniGames
             _colour = (_colour + 1) % Palette.Length;
             var centre = new Vector2(previous.Centre.x + gap, drift);
 
-            _boxes.Add(SpawnBox(centre, _settings.BoxHalfSize, BoxHeight, Palette[_colour], _colour));
+            _boxes.Add(SpawnBox(centre, _settings.BoxHalfSize, BoxHeight, Palette[_colour]));
         }
 
         /// <summary>
@@ -362,7 +343,7 @@ namespace DshMiniGames
             // 落空". Input stays swallowed until the finger comes back up.
             _swallowInput = true;
 
-            _boxes.Add(SpawnBox(Vector2.zero, _settings.BoxHalfSize, BoxHeight, Palette[0], 0));
+            _boxes.Add(SpawnBox(Vector2.zero, _settings.BoxHalfSize, BoxHeight, Palette[0]));
             SpawnNext();
 
             ApplyPlayer(Vector3.zero, 0f);

@@ -82,9 +82,6 @@ namespace DshMiniGames
     /// check, and played by the game — so "the level is winnable" is a statement about the level the
     /// player actually receives, not about a diagram of it.
     /// </summary>
-    /// <summary>What a bird does. Charge gets a mid-flight tap boost. (Bomb was removed on request.)</summary>
-    public enum BirdKind { Normal = 0, Charge = 1 }
-
     public sealed class BirdLevel
     {
         public int Stage;
@@ -149,14 +146,6 @@ namespace DshMiniGames
         /// <summary>How many blocks/pigs the level has, for the diagnostics line.</summary>
         public string Describe()
             => "第 " + Stage + " 关：" + Pigs.Count + " 只猪、" + Blocks.Count + " 块、" + Birds + " 只鸟";
-
-        /// <summary>The kind of the bird at <paramref name="birdIndex"/>: normal then charge, alternating.
-        /// The first bird is always normal so the player learns the sling before the special bird.</summary>
-        public BirdKind KindOf(int birdIndex)
-        {
-            int k = ((birdIndex % 2) + 2) % 2;
-            return k == 1 ? BirdKind.Charge : BirdKind.Normal;
-        }
     }
 
     /// <summary>The physics and damage numbers.</summary>
@@ -666,7 +655,6 @@ namespace DshMiniGames
             public SimPig[] Pigs;
             public Vector2 BirdPosition;
             public Vector2 BirdVelocity;
-            public BirdKind BirdKind;
             public int Impacts;
             public bool Stopped;
             public float Time;
@@ -727,30 +715,15 @@ namespace DshMiniGames
         /// verdict is kept (the generator, where sixty-five recordings would be pure garbage).
         /// </summary>
         public static BirdShotResult Simulate(BirdLevel level, Vector2 velocity, BirdSettings settings,
-            bool applyToLevel = true, bool record = false, BirdKind kind = BirdKind.Normal)
-        {
-            if (level == null) return new BirdShotResult();
-            var target = applyToLevel ? level : level.Clone();
-            return SimulateFrom(target, new Vector2(target.SlingX, target.SlingY), velocity, settings,
-                true, record, kind);
-        }
-
-        /// <summary>
-        /// Runs a shot from a mid-flight state instead of the sling — the charge bird's tap-to-boost
-        /// re-simulates from where the bird already is, with a boosted velocity. Same rules, same
-        /// verdict, same replay.
-        /// </summary>
-        public static BirdShotResult SimulateFrom(BirdLevel level, Vector2 position, Vector2 velocity,
-            BirdSettings settings, bool applyToLevel = true, bool record = false, BirdKind kind = BirdKind.Normal)
+            bool applyToLevel = true, bool record = false)
         {
             if (level == null) return new BirdShotResult();
 
             var target = applyToLevel ? level : level.Clone();
             var sim = Build(target, settings, record);
 
-            sim.BirdPosition = position;
+            sim.BirdPosition = new Vector2(target.SlingX, target.SlingY);
             sim.BirdVelocity = velocity;
-            sim.BirdKind = kind;
             sim.Result.Path.Add(sim.BirdPosition);
             RecordFrame(sim);
 
@@ -1945,13 +1918,8 @@ namespace DshMiniGames
         /// </summary>
         private static bool SegmentHitsBox(Vector2 a, Vector2 b, float radius, SimBlock box)
         {
-            // Sample no wider than the box's smallest half-extent, so a thin beam can never be skipped
-            // by a fast bird (feedback: 小鸟穿模). The charge bird's boost makes the per-step path
-            // long, and a sample step wider than a beam is how the bird "teleported" through it.
             float len = (b - a).magnitude;
-            float minHalf = Mathf.Max(0.02f, Mathf.Min(box.HalfW, box.HalfH));
-            float interval = Mathf.Min(radius * 0.5f, minHalf);
-            int steps = Mathf.Max(1, Mathf.CeilToInt(len / interval));
+            int steps = Mathf.Max(1, Mathf.CeilToInt(len / Mathf.Max(0.04f, radius * 0.6f)));
             for (int i = 0; i <= steps; i++)
             {
                 if (CircleHitsBox(Vector2.Lerp(a, b, (float)i / steps), radius, box)) return true;

@@ -22,8 +22,8 @@ namespace DshMiniGames
     /// </summary>
     public static class BirdLevels
     {
-        /// <summary>How many stages 闯关 has (feedback: 关卡太少，多加一些).</summary>
-        public const int StageCount = 18;
+        /// <summary>How many stages 闯关 has.</summary>
+        public const int StageCount = 12;
 
         /// <summary>
         /// How far apart two storeys stand: an upright (0.68) plus the beam lying on top of it (0.20).

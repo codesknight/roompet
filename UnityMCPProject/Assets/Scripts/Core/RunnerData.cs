@@ -20,7 +20,7 @@ namespace DshRunner
         public const float JumpHeight = 2.5f;
         public const float JumpDuration = 0.62f;
         public const float LaneChangeTime = 0.11f;
-        public const float SlideDuration = 0.9f;
+        public const float SlideDuration = 0.6f;
         // The slide is a crouch (squash), not a shrink: the whole character used to scale down to
         // 45%, which read as "变小". The squash is driven by PlayerController._squash instead.
         public const float SlideScaleY = 1f;
@@ -208,7 +208,7 @@ namespace DshRunner
                 case ObstacleKind.JumpBarrier:
                     return 0.25f + 0.65f * progress;
                 case ObstacleKind.SlideBarrier:
-                    return progress < 0.12f ? 0f : 0.22f + 0.60f * progress;
+                    return progress < 0.2f ? 0f : 0.15f + 0.60f * progress;
                 default:
                     return 0f;
             }

@@ -130,10 +130,6 @@ namespace DshRunner
             var model = DshMobile.KenneyModel.Load("animal-fox", transform, 1f, centerVertically: true);
             if (model != null)
             {
-                // The fox model's face is on +Z (like every Kenney cube pet), but the runner runs +Z
-                // away from the camera behind it — so identity leaves the fox's back to the player.
-                // 180° Y turns the face back toward the camera (feedback: 宠物换个好看的正脸模组).
-                model.localRotation = Quaternion.Euler(0f, 180f, 0f);
                 _rig = model;
                 _head = _tail = _tailMid = _tailTip = _earLeft = _earRight = null;
                 _hips.Clear();

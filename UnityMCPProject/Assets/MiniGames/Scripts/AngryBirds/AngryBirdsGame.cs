@@ -84,14 +84,6 @@ namespace DshMiniGames
         private bool _dragging;
         private bool _hasDrag;
 
-        // Bird-kind state: the current bird's ability, its index in the level's queue, the direction
-        // it is flying (for the charge boost), and whether the boost has been spent.
-        private BirdKind _birdKind;
-        private int _birdIndex;
-        private Vector2 _birdFacing = Vector2.right;
-        private bool _chargedBoosted;
-        private bool _chargeWasActive;
-
         // Playback of the last shot.
         private BirdShotResult _shot;
         private float _playTime;
@@ -639,11 +631,6 @@ namespace DshMiniGames
         /// <summary>Rebuilds the view from the level data. The data is the only source of truth.</summary>
         private void Rebuild()
         {
-            _birdIndex = 0;
-            _birdKind = _level != null ? _level.KindOf(0) : BirdKind.Normal;
-            _chargedBoosted = false;
-            _chargeWasActive = false;
-
             for (int i = _world.childCount - 1; i >= 0; i--)
             {
                 var child = _world.GetChild(i);
@@ -838,12 +825,11 @@ namespace DshMiniGames
             _bird.SetParent(transform, false);
             _bird.position = SlingPosition;
 
-            // The bird's model follows its kind: normal parrot, yellow chick for the charge bird
-            // (feedback: 小鸟换成不同种类模组；黑企鹅已取消). -90° Y turns the model's -Z face
-            // toward +X, the launch direction.
-            string modelName = _birdKind == BirdKind.Charge ? "animal-chick" : "animal-parrot";
-
-            var model = DshMobile.KenneyModel.Load(modelName, _bird,
+            // Prefer the Kenney parrot over the red sphere. -90° Y turns the model's -Z face
+            // toward +X, the launch direction the sphere bird's beak already pointed at; the
+            // flight replay keeps setting the bird's Z-rotation, which then tilts the model
+            // along the trajectory just like it did the sphere.
+            var model = DshMobile.KenneyModel.Load("animal-parrot", _bird,
                 _settings.BirdRadius * 2f, centerVertically: true);
             if (model != null)
             {
@@ -852,10 +838,8 @@ namespace DshMiniGames
                 return;
             }
 
-            Color fallback = _birdKind == BirdKind.Charge ? new Color(0.95f, 0.82f, 0.25f)
-                : new Color(0.92f, 0.28f, 0.24f);
             AddPart(_bird, PrimitiveType.Sphere, Vector3.zero, Vector3.one * _settings.BirdRadius * 2f,
-                fallback);
+                new Color(0.92f, 0.28f, 0.24f));
             AddPart(_bird, PrimitiveType.Cube, new Vector3(_settings.BirdRadius * 1.05f, 0f, 0f),
                 new Vector3(_settings.BirdRadius * 0.7f, _settings.BirdRadius * 0.4f, _settings.BirdRadius * 0.5f),
                 new Color(0.98f, 0.78f, 0.24f), "Beak");
@@ -1048,19 +1032,15 @@ namespace DshMiniGames
         {
             Vector2 velocity = BirdRules.LaunchVelocity(SlingPosition, _dragWorld, _settings);
 
-            _birdKind = _level.KindOf(_birdIndex);
-            _chargedBoosted = false;
-
             // The whole shot is decided here, by the rules, and then only replayed — with the replay
             // recorded, because a toppling tower is not something an animation can predict.
-            _shot = BirdRules.Simulate(_level, velocity, _settings, true, true, _birdKind);
+            _shot = BirdRules.Simulate(_level, velocity, _settings, true, true);
             _playTime = 0f;
             _playing = true;
             _nextEvent = 0;
             _dragging = false;
             _hasDrag = false;
             _preview.Clear();
-            _birdIndex++;
             BirdsLeft--;
 
             State = Phase.Flying;
@@ -1074,14 +1054,6 @@ namespace DshMiniGames
             {
                 State = Phase.Ready;
                 return;
-            }
-
-            // 冲锋鸟: a tap during flight spends its boost — re-simulate from here with a burst of
-            // speed in the direction it is already flying.
-            if (_birdKind == BirdKind.Charge && !_chargedBoosted && ChargeTap())
-            {
-                ChargeBoost();
-                if (_shot == null) return;
             }
 
             _playTime += Time.deltaTime;
@@ -1111,47 +1083,7 @@ namespace DshMiniGames
                 return;
             }
 
-            LoadNextBird();
-        }
-
-        /// <summary>Loads the next bird in the queue, swapping its model to match its kind.</summary>
-        private void LoadNextBird()
-        {
-            _birdKind = _level != null ? _level.KindOf(_birdIndex) : BirdKind.Normal;
-            _chargedBoosted = false;
-            BuildBird();
-            State = Phase.Ready;
-            _preview.Clear();
-        }
-
-        private bool ChargeTap()
-        {
-            if (UnityEngine.EventSystems.EventSystem.current != null &&
-                UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
-            {
-                _chargeWasActive = false;
-                return false;
-            }
-
-            var gesture = DshMobile.MobileTouch.Gesture;
-            bool mouseDown = Input.GetMouseButtonDown(0);
-            bool touchDown = gesture.IsActive && !_chargeWasActive;
-            _chargeWasActive = gesture.IsActive;
-            return mouseDown || touchDown;
-        }
-
-        private void ChargeBoost()
-        {
-            _chargedBoosted = true;
-
-            Vector2 pos = _bird != null ? new Vector2(_bird.position.x, _bird.position.y) : SlingPosition;
-            Vector2 dir = _birdFacing.sqrMagnitude > 0.0001f ? _birdFacing : Vector2.right;
-            Vector2 velocity = dir.normalized * (_settings.MaxLaunchSpeed * 1.3f);
-
-            _shot = BirdRules.SimulateFrom(_level, pos, velocity, _settings, true, true, BirdKind.Charge);
-            _playTime = 0f;
-            _nextEvent = 0;
-            DshMobile.MobileHaptics.Medium();
+            ResetBird();
         }
 
         /// <summary>
@@ -1180,7 +1112,6 @@ namespace DshMiniGames
                 var direction = position - new Vector2(previous.x, previous.y);
                 if (direction.sqrMagnitude > 0.0002f)
                 {
-                    _birdFacing = direction.normalized;
                     _bird.localRotation = Quaternion.Euler(0f, 0f,
                         Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg);
                 }
