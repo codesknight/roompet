@@ -113,7 +113,7 @@ namespace DshMiniGames
         private const float MinViewSize = 3.5f;
         private const float MaxViewSize = 11f;
         private const float EyeDistance = 26f;
-        private const float BoxHeight = 1.1f;
+        private const float BoxHeight = 0.85f;
         private const float AnimalHeight = 1.05f;
 
         private readonly List<Vector3> _viewPoints = new List<Vector3>(8);
@@ -271,6 +271,12 @@ namespace DshMiniGames
                     Color.Lerp(tint, Color.white, 0.28f));
                 top.localPosition = new Vector3(0f, height + 0.03f, 0f);
             }
+
+            // A flat cap on top of the model so the animal always lands on a level surface — a
+            // rounded rock would otherwise let the animal's feet sink into it (feedback: 穿模).
+            var cap = ShapeParented(root, "Cap", new Vector3(size * 2f, 0.05f, size * 2f),
+                new Color(0.68f, 0.55f, 0.40f));
+            cap.localPosition = new Vector3(0f, height + 0.02f, 0f);
 
             root.position = new Vector3(centre.x, 0f, centre.y);
             return new Box { Transform = root, Centre = centre, Size = size, Height = height };

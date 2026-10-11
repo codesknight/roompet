@@ -838,12 +838,10 @@ namespace DshMiniGames
             _bird.SetParent(transform, false);
             _bird.position = SlingPosition;
 
-            // The bird's model follows its kind: normal parrot, yellow chick for the charge bird,
-            // penguin for the bomb bird (feedback: 小鸟换成不同种类模组). -90° Y turns the model's
-            // -Z face toward +X, the launch direction.
-            string modelName = _birdKind == BirdKind.Charge ? "animal-chick"
-                : _birdKind == BirdKind.Bomb ? "animal-penguin"
-                : "animal-parrot";
+            // The bird's model follows its kind: normal parrot, yellow chick for the charge bird
+            // (feedback: 小鸟换成不同种类模组；黑企鹅已取消). -90° Y turns the model's -Z face
+            // toward +X, the launch direction.
+            string modelName = _birdKind == BirdKind.Charge ? "animal-chick" : "animal-parrot";
 
             var model = DshMobile.KenneyModel.Load(modelName, _bird,
                 _settings.BirdRadius * 2f, centerVertically: true);
@@ -855,7 +853,6 @@ namespace DshMiniGames
             }
 
             Color fallback = _birdKind == BirdKind.Charge ? new Color(0.95f, 0.82f, 0.25f)
-                : _birdKind == BirdKind.Bomb ? new Color(0.15f, 0.14f, 0.16f)
                 : new Color(0.92f, 0.28f, 0.24f);
             AddPart(_bird, PrimitiveType.Sphere, Vector3.zero, Vector3.one * _settings.BirdRadius * 2f,
                 fallback);

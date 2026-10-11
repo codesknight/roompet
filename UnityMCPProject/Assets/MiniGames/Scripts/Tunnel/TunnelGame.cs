@@ -27,36 +27,20 @@ namespace DshMiniGames
             set => PlayerPrefs.SetFloat("dshtunnel.sensitivity", TunnelRules.ClampSensitivity(value));
         }
 
-        private const float RingSpacing = 2.2f;
-        private const int RingCount = 24;
-        private const float RingRadius = 1.9f;
-        private const int RingSegments = 18;
-
         private Camera _camera;
         private AudioSource _sfx;
         private Transform _ship;
         private Vector2 _shipPos;
-        private Vector2 _lastHole;
-        private int _gateIndex;
         private readonly List<Obstacle> _obstacles = new List<Obstacle>();
-        private readonly List<Transform> _rings = new List<Transform>();
         private float _spawnTimer;
         private float _deathAt;
 
         private class Obstacle
         {
             public Transform Root;
-            public Transform Visual;
-            public bool IsGate;
-            public Vector2 Hole;       // gate: hole centre; mine: current (drifting) centre
-            public Vector2 BaseHole;   // mine: centre before drift
+            public Vector2 Hole;      // the debris's centre in the tunnel cross-section
             public float Radius;
             public bool Scored;
-            public GateShape Shape;
-            public float DriftPhase;
-            public float DriftRadius;
-            public float DriftSpeed;
-            public bool Homing;        // mine: drifts toward the ship instead of in a circle
         }
 
         private void Awake()
@@ -115,8 +99,6 @@ namespace DshMiniGames
             RenderSettings.fogDensity = 0.10f;
 
             BuildShip();
-            BuildTunnel();
-            BuildVanishingPoint();
         }
 
         private void BuildShip()
@@ -154,58 +136,13 @@ namespace DshMiniGames
             _ship = root;
         }
 
-        private void BuildTunnel()
+        private void ApplyTheme()
         {
-            for (int i = 0; i < RingCount; i++)
-            {
-                var ring = BuildRing();
-                ring.SetParent(transform, false);
-                ring.localPosition = new Vector3(0f, 0f, -7f + i * RingSpacing);
-                _rings.Add(ring);
-            }
-            ApplyRingTheme();
-        }
-
-        private Transform BuildRing()
-        {
-            var ring = new GameObject("TunnelRing").transform;
-            for (int s = 0; s < RingSegments; s++)
-            {
-                float angle = s * Mathf.PI * 2f / RingSegments;
-                Prim("Seg", PrimitiveType.Cube, ring,
-                    new Vector3(Mathf.Cos(angle) * RingRadius, Mathf.Sin(angle) * RingRadius, 0f),
-                    new Vector3(0.42f, 0.10f, 0.10f),
-                    Quaternion.Euler(0f, 0f, angle * Mathf.Rad2Deg),
-                    Color.white, 0.3f);
-            }
-            return ring;
-        }
-
-        /// <summary>A distant bright dot at the tunnel's vanishing point.</summary>
-        private void BuildVanishingPoint()
-        {
-            Prim("VanishingPoint", PrimitiveType.Sphere, transform,
-                new Vector3(0f, 0f, 40f), new Vector3(2.5f, 2.5f, 0.2f),
-                Quaternion.identity, new Color(1f, 0.9f, 0.8f), 2.5f);
-        }
-
-        private void ApplyRingTheme()
-        {
-            var accent = TunnelRules.TunnelColor(Theme, true);
+            // No more tunnel rings (feedback: 圆环太丑). Just the coloured void + fog, and the
+            // scattered debris ahead reads against it.
             var baseColor = TunnelRules.TunnelColor(Theme, false);
             if (_camera != null) _camera.backgroundColor = baseColor * 0.12f;
             RenderSettings.fogColor = baseColor * 0.12f;
-
-            for (int i = 0; i < _rings.Count; i++)
-            {
-                var ring = _rings[i];
-                if (ring == null) continue;
-                for (int s = 0; s < ring.childCount; s++)
-                {
-                    var r = ring.GetChild(s).GetComponent<Renderer>();
-                    if (r != null) Paint(r, s % 2 == 0 ? accent : baseColor, s % 2 == 0 ? 0.9f : 0.35f);
-                }
-            }
         }
 
         // ------------------------------------------------------------------ run
@@ -216,13 +153,11 @@ namespace DshMiniGames
             Theme = theme;
             Score = 0;
             _shipPos = Vector2.zero;
-            _lastHole = Vector2.zero;
-            _gateIndex = 0;
             _ship.localPosition = Vector3.zero;
             foreach (var o in _obstacles) if (o.Root != null) Destroy(o.Root.gameObject);
             _obstacles.Clear();
             _spawnTimer = 0f;
-            ApplyRingTheme();
+            ApplyTheme();
             State = Phase.Running;
         }
 
@@ -248,17 +183,6 @@ namespace DshMiniGames
             _camera.transform.position = Vector3.Lerp(_camera.transform.position, camTarget,
                 1f - Mathf.Exp(-7f * dt));
 
-            // Rings scroll past the ship and wrap, which is the forward-motion illusion.
-            for (int i = 0; i < _rings.Count; i++)
-            {
-                var ring = _rings[i];
-                if (ring == null) continue;
-                var p = ring.localPosition;
-                p.z -= TunnelRules.ForwardSpeed * dt;
-                if (p.z < -7f) p.z += RingCount * RingSpacing;
-                ring.localPosition = p;
-            }
-
             for (int i = _obstacles.Count - 1; i >= 0; i--)
             {
                 var o = _obstacles[i];
@@ -266,61 +190,22 @@ namespace DshMiniGames
                 p.z -= TunnelRules.ForwardSpeed * dt;
                 o.Root.localPosition = p;
 
-                // Floating mines drift in a small circle, so the obstacle is never sitting still.
-                // Homing mines instead ease toward the ship — still dodgeable (they move slowly), but
-                // they punish standing still twice over.
-                if (!o.IsGate && o.Visual != null)
+                // Debris you did NOT hit is debris you dodged — that is the score. Collision is a
+                // plain circle-vs-circle against the debris's radius, so you dodge *around* it.
+                if (Mathf.Abs(p.z) < 0.4f &&
+                    TunnelRules.Collides(_shipPos, o.Hole, o.Radius + TunnelRules.ShipRadius))
                 {
-                    if (o.Homing)
-                    {
-                        o.Hole = Vector2.MoveTowards(o.Hole, _shipPos, 1.2f * dt);
-                        o.Hole = TunnelRules.ClampToTunnel(o.Hole);
-                    }
-                    else
-                    {
-                        o.DriftPhase += dt * o.DriftSpeed;
-                        Vector2 drift = new Vector2(Mathf.Cos(o.DriftPhase), Mathf.Sin(o.DriftPhase)) * o.DriftRadius;
-                        o.Hole = TunnelRules.ClampToTunnel(o.BaseHole + drift);
-                    }
-                    o.Visual.localPosition = new Vector3(o.Hole.x, o.Hole.y, 0f);
+                    Die();
+                    return;
+                }
+                if (!o.Scored && p.z < -0.6f)
+                {
+                    o.Scored = true;
+                    Score++;
+                    DshMobile.MobileHaptics.Light();
                 }
 
-                if (o.IsGate)
-                {
-                    if (p.z <= 0f && !o.Scored)
-                    {
-                        o.Scored = true;
-                        if (TunnelRules.IsInsideHole(_shipPos, o.Hole, o.Shape, o.Radius))
-                        {
-                            Score++;
-                            DshMobile.MobileHaptics.Light();
-                        }
-                        else
-                        {
-                            Die();
-                            return;
-                        }
-                    }
-                }
-                else
-                {
-                    // Mine mode: a mine you did NOT hit is a mine you dodged — that is the score.
-                    if (Mathf.Abs(p.z) < 0.4f &&
-                        TunnelRules.Collides(_shipPos, o.Hole, o.Radius + TunnelRules.ShipRadius))
-                    {
-                        Die();
-                        return;
-                    }
-                    if (!o.Scored && p.z < -0.6f)
-                    {
-                        o.Scored = true;
-                        Score++;
-                        DshMobile.MobileHaptics.Light();
-                    }
-                }
-
-                // Recycle as soon as it is behind the ship, so a passed gate never lingers
-                // between the camera and the ship to block the view of what is coming.
+                // Recycle once it is behind the ship.
                 if (p.z < -2f)
                 {
                     Destroy(o.Root.gameObject);
@@ -336,162 +221,70 @@ namespace DshMiniGames
             }
         }
 
-        private void SpawnObstacle(float z)
-        {
-            if (Mode == TunnelMode.Mine)
-            {
-                // 躲障碍模式：一次在前面预先生成一排炸弹（而不是单个蹦出来），难度才够。
-                SpawnMine(z);
-                SpawnMine(z + 2.6f);
-                SpawnMine(z + 5.2f);
-                return;
-            }
-
-            // Survival mode adds mines on top of gates as the difficulty ramps.
-            bool isMine = Mode == TunnelMode.Survival && Score >= 5 && Random.value < 0.30f;
-            if (isMine) { SpawnMine(z); return; }
-            SpawnGate(z);
-        }
-
-        private void SpawnMine(float z)
-        {
-            var root = new GameObject("Mine").transform;
-            root.SetParent(transform, false);
-            root.localPosition = new Vector3(0f, 0f, z);
-
-            float r = TunnelRules.MineRadiusFor(Score);
-            var o = new Obstacle { Root = root, IsGate = false, Radius = r };
-            o.BaseHole = TunnelRules.NextMine(_shipPos, Random.value, Random.value);
-            o.Hole = o.BaseHole;
-            o.DriftPhase = Random.value * Mathf.PI * 2f;
-            o.DriftRadius = 0.28f;
-            o.DriftSpeed = 1.2f + Random.value * 0.8f;
-
-            // 特殊炸弹：约三成会追踪，慢慢朝船身靠过去。
-            o.Homing = Random.value < 0.3f;
-            o.Visual = BuildMine(root, o.Hole, r, o.Homing);
-
-            _obstacles.Add(o);
-        }
-
-        private void SpawnGate(float z)
-        {
-            var root = new GameObject("Gate").transform;
-            root.SetParent(transform, false);
-            root.localPosition = new Vector3(0f, 0f, z);
-
-            var o = new Obstacle { Root = root, IsGate = true };
-
-            // Chain each hole from the previous one, so two consecutive gates are never an
-            // impossible pair no matter how the ship wanders between them. The hole starts
-            // wide and shrinks as the score rises, and its shape widens from circles to
-            // squares / triangles / semicircles as the run goes on.
-            float r = TunnelRules.GateHoleRadiusFor(Score);
-            o.Shape = TunnelRules.GateShapeFor(Score, _gateIndex++);
-            o.Hole = TunnelRules.NextGateHole(_lastHole, Random.value, Random.value, r);
-            _lastHole = o.Hole;
-            o.Radius = r;
-            BuildGate(root, o.Hole, o.Shape, r);
-
-            _obstacles.Add(o);
-        }
-
-        /// <summary>
-        /// A wall with a shaped hole: a glowing outline of the hole plus radial spokes from the
-        /// outline out to the tunnel wall, so it reads as a wall with that shape cut out. Spokes
-        /// read better than a solid mesh for off-centre / square / triangle holes.
-        /// </summary>
-        private void BuildGate(Transform root, Vector2 hole, GateShape shape, float radius)
-        {
-            var points = TunnelRules.GateShapePoints(shape, radius, 48);
-
-            // A "wall" of scattered boulders/logs around the hole, instead of the old radial grill
-            // (feedback: 辐条墙洞太丑，换成模组). The glowing outline still marks the passable gap.
-            BuildModelWall(root, hole, points);
-
-            // The glowing outline of the hole shape itself.
-            for (int s = 0; s < points.Length; s++)
-            {
-                Prim("Rim", PrimitiveType.Cube, root,
-                    new Vector3(hole.x + points[s].x, hole.y + points[s].y, 0f),
-                    new Vector3(0.32f, 0.20f, 0.16f),
-                    Quaternion.identity,
-                    new Color(1f, 0.95f, 0.6f), 1.3f);
-            }
-        }
-
-        private static readonly string[] WallModels =
+        private static readonly string[] DebrisModels =
         {
             "Runner/Nature/rock_largeA",
             "Runner/Nature/log",
             "Runner/Nature/rock_smallA",
+            "Runner/Nature/stump_round",
             "Runner/Nature/tree_blocks",
         };
 
-        /// <summary>
-        /// Fills the space between the hole's edge and the tunnel ring with a loose ring of free
-        /// nature models (boulders, logs, stacked wood), leaving the shaped hole open in the middle.
-        /// The hole itself is the *logical* passable area — the collision test reads the hole, not
-        /// the models — so the gap is guaranteed drivable no matter how the debris is scattered.
-        /// </summary>
-        private void BuildModelWall(Transform root, Vector2 hole, Vector2[] points)
+        private void SpawnObstacle(float z)
         {
-            int n = 14;
-            for (int i = 0; i < n; i++)
+            // A cluster of scattered debris, like rubbish dumped in the tunnel — dodge *around* the
+            // pieces (feedback: 障碍物随机摆，像丢进隧道里的垃圾，从旁边躲过去). Count grows a
+            // little with score.
+            int count = 3 + Mathf.Min(2, Score / 12);
+            for (int i = 0; i < count; i++)
             {
-                float angle = i * Mathf.PI * 2f / n;
-                Vector2 dir = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
-
-                // Nearest boundary point to this direction, so a shaped hole keeps its shape.
-                Vector2 bp = points[0];
-                float best = -2f;
-                for (int p = 0; p < points.Length; p++)
-                {
-                    float d = Vector2.Dot(points[p].normalized, dir);
-                    if (d > best) { best = d; bp = points[p]; }
-                }
-                Vector2 hp = hole + bp;
-
-                // Ray from the hole centre through that point out to the tunnel ring.
-                float b = Vector2.Dot(hole, dir);
-                float c = hole.sqrMagnitude - RingRadius * RingRadius;
-                float disc = b * b - c;
-                float t = disc > 0f ? -b + Mathf.Sqrt(disc) : 0f;
-                Vector2 rp = hole + dir * Mathf.Max(0.01f, t);
-
-                Vector2 mid = (hp + rp) * 0.5f;
-                float ang = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
-
-                var model = DshMobile.KenneyModel.LoadPath(WallModels[i % WallModels.Length], root, 0.5f, true);
-                if (model == null) continue;
-                model.localPosition = new Vector3(mid.x, mid.y, 0f);
-                // Logs lie along the radial line; rocks are roughly symmetric so the tilt is harmless.
-                model.localRotation = Quaternion.Euler(0f, 0f, ang - 90f);
+                SpawnDebris(z + i * 1.1f);
             }
         }
 
-        private Transform BuildMine(Transform root, Vector2 at, float radius, bool homing)
+        private void SpawnDebris(float z)
         {
-            // A black bomb with a lit fuse, so it reads as "dodge me" instead of a generic red ball.
-            // A homing bomb is tinted red so the player can tell the tracker apart and move.
-            // The whole bomb lives under one visual node so the drift moves body + fuse + spark together.
-            var visual = new GameObject("MineVisual").transform;
-            visual.SetParent(root, false);
-            visual.localPosition = new Vector3(at.x, at.y, 0f);
+            var root = new GameObject("Debris").transform;
+            root.SetParent(transform, false);
+            root.localPosition = new Vector3(0f, 0f, z);
 
-            Color body = homing ? new Color(0.34f, 0.10f, 0.14f) : new Color(0.13f, 0.12f, 0.15f);
-            Color spark = homing ? new Color(1f, 0.28f, 0.36f) : new Color(1f, 0.82f, 0.25f);
+            float radius = 0.30f + Random.value * 0.22f;
+            Vector2 pos = RandomDebrisPosition();
 
-            Prim("MineBody", PrimitiveType.Sphere, visual,
-                Vector3.zero, Vector3.one * (radius * 2f),
-                Quaternion.identity, body, 0.9f);
-            Prim("Fuse", PrimitiveType.Cylinder, visual,
-                new Vector3(0f, radius * 1.15f, 0f), new Vector3(0.06f, radius * 0.7f, 0.06f),
-                Quaternion.identity, new Color(0.44f, 0.30f, 0.18f), 0.4f);
-            Prim("Spark", PrimitiveType.Sphere, visual,
-                new Vector3(0f, radius * 1.6f, 0f), Vector3.one * (radius * 0.5f),
-                Quaternion.identity, spark, 1.5f);
-            return visual;
+            var o = new Obstacle { Root = root, Hole = pos, Radius = radius };
+            BuildDebris(root, pos, radius, Random.Range(0, DebrisModels.Length));
+
+            _obstacles.Add(o);
+        }
+
+        /// <summary>A random spot in the cross-section, kept off the ship's current spot so a fresh
+        /// cluster is never an instant death.</summary>
+        private Vector2 RandomDebrisPosition()
+        {
+            for (int attempt = 0; attempt < 8; attempt++)
+            {
+                float angle = Random.value * Mathf.PI * 2f;
+                float radius = Mathf.Lerp(0.35f, TunnelRules.TunnelRadius - 0.55f, Mathf.Sqrt(Random.value));
+                var pos = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+                if ((pos - _shipPos).sqrMagnitude > 0.5f) return TunnelRules.ClampToTunnel(pos);
+            }
+            return TunnelRules.ClampToTunnel(new Vector2(1.2f, 0f));
+        }
+
+        private void BuildDebris(Transform root, Vector2 at, float radius, int modelIndex)
+        {
+            var model = DshMobile.KenneyModel.LoadPath(DebrisModels[modelIndex], root, radius * 2.2f, true);
+            if (model != null)
+            {
+                model.localPosition = new Vector3(at.x, at.y, 0f);
+                model.localRotation = Quaternion.Euler(0f, 0f, Random.value * 360f);
+                return;
+            }
+
+            // Fallback: a grey boulder.
+            Prim("Debris", PrimitiveType.Sphere, root,
+                new Vector3(at.x, at.y, 0f), Vector3.one * (radius * 2f),
+                Quaternion.identity, new Color(0.45f, 0.45f, 0.5f), 0.3f);
         }
 
         // ------------------------------------------------------------------ helpers

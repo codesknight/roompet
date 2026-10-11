@@ -300,8 +300,9 @@ namespace DshRunner
                 _baseScale.y * flat,
                 _baseScale.z * (2f - flat) * stretch);
 
-            // A slide is a belly-dive: pitch forward under the bar, then straighten out.
-            float slidePitch = IsSliding ? -62f : 0f;
+            // A slide is a full 90° lie-down: the fox tips flat onto its belly and slides under the
+            // bar (feedback: 下滑时 90 度躺下滑过去).
+            float slidePitch = IsSliding ? -90f : 0f;
             _visual.localRotation = Quaternion.Euler(_visualRoll + _speedLean + slidePitch, 0f, _tilt);
         }
 
