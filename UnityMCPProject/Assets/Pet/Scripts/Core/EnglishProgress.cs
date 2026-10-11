@@ -124,6 +124,22 @@ namespace DshPet
             return list;
         }
 
+        /// <summary>The favourited words, sorted for a stable review order.</summary>
+        public static List<string> Favorites()
+        {
+            var list = new List<string>(Loaded(FavoritesKey));
+            list.Sort();
+            return list;
+        }
+
+        /// <summary>Removes a word from the favourites (for the 收藏 word-list management).</summary>
+        public static void RemoveFavorite(string word)
+        {
+            if (string.IsNullOrEmpty(word)) return;
+            var favorites = Loaded(FavoritesKey);
+            if (favorites.Remove(word)) Save(FavoritesKey, favorites);
+        }
+
         public static void ResetAll()
         {
             PlayerPrefs.DeleteKey(LearnedKey);

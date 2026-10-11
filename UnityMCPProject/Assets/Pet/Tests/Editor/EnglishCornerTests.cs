@@ -184,5 +184,42 @@ namespace DshPet.Tests
                 DshMobile.PetWallet.Add(original);
             }
         }
+
+        [Test]
+        public void Progress_FavoritesCanBeListedAndRemoved()
+        {
+            try
+            {
+                EnglishProgress.ResetAll();
+                EnglishProgress.ToggleFavorite("cat");
+                EnglishProgress.ToggleFavorite("dog");
+
+                var favs = EnglishProgress.Favorites();
+                Assert.AreEqual(2, favs.Count);
+                Assert.IsTrue(favs.Contains("cat") && favs.Contains("dog"));
+
+                EnglishProgress.RemoveFavorite("cat");
+                Assert.IsFalse(EnglishProgress.IsFavorite("cat"));
+                Assert.AreEqual(1, EnglishProgress.FavoriteCount);
+            }
+            finally
+            {
+                EnglishProgress.ResetAll();
+            }
+        }
+
+        [Test]
+        public void Scenarios_HaveNamesAndPrompts()
+        {
+            Assert.GreaterOrEqual(EnglishCorner.Scenarios.Length, 4, "a handful of scenarios for practice");
+            for (int i = 0; i < EnglishCorner.Scenarios.Length; i++)
+            {
+                Assert.IsFalse(string.IsNullOrEmpty(EnglishCorner.Scenarios[i].Name), "a scenario needs a name");
+                Assert.IsFalse(string.IsNullOrEmpty(EnglishCorner.Scenarios[i].DefaultPrompt),
+                    "a scenario needs a default prompt");
+            }
+            Assert.IsFalse(string.IsNullOrEmpty(EnglishCorner.ScenarioPrompt(0)));
+            Assert.AreEqual("", EnglishCorner.ScenarioPrompt(999), "out of range returns empty");
+        }
     }
 }

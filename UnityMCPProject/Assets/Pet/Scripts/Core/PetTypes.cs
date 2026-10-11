@@ -178,6 +178,10 @@ namespace DshPet
         /// prompt builder mounts <see cref="EnglishCorner.EnglishTeacherPrompt"/> when true.</summary>
         public bool EnglishMode;
 
+        /// <summary>An optional scenario prompt that overrides the default English teacher prompt
+        /// (the AI 情景对话 with an editable prompt). Empty = use the default.</summary>
+        public string ScenarioPrompt;
+
         /// <summary>
         /// What the pet can see right now: where it is in the room, where its things are, and where the
         /// owner is (see <see cref="PetPerception"/>).

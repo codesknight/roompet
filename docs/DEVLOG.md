@@ -17,7 +17,7 @@
 | 工程 | `D:\projects\dsh-unity\UnityMCPProject`，Unity **2022.3.62f3c1**（中国版），Built-in RP，**Gamma 色彩空间** |
 | 场景 | `Assets/Scenes/Main.unity`（跑酷）、`Assets/Pet/Scenes/PetRoom.unity`（虚拟宠物）、`Assets/MiniGames/Scenes/{FlyBird,JumpQuest,CatchFruit,SliceFruit,AngryBirds}.unity`（五个小游戏），七个都已在 Build Settings |
 | 构建目标 | 已切到 **Android**（装了 Android Build Support：OpenJDK/SDK/NDK）；桌面端仍可随时切回 |
-| 测试 | **405/405 通过**（虚拟宠物 228 + 跑酷 15 + 手机端 56 + 小游戏 99，另有少量跨程序集计数），EditMode |
+| 测试 | **407/407 通过**（虚拟宠物 230 + 跑酷 15 + 手机端 56 + 小游戏 99，另有少量跨程序集计数），EditMode |
 | 编译 | 无 error、无 warning |
 | 大模型 | 在线。本机从环境变量读到内网网关 `http://<内网网关>/v1` + `<内网模型>`（免鉴权） |
 | 存档 | PlayerPrefs + `%USERPROFILE%\AppData\LocalLow\DefaultCompany\UnityMCPProject\dshpet-journal-*.json` |
@@ -1168,6 +1168,9 @@
 179. **`SetRect(x, y, w, h)` 的 `y` 是"离顶部距离"，传负数会把控件甩到面板外。** 英语角「会/不会/收藏」三个按钮写成了
       `SetRect(18, -296, ...)`，`anchoredPosition.y = -(-296) = +296`，正好跑到面板上方看不见——功能其实写好了，但按钮
       不存在，玩家就以为"没有学会/生词表功能"。**凡是布局 helper 的参数，先确认它的坐标系和正负约定，别把"往下 296"写成 -296。**
+180. **从外部词库生成词表时，同一单词可能有多行（不同义项/不同来源），必须按 word 去重。** 初中词库 3218 行里有 1236 个重复词
+      （如 "cancel" 两行），直接生成会让 `Words` 里同一单词出现两次，`FindWord` 只返回第一个、测验干扰项也可能撞车。修法：生成脚本
+      用 `HashSet` 按 `word.ToLowerInvariant()` 去重，只留第一行。**凡是"词条 = 唯一键"的数据，落库前都先去重并断言唯一。**
 
 ## 八、一分钟速查
 

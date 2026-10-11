@@ -105,7 +105,9 @@ namespace DshPet
                 // sits after the state blocks and before the format rules, so the teaching mode
                 // reads as the current activity without overriding the reply-format contract.
                 sb.AppendLine("【英语小老师模式】");
-                sb.AppendLine(EnglishCorner.EnglishTeacherPrompt);
+                sb.AppendLine(string.IsNullOrWhiteSpace(ctx.ScenarioPrompt)
+                    ? EnglishCorner.EnglishTeacherPrompt
+                    : ctx.ScenarioPrompt.Trim());
                 sb.AppendLine();
             }
 

@@ -62,6 +62,9 @@ namespace DshPet
         /// <summary>Whether the pet is in English-teacher mode (mounted as an English system prompt).</summary>
         public bool EnglishChatMode { get; private set; }
 
+        /// <summary>The scenario prompt for 情景对话, empty = use the default teacher prompt.</summary>
+        public string EnglishScenarioPrompt { get; set; } = "";
+
         /// <summary>Turns English-teacher mode on or off. On is the English corner's chat.</summary>
         public void SetEnglishMode(bool on)
         {
@@ -150,8 +153,27 @@ namespace DshPet
 
             PetCollection.Changed += SpawnCompanions;
             SpawnCompanions();
+
+            // 情景对话 handoff：英语角场景把"开始对话"的提示词存在 PlayerPrefs 里，这里消费它、
+            // 打开英语小老师模式，并让 HUD 把聊天框弹出来。
+            string pendingScenario = PlayerPrefs.GetString(ScenarioChatKey, "");
+            if (!string.IsNullOrEmpty(pendingScenario))
+            {
+                PlayerPrefs.DeleteKey(ScenarioChatKey);
+                PlayerPrefs.Save();
+                EnglishScenarioPrompt = pendingScenario;
+                SetEnglishMode(true);
+                EnglishChatPending = true;
+            }
+
             ChatChanged?.Invoke();
         }
+
+        /// <summary>PlayerPrefs key carrying the 情景对话 prompt across the scene load.</summary>
+        public const string ScenarioChatKey = "dshpet.english.scenarioprompt";
+
+        /// <summary>True when a scenario chat was just requested (the HUD opens the chat and clears it).</summary>
+        public bool EnglishChatPending;
 
         /// <summary>
         /// Loads the temperament for the current species and points every consumer at it.
@@ -1541,6 +1563,7 @@ namespace DshPet
                 ExtraInstructions = BrainConfig != null ? BrainConfig.ExtraInstructions : "",
                 SystemPrompt = BrainConfig != null ? BrainConfig.SystemPrompt : "",
                 EnglishMode = EnglishChatMode,
+                ScenarioPrompt = EnglishScenarioPrompt,
                 Perception = DescribePerception()
             };
         }

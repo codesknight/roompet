@@ -834,6 +834,15 @@ namespace DshPet
                 _cursorHintText.text = _cursorHint;
             }
 
+            // 情景对话 handoff：英语角场景请求打开聊天，这里把聊天框弹出来。
+            var gm0 = PetGameManager.Instance;
+            if (gm0 != null && gm0.EnglishChatPending)
+            {
+                gm0.EnglishChatPending = false;
+                _chatExpanded = true;
+                FillEditConfig(gm0);
+            }
+
             SyncChat();
             SyncPetCard();
             SyncPlacementBar();

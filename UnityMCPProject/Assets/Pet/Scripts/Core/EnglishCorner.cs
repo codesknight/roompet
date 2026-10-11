@@ -38,6 +38,34 @@ namespace DshPet
             "4. 可以顺势展开成小对话（打招呼、点餐、问路、聊宠物等）。\n" +
             "5. 中文只用来解释意思，你平时说的话仍然要用英语。";
 
+        /// <summary>One situational dialogue scenario (AI 情景对话).</summary>
+        public class EnglishScenario
+        {
+            public string Name;
+            public string DefaultPrompt;
+        }
+
+        /// <summary>The scenarios the player can practise with the pet, each with a default prompt.</summary>
+        public static readonly EnglishScenario[] Scenarios =
+        {
+            new EnglishScenario { Name = "餐厅点餐", DefaultPrompt =
+                "现在和主人做「餐厅点餐」的情景对话，你是服务员，主人是顾客。全程用英语：先打招呼问主人想吃什么，介绍两三样菜和价格，帮主人点单并确认，最后祝用餐愉快。句子简短适合初学者，每句英文后面附一句中文解释；主人说错了就温柔纠正再示范。" },
+            new EnglishScenario { Name = "问路", DefaultPrompt =
+                "现在和主人做「问路」的情景对话，你是路人，主人来问路。全程用英语：先回应主人的招呼，听他说要去哪，用简单的方位词（left/right/straight）指路，必要时说大概走几分钟。句子简短适合初学者，每句英文后面附一句中文解释；主人说错了就温柔纠正再示范。" },
+            new EnglishScenario { Name = "购物", DefaultPrompt =
+                "现在和主人做「购物」的情景对话，你是店员，主人来买东西。全程用英语：问主人想买什么，介绍商品和价格，讨价还价一下，最后结账道别。句子简短适合初学者，每句英文后面附一句中文解释；主人说错了就温柔纠正再示范。" },
+            new EnglishScenario { Name = "谈天气", DefaultPrompt =
+                "现在和主人做「谈天气」的情景对话。全程用英语聊天气：问主人今天天气怎么样，说说你喜欢晴天还是雨天，聊聊季节。句子简短适合初学者，每句英文后面附一句中文解释；主人说错了就温柔纠正再示范。" },
+            new EnglishScenario { Name = "谈爱好", DefaultPrompt =
+                "现在和主人做「谈爱好」的情景对话。全程用英语聊兴趣爱好：问主人喜欢做什么，说说你自己的爱好（画画、唱歌、运动），再问问主人周末怎么过。句子简短适合初学者，每句英文后面附一句中文解释；主人说错了就温柔纠正再示范。" },
+            new EnglishScenario { Name = "看病", DefaultPrompt =
+                "现在和主人做「看病」的情景对话，你是医生，主人来看病。全程用英语：问主人哪里不舒服，问几句症状（头疼、发烧、咳嗽），给出建议（多喝水、多休息），最后叮嘱按时吃药。句子简短适合初学者，每句英文后面附一句中文解释；主人说错了就温柔纠正再示范。" }
+        };
+
+        /// <summary>The default prompt for a scenario, or "" when the index is out of range.</summary>
+        public static string ScenarioPrompt(int index)
+            => (index >= 0 && index < Scenarios.Length) ? Scenarios[index].DefaultPrompt : "";
+
         /// <summary>Wraps an index into the word list (never throws on negatives).</summary>
         public static EnglishWord WordAt(int index)
             => Words[((index % WordCount) + WordCount) % WordCount];
