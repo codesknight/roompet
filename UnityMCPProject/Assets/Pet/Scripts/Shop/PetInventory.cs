@@ -20,6 +20,7 @@ namespace DshPet
     {
         public const string OwnedKey = "dshpet.furnish.owned";
         public const string PlacedKey = "dshpet.furnish.placed";
+        public const string RotKey = "dshpet.furnish.rot";
         public const string CountKey = "dshpet.items.count";
         public const string StoredKey = "dshpet.furnish.stored";
 
@@ -428,12 +429,94 @@ namespace DshPet
             return result;
         }
 
-        public static void MoveItem(string id, Vector2 position, RoomTheme theme)
+        /// <summary>Moves a placed item and returns the final (clamped + overlap-resolved) position,
+        /// so the caller can snap the visual to exactly what was saved — the visual and the save
+        /// drifting apart is what made a returned player's furniture look rearranged.</summary>
+        public static Vector2 MoveItem(string id, Vector2 position, RoomTheme theme)
         {
-            if (!IsPlaced(id, theme)) return;
+            if (!IsPlaced(id, theme)) return position;
             var map = Placed(theme);
-            map[id] = ResolveOverlap(position, FootprintOf(id), theme, id);
+            Vector2 resolved = ResolveOverlap(position, FootprintOf(id), theme, id);
+            map[id] = resolved;
             SavePlaced(theme, map);
+            return resolved;
+        }
+
+        // ------------------------------------------------------------------- rotation
+
+        private static string RotSceneKey(RoomTheme theme) => RotKey + "." + (int)theme;
+
+        /// <summary>The yaw (degrees around Y) of every placed item in one scene, keyed by placed key.</summary>
+        public static Dictionary<string, float> Rotations(RoomTheme theme)
+        {
+            var map = new Dictionary<string, float>();
+            string raw = PlayerPrefs.GetString(RotSceneKey(theme), "");
+            if (!string.IsNullOrEmpty(raw))
+            {
+                foreach (string entry in raw.Split(';'))
+                {
+                    if (string.IsNullOrEmpty(entry)) continue;
+                    int colon = entry.IndexOf(':');
+                    if (colon <= 0) continue;
+                    string id = entry.Substring(0, colon);
+                    float yaw;
+                    if (float.TryParse(entry.Substring(colon + 1), NumberStyles.Float, CultureInfo.InvariantCulture, out yaw))
+                    {
+                        map[id] = yaw;
+                    }
+                }
+            }
+            return map;
+        }
+
+        /// <summary>The saved yaw of a placed item, in degrees (0 = default facing).</summary>
+        public static float RotationOf(string id, RoomTheme theme)
+        {
+            float yaw;
+            return Rotations(theme).TryGetValue(id, out yaw) ? yaw : 0f;
+        }
+
+        /// <summary>Saves an item's yaw. Values close to 0 are dropped, so the save stays tidy.</summary>
+        public static void SetRotation(string id, RoomTheme theme, float yaw)
+        {
+            yaw = NormalizeYaw(yaw);
+            var map = Rotations(theme);
+            if (yaw < 0.5f) map.Remove(id);
+            else map[id] = yaw;
+
+            var parts = new List<string>();
+            foreach (var pair in map)
+            {
+                parts.Add(pair.Key + ":" + pair.Value.ToString("R", CultureInfo.InvariantCulture));
+            }
+            parts.Sort();
+            PlayerPrefs.SetString(RotSceneKey(theme), string.Join(";", parts.ToArray()));
+            PlayerPrefs.Save();
+            Changed?.Invoke();
+        }
+
+        private static float NormalizeYaw(float yaw)
+        {
+            float value = yaw % 360f;
+            if (value < 0f) value += 360f;
+            return value;
+        }
+
+        private static void RemoveRotation(string id, RoomTheme theme)
+        {
+            var map = Rotations(theme);
+            if (map.Remove(id))
+            {
+                var parts = new List<string>();
+                foreach (var pair in map)
+                {
+                    parts.Add(pair.Key + ":" + pair.Value.ToString("R", CultureInfo.InvariantCulture));
+                }
+                parts.Sort();
+                PlayerPrefs.SetString(RotSceneKey(theme), string.Join(";", parts.ToArray()));
+                PlayerPrefs.Save();
+                Changed?.Invoke();
+            }
         }
 
         // ------------------------------------------------------------------- buy / sell / place
@@ -514,6 +597,7 @@ namespace DshPet
             var map = Placed(place);
             map.Remove(id);
             SavePlaced(place, map);
+            RemoveRotation(id, place);
 
             var item = PetShop.Get(BaseId(id));
             if (item != null && item.Starter) SetStored(BaseId(id), true);
@@ -570,6 +654,7 @@ namespace DshPet
                 var theme = RoomThemeInfo.All[i].Theme;
                 var map = Placed(theme);
                 if (map.Remove(baseId)) SavePlaced(theme, map);
+                RemoveRotation(baseId, theme);
             }
 
             RemoveOwned(baseId);
@@ -599,6 +684,7 @@ namespace DshPet
             for (int i = 0; i < RoomThemeInfo.All.Length; i++)
             {
                 PlayerPrefs.DeleteKey(PlacedKey + "." + (int)RoomThemeInfo.All[i].Theme);
+                PlayerPrefs.DeleteKey(RotKey + "." + (int)RoomThemeInfo.All[i].Theme);
             }
             PetBackpack.ResetForTests();
         }

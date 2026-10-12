@@ -453,5 +453,44 @@ namespace DshPet.Tests
             // Default decor cannot be sold, only stored.
             Assert.IsTrue(PetInventory.Sell("rug").Contains("不能卖"));
         }
+
+        [Test]
+        public void FurnitureRotationIsSavedNormalizedAndCleared()
+        {
+            Assert.AreEqual(0f, PetInventory.RotationOf("bed", RoomTheme.Cabin), "default yaw is 0");
+
+            PetInventory.SetRotation("bed", RoomTheme.Cabin, 90f);
+            Assert.AreEqual(90f, PetInventory.RotationOf("bed", RoomTheme.Cabin));
+
+            // Yaw is normalized into 0..360.
+            PetInventory.SetRotation("bed", RoomTheme.Cabin, -90f);
+            Assert.AreEqual(270f, PetInventory.RotationOf("bed", RoomTheme.Cabin), "yaw is normalized to 0..360");
+
+            // Zero is dropped, not stored as clutter.
+            PetInventory.SetRotation("bed", RoomTheme.Cabin, 0f);
+            Assert.AreEqual(0f, PetInventory.RotationOf("bed", RoomTheme.Cabin));
+        }
+
+        [Test]
+        public void StoringFurnitureForgetsItsRotation()
+        {
+            DshMobile.PetWallet.Add(1000);
+            PetInventory.Buy(PetShop.Get("bed"));
+            PetInventory.Place("bed", RoomTheme.Cabin);
+            PetInventory.SetRotation("bed", RoomTheme.Cabin, 180f);
+            Assert.AreEqual(180f, PetInventory.RotationOf("bed", RoomTheme.Cabin));
+
+            PetInventory.Store("bed", RoomTheme.Cabin);
+            Assert.AreEqual(0f, PetInventory.RotationOf("bed", RoomTheme.Cabin), "stored furniture forgets its yaw");
+        }
+
+        [Test]
+        public void MoveItemReturnsThePositionThatWasSaved()
+        {
+            // The dragger snaps the visual to this return value, so what the player sees while
+            // arranging is exactly what comes back after a restart.
+            Vector2 resolved = PetInventory.MoveItem("sofa", new Vector2(-1f, -1f), RoomTheme.Terrace);
+            Assert.AreEqual(resolved, PetInventory.PositionOf("sofa", RoomTheme.Terrace));
+        }
     }
 }

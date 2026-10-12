@@ -1585,11 +1585,19 @@ namespace DshPet
                 new Color(0.08f, 0.09f, 0.13f, 0.94f), new Color(0.6f, 0.9f, 1f, 0.5f), 1.5f);
             _placementBar.gameObject.SetActive(false);
             _placementText = DshMobile.Ugui.Text("PlacementText", _placementBar.rectTransform,
-                "自由摆放中：按住家具拖到新位置", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleLeft);
+                "自由摆放：按住拖动 · 轻点旋转 90°", 14, new Color(0.86f, 0.87f, 0.91f), UnityEngine.TextAnchor.MiddleLeft);
             _placementText.horizontalOverflow = HorizontalWrapMode.Wrap;
             DshMobile.Ugui.Stretch(_placementText.rectTransform);
             _placementText.rectTransform.offsetMin = new Vector2(14f, 8f);
-            _placementText.rectTransform.offsetMax = new Vector2(-110f, -8f);
+            _placementText.rectTransform.offsetMax = new Vector2(-196f, -8f);
+
+            var rotate = DshMobile.Ugui.Button("Rotate", _placementBar.rectTransform, "↺ 旋转", 16,
+                new Color(0.30f, 0.40f, 0.58f));
+            rotate.GetComponent<RectTransform>().anchorMin = rotate.GetComponent<RectTransform>().anchorMax = new Vector2(1f, 0.5f);
+            rotate.GetComponent<RectTransform>().pivot = new Vector2(1f, 0.5f);
+            rotate.GetComponent<RectTransform>().anchoredPosition = new Vector2(-102f, 0f);
+            rotate.GetComponent<RectTransform>().sizeDelta = new Vector2(88f, 36f);
+            rotate.onClick.AddListener(OnRotatePlacement);
 
             var done = DshMobile.Ugui.Button("Done", _placementBar.rectTransform, "完成", 16,
                 new Color(0.30f, 0.55f, 0.35f));
@@ -1616,6 +1624,15 @@ namespace DshPet
         {
             _placeMode = false;
             PlacementDragger.SetActive(false);
+            DshMobile.MobileHaptics.Light();
+        }
+
+        private void OnRotatePlacement()
+        {
+            // Rotates the item currently being carried. Works with a second finger while the first
+            // holds the furniture; the release then saves the new facing. Tapping (without dragging)
+            // already rotates on its own, so this button is the discoverable, multi-touch way.
+            PlacementDragger.Instance?.RotateDragged(90f);
             DshMobile.MobileHaptics.Light();
         }
 

@@ -1208,7 +1208,26 @@ namespace DshPet
 
             // Free placement reads the exact placed key back off the interactable, so a wall or
             // fence copy (indoor_wall#1) can be moved independently of its siblings.
-            if (result != null) result.ItemId = placedKey;
+            if (result != null)
+            {
+                result.ItemId = placedKey;
+
+                // Apply the saved yaw, and swing the approach point with it so the pet still
+                // walks to the item's (rotated) front rather than the spot it used to face.
+                float yaw = PetInventory.RotationOf(placedKey, Theme);
+                result.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
+                if (yaw > 0.5f)
+                {
+                    var center = new Vector3(result.transform.position.x, 0f, result.transform.position.z);
+                    var offset = result.ApproachPoint - center;
+                    float rad = yaw * Mathf.Deg2Rad;
+                    var rotated = new Vector3(
+                        offset.x * Mathf.Cos(rad) - offset.z * Mathf.Sin(rad),
+                        offset.y,
+                        offset.x * Mathf.Sin(rad) + offset.z * Mathf.Cos(rad));
+                    result.ApproachPoint = center + rotated;
+                }
+            }
             return result;
         }
 
