@@ -429,14 +429,15 @@ namespace DshPet
             return result;
         }
 
-        /// <summary>Moves a placed item and returns the final (clamped + overlap-resolved) position,
-        /// so the caller can snap the visual to exactly what was saved — the visual and the save
-        /// drifting apart is what made a returned player's furniture look rearranged.</summary>
+        /// <summary>Moves a placed item and returns the final (clamped) position, so the caller can
+        /// snap the visual to exactly what was saved. Placement is free: the item lands exactly
+        /// where it is dropped, clamped only to the room, so it never "bounces away" from its
+        /// neighbours (feedback: 家具周围不能摆放、会弹开，改为任意摆放).</summary>
         public static Vector2 MoveItem(string id, Vector2 position, RoomTheme theme)
         {
             if (!IsPlaced(id, theme)) return position;
             var map = Placed(theme);
-            Vector2 resolved = ResolveOverlap(position, FootprintOf(id), theme, id);
+            Vector2 resolved = ClampToRoom(position);
             map[id] = resolved;
             SavePlaced(theme, map);
             return resolved;
@@ -570,7 +571,7 @@ namespace DshPet
                 if (UnplacedCopies(item.Id) <= 0) return "没有多余的" + item.Name + "可以摆（都摆好了，先收回一段）";
                 string key = NextCopyKey(item.Id, place);
                 var map = Placed(place);
-                map[key] = ResolveOverlap(item.DefaultPosition, item.Footprint, place, key);
+                map[key] = ClampToRoom(item.DefaultPosition);
                 SavePlaced(place, map);
                 int left = UnplacedCopies(item.Id);
                 return item.Name + "摆进了" + RoomThemeInfo.Get(place).DisplayName +
@@ -581,7 +582,7 @@ namespace DshPet
             if (IsPlaced(id, place)) return "已经摆在这里了";
 
             var m = Placed(place);
-            m[id] = ResolveOverlap(item.DefaultPosition, item.Footprint, place, id);
+            m[id] = ClampToRoom(item.DefaultPosition);
             SavePlaced(place, m);
 
             if (item.Starter) SetStored(id, false);

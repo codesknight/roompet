@@ -379,16 +379,14 @@ namespace DshPet.Tests
         }
 
         [Test]
-        public void PlacedFurnitureDoesNotOverlapTheBowls()
+        public void FurnitureCanBePlacedFreelyWithoutBeingPushed()
         {
-            // Move the terrace sofa right onto the food bowl: it is pushed clear instead of sitting
-            // inside the bowl. This is the "食物盆/水盆不和其他物体重叠" rule.
+            // 家具任意摆放：放在别的家具上也不再被弹开，位置就是落点。
             Vector2 bowl = PetInventory.PositionOf(PetShop.FoodBowl, RoomTheme.Terrace);
             PetInventory.MoveItem("sofa", bowl, RoomTheme.Terrace);
 
-            Vector2 sofaAt = PetInventory.PositionOf("sofa", RoomTheme.Terrace);
-            Assert.IsFalse(PetInventory.Overlaps(sofaAt, PetInventory.FootprintOf("sofa"), RoomTheme.Terrace, "sofa"),
-                "the sofa must not sit inside the food bowl");
+            Assert.AreEqual(bowl, PetInventory.PositionOf("sofa", RoomTheme.Terrace),
+                "furniture stays exactly where it is placed, even on the bowl");
         }
 
         [Test]
